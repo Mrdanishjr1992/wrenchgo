@@ -1,7 +1,16 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\app",
+    "\\app\\(customer)",
+    "\\app\\(customer)\\(tabs)",
+    "\\app\\(customer)\\messages",
+    "\\app\\(mechanic)",
+    "\\app\\(mechanic)\\job",
+    "\\app\\(mechanic)\\messages",
+    "\\src",
+    "\\src\\ui"
   ],
-  "SelectedNode": "\\components",
+  "SelectedNode": "\\app\\(mechanic)\\job\\[id].tsx",
   "PreviewInSolutionExplorer": false
 }

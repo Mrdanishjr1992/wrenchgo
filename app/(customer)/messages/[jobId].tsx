@@ -128,7 +128,7 @@ export default function JobChat() {
     >
       <View style={{ padding: spacing.md, paddingTop: spacing.lg }}>
 <Pressable
-  onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/messages"))}
+  onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/inbox"))}
   hitSlop={12}
   style={{ paddingVertical: 8, zIndex: 10 }}
 >

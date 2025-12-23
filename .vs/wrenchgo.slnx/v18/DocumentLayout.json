@@ -1,7 +1,32 @@
 {
   "Version": 1,
   "WorkspaceRootPath": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\",
-  "Documents": [],
+  "Documents": [
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\index.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app\\index.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\components\\AppButton.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\ui\\components\\AppButton.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\theme.ts||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:src\\ui\\theme.ts||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\gate.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app\\(auth)\\gate.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-in.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app\\(auth)\\sign-in.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-up.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:app\\(auth)\\sign-up.tsx||{3B902123-F8A7-4915-9F01-361F908088D0}"
+    }
+  ],
   "DocumentGroupContainers": [
     {
       "Orientation": 0,
@@ -9,7 +34,7 @@
       "DocumentGroups": [
         {
           "DockedWidth": 107,
-          "SelectedChildIndex": -1,
+          "SelectedChildIndex": 9,
           "Children": [
             {
               "$type": "Bookmark",
@@ -21,15 +46,110 @@
             },
             {
               "$type": "Bookmark",
+              "Name": "ST:130:0:{75188d03-9892-4ae2-abf1-207126247ce5}"
+            },
+            {
+              "$type": "Bookmark",
               "Name": "ST:2:0:{d212f56b-c48a-434c-a121-1c5d80b59b9f}"
             },
             {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{1c4feeaa-4718-4aa9-859d-94ce25d182ba}"
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "theme.ts",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\theme.ts",
+              "RelativeDocumentMoniker": "src\\ui\\theme.ts",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\theme.ts",
+              "RelativeToolTip": "src\\ui\\theme.ts",
+              "ViewState": "AgIAAAwAAAAAAAAAAAAAACEAAAAPAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T17:29:15.984Z",
+              "EditorCaption": ""
             },
             {
-              "$type": "Bookmark",
-              "Name": "ST:130:0:{75188d03-9892-4ae2-abf1-207126247ce5}"
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "sign-up.tsx",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-up.tsx",
+              "RelativeDocumentMoniker": "app\\(auth)\\sign-up.tsx",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-up.tsx",
+              "RelativeToolTip": "app\\(auth)\\sign-up.tsx",
+              "ViewState": "AgIAAI0AAAAAAAAAAAAAALQAAAAqAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T17:11:02.944Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "sign-in.tsx",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-in.tsx",
+              "RelativeDocumentMoniker": "app\\(auth)\\sign-in.tsx",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\sign-in.tsx",
+              "RelativeToolTip": "app\\(auth)\\sign-in.tsx",
+              "ViewState": "AgIAAE4AAAAAAAAAAAAQwH4AAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T17:05:49.4Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
+              "Title": "gate.tsx",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\gate.tsx",
+              "RelativeDocumentMoniker": "app\\(auth)\\gate.tsx",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\(auth)\\gate.tsx",
+              "RelativeToolTip": "app\\(auth)\\gate.tsx",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAYAAAAcAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T17:04:47.701Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "index.tsx",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\index.tsx",
+              "RelativeDocumentMoniker": "app\\index.tsx",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\app\\index.tsx",
+              "RelativeToolTip": "app\\index.tsx",
+              "ViewState": "AgIAAD8AAAAAAAAAAAAAAFYAAAAaAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T16:58:34.597Z",
+              "EditorCaption": ""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "Orientation": 0,
+      "VerticalTabListWidth": 256,
+      "FloatingWindowState": {
+        "Id": "223764ad-dc18-43aa-9709-56e595dba46f",
+        "Display": 0,
+        "X": 1267,
+        "Y": 95,
+        "Width": 1070,
+        "Height": 1103,
+        "WindowState": 0
+      },
+      "DocumentGroups": [
+        {
+          "DockedWidth": 200,
+          "SelectedChildIndex": 0,
+          "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "AppButton.tsx",
+              "DocumentMoniker": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\components\\AppButton.tsx",
+              "RelativeDocumentMoniker": "src\\ui\\components\\AppButton.tsx",
+              "ToolTip": "C:\\Users\\mrdan\\source\\repos\\Mechanic app\\wrenchgo\\src\\ui\\components\\AppButton.tsx",
+              "RelativeToolTip": "src\\ui\\components\\AppButton.tsx",
+              "ViewState": "AgIAAB4AAAAAAAAAAAAAACoAAAAjAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003213|",
+              "WhenOpened": "2025-12-23T17:17:22.409Z",
+              "EditorCaption": ""
             }
           ]
         }

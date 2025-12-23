@@ -1,14 +1,35 @@
-import { Tabs } from "expo-router";
+import { Tabs, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../../src/ui/theme";
 import { LinearGradient } from "expo-linear-gradient";
+import { Pressable } from "react-native";
 
 export default function CustomerTabsLayout() {
+  const router = useRouter();
   return (
 
     <Tabs
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerTitleAlign: "left",
+        headerStyle: { backgroundColor: colors.bg },
+        headerShadowVisible: false,
+        headerTintColor: colors.text,
+
+        headerRight: () => (
+          <Pressable
+            onPress={() => router.push("/(customer)/(tabs)/account")}
+            hitSlop={12}
+            style={{ paddingRight: 14 }}
+          >
+            <Ionicons
+              name="person-circle-outline"
+              size={28}
+              color={colors.accent}
+            />
+          </Pressable>
+        ),
+
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
@@ -17,12 +38,11 @@ export default function CustomerTabsLayout() {
           paddingBottom: 12,
         },
         tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.textMuted,
+        tabBarInactiveTintColor: colors.muted,
         tabBarLabelStyle: { fontSize: 12, fontWeight: "700" },
       }}
-    > 
-
-      <Tabs.Screen
+    >
+    <Tabs.Screen
         name="index"
         options={{
           title: "Home",
@@ -40,25 +60,42 @@ export default function CustomerTabsLayout() {
         name="jobs"
         options={{
           title: "Jobs",
-          tabBarIcon: ({ color, size }) => <Ionicons name="briefcase" color={color} size={size} />,
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="briefcase" color={color} size={size} />
+          ),
+        }}
+      />
+
+      <Tabs.Screen
+        name="inbox"
+        options={{
+          title: "Inbox",
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="mail" color={color} size={size} />
+          ),
+        }}
+      />
+
+      {/* hide these from tab bar but keep routes available */}
+      <Tabs.Screen
+        name="messages"
+        options={{
+          href: null,
         }}
       />
       <Tabs.Screen
-          name="notifications"
-          options={{
-            title: "Alerts",
-            tabBarIcon: ({ color, size }) => <Ionicons name="notifications" color={color} size={size} />,
-          }}
-        />
+        name="notifications"
+        options={{
+          href: null,
+        }}
+      />
       <Tabs.Screen
         name="account"
         options={{
-          title: "Account",
-          tabBarIcon: ({ color, size }) => <Ionicons name="person" color={color} size={size} />,
+          href: null,
+          headerRight: () => null, // hides it on Leads
         }}
       />  
-    
-    </Tabs>
-  
-  );
+      </Tabs>
+  )
 }

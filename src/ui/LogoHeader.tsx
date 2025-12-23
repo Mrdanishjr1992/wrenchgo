@@ -24,10 +24,5 @@ export function LogoHeader({ subtitle }: { subtitle?: string }) {
   />
 </View>
 
-    </View>
-    <View>
-        <Text style={{ ...text.section, fontSize: 18 }}>WrenchGo</Text>
-        {subtitle ? <Text style={text.muted}>{subtitle}</Text> : null}
-      </View>
   );
 }
