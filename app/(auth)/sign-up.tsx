@@ -5,7 +5,10 @@ import {
   TextInput,
   Pressable,
   Alert,
+  ScrollView,
+  KeyboardAvoidingView,
   ActivityIndicator,
+  Platform
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
@@ -60,35 +63,38 @@ export default function SignUp() {
   };
 
   return (
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    >
+      <ScrollView contentContainerStyle={{backgroundColor: colors.bg, padding: spacing.md, gap: spacing.md, paddingBottom: 40 }}>
     <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
     <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
-<View
-  style={{
-    width: 280,
-    height: 280,
-    borderRadius: 20,
-    //backgroundColor: "transparent", // 🔑 important
-    alignItems: "center",
-    justifyContent: "center",
-  }}
->
-  <Image
-    source={require("../../assets/logo.png")}
-    style={{
-      width: "100%",
-      height: "100%",
-    }}
-    resizeMode="contain"
-  />
-</View>
-
-  <Text style={{ ...text.title, marginTop: spacing.md }}>WrenchGo</Text>
-  <Text style={{ ...text.muted, marginTop: 6 }}>Sign in to continue</Text>
+    <View
+      style={{
+        width: 280,
+        height: 280,
+        borderRadius: 20,
+        //backgroundColor: "transparent", // 🔑 important
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Image
+        source={require("../../assets/logo.png")}
+        style={{
+          width: "100%",
+          height: "100%",
+        }}
+        resizeMode="contain"
+      />
+    </View>      
+    <Text style={{ ...text.muted}}>Join WrenchGo</Text>
 </View>
 
       <Text style={{ ...text.muted, marginTop: 6 }}>Create your account</Text>
 
-      <Text style={{ ...text.muted, marginTop: 6 }}>Join WrenchGo</Text>
+
 
       <View style={{ flexDirection: "row", gap: 10, marginTop: spacing.lg }}>
         {(["customer", "mechanic"] as Role[]).map((r) => (
@@ -185,5 +191,7 @@ export default function SignUp() {
 
       </View>
     </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }

@@ -161,8 +161,9 @@ export default function MechanicJobDetails() {
       <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md, paddingBottom: 140 }}>
         {/* Header */}
         <View style={{ gap: 10 }}>
-          <Pressable onPress={() => router.back()} style={{ alignSelf: "flex-start" }}>
-            <Text style={{ color: colors.textSecondary, fontWeight: "800" }}>← Back</Text>
+          <Pressable  onPress={() => (router.canGoBack() ? router.back() : router.replace("/(mechanic)/(tabs)/jobs"))}
+          style={{ alignSelf: "flex-start" }}>
+          <Text style={{ color: colors.accent, fontWeight: "900" }}>← Back</Text>
           </Pressable>
 
           <Text style={text.title}>{job.title}</Text>

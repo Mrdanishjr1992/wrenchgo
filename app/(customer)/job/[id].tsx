@@ -268,8 +268,9 @@ export default function CustomerJobDetails() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md, paddingBottom: 140 }}>
-        <Pressable onPress={() => router.back()} style={{ alignSelf: "flex-start" }}>
-          <Text style={{ color: colors.textSecondary, fontWeight: "800" }}>← Back</Text>
+        <Pressable onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/jobs"))}
+        style={{ alignSelf: "flex-start" }}>
+          <Text style={{ color: colors.accent, fontWeight: "900" }}>← Back</Text>
         </Pressable>
 
         <View style={{ gap: 10 }}>

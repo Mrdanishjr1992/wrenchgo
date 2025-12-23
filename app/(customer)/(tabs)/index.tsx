@@ -210,7 +210,6 @@ export default function CustomerHome() {
           />
         </View>
 
-          <Text style={{ ...text.title, marginTop: spacing.md }}>WrenchGo</Text>
           <Text style={{ ...text.muted, marginTop: 6 }}>
             {fullName ? `Hey, ${fullName.split(" ")[0]} 👋` : "Request a mechanic in minutes"}
           </Text>
