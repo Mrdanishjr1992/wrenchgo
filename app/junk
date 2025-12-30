@@ -1,0 +1,191 @@
+﻿1) UI labels (simple)
+90–100: “Top Trusted”
+
+75–89: “Verified Ready”
+
+60–74: “Solid Choice”
+
+<60: “New / Building Trust” (don’t shame — explain what improves it)
+----------------------------------------------------------------------------------
+2)🧠 Why this is the right architecture
+🚀 One query = Explore page + map
+
+🔐 RLS-safe (read-only view)
+
+🧩 Directly matches your UI cards
+
+⭐ Confidence score becomes a real trust signal
+
+If you want next:
+
+🔍 distance filtering (radius miles)
+
+⚖️ sorting modes (closest / best rated / fastest)
+
+📊 “why this score” breakdown for customers
+
+Just say the word.
+-----------------------------------------------------------------------------------
+3) Map schema directly to your UI screens
+Auth
+Sign up / Sign in
+
+auth.users, then create row in public.profiles
+
+Customer flow
+Home
+
+customer identity: profiles
+
+active jobs: jobs where customer_id = auth.uid()
+
+notifications: notifications where user_id = auth.uid()
+
+Explore (map + list)
+
+mechanic card core: public.profiles (mechanic name/photo) + mechanics + mechanic_profiles
+
+map point: mechanic_locations.location
+
+badges: mechanic_skills → skills, mechanic_tools → tools, mechanic_safety → safety_measures
+
+trust: mechanic_confidence_score(mechanic_id)
+
+Mechanic detail (customer view)
+
+profiles, mechanics, mechanic_profiles, mechanic_locations
+
+join tables to show checklist groups
+
+Create job
+
+jobs insert with customer_id = auth.uid()
+
+optionally vehicle_id from vehicles
+
+Quotes
+
+customer reads: quote_requests where customer_id = auth.uid()
+
+Job progress
+
+jobs (status/accepted_mechanic_id)
+
+messages where job_id = …
+
+Mechanic flow
+Mechanic onboarding
+
+mechanics (onboarding_completed, is_available, etc.)
+
+mechanic_profiles (shop_name/bio/radius)
+
+mechanic_locations (location)
+
+checklist writes: mechanic_skills, mechanic_tools, mechanic_safety
+
+schedule: mechanic_availability
+
+Leads / jobs
+
+mechanic reads jobs (searching) + gets assigned via quote_requests
+
+once accepted: jobs.accepted_mechanic_id = auth.uid()
+
+Inbox
+
+messages where sender is mechanic OR job is assigned to mechanic
+
+
+----------------------------------------------------------------
+
+Want the next layer?
+I can:
+
+Design the exact UI flow (screen by screen)
+
+Create the symptom → skill → quote mapping table
+
+Write the mechanic quote copy templates
+
+Turn this into App Store screenshots
+
+Just tell me what you want next 👇
+
+Want next?
+I can:
+----------------------------------------------------------
+Auto‑generate follow‑up questions per symptom
+
+Create the JSON payload saved on jobs
+
+Design the mechanic quote UI that uses this mapping
+
+Add confidence score impact per symptom handled
+
+If you want, I can also add a second view for “Explore Leads” that filters jobs to the mechanic’s radius/zip and sorts by best match to their skills/tools.
+
+Just tell me which one 👇
+
+
+--------------------------------------------------------------------
+Want next?
+I can:
+
+🔄 Auto‑map answers → quote strategy changes
+
+🧠 Add confidence score boosts when mechanics handle certain symptoms
+
+📘 Generate customer education cards per symptom
+
+🧩 Wire this directly into your existing jobs schema (JSON payload)
+---------------------------------------------------------------------
+
+
+
+| Strategy              | What customer sees                      | What mechanic does            |
+| --------------------- | --------------------------------------- | ----------------------------- |
+| `diagnostic_only`     | “Inspection first, no guessing”         | Confirms issue before quoting |
+| `range_quote`         | “Estimated range depending on findings” | Explains best/worst case      |
+| `fixed_simple`        | “Clear price”                           | Low-risk services             |
+| `inspection_required` | “Needs on-site assessment”              | Prevents unsafe quoting       |
+------------------------------------------------------------------------------------------------------------
+
+5️⃣ How This Appears in the UI
+Customer (simple)
+Issue: Car won’t start
+ℹ️ Most issues like this require a quick diagnosis before repair.
+✔ No guessing
+✔ Price explained before work
+
+Mechanic (smart)
+Likely Systems: Battery / Starter
+Required Skills: Electrical, Diagnostics
+Suggested Quote: Diagnostic
+Risk: Medium
+-----------------------------------------------------------------------------------------
+UI layout (simple and calming)
+Card title
+1–2 line summary
+Chips:
+
+✅ “What we’ll check”
+
+🛟 “Is it safe to drive?”
+
+💵 “How quotes work”
+
+📸 “What to prepare”
+
+Mechanic side
+Show only:
+
+“what_we_check”
+
+“quote_expectation”
+
+“red_flags”
+(so it helps their initial response without lecturing)
+
+---------------------------------------------------------------------------------------------------
+

@@ -1,0 +1,180 @@
+-- ============================================================================
+-- Migration: Add Performance Indexes
+-- Phase: 2 (Performance Optimization)
+-- Downtime: NONE (uses CONCURRENTLY)
+-- Rollback: Drop indexes (see rollback section)
+-- ============================================================================
+
+-- PROBLEM: Missing indexes for common query patterns
+-- SOLUTION: Add composite indexes for core queries
+
+-- ============================================================================
+-- VEHICLES TABLE INDEXES
+-- ============================================================================
+
+-- Already exists from previous migrations:
+-- idx_vehicles_customer_id
+-- idx_vehicles_customer_created
+
+-- Add index for mechanic job lookups (vehicles via jobs)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_vehicles_id_customer_id
+ON public.vehicles(id, customer_id);
+
+-- ============================================================================
+-- JOBS TABLE INDEXES
+-- ============================================================================
+
+-- Already exists:
+-- idx_jobs_customer_created
+-- idx_jobs_vehicle_id
+
+-- Add composite index for status + created_at (explore/feed queries)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_jobs_status_created
+ON public.jobs(status, created_at DESC)
+WHERE status = 'searching';
+
+-- Add index for mechanic assigned jobs
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_jobs_accepted_mechanic_created
+ON public.jobs(accepted_mechanic_id, created_at DESC)
+WHERE accepted_mechanic_id IS NOT NULL;
+
+-- Add index for customer jobs feed
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_jobs_customer_status_created
+ON public.jobs(customer_id, status, created_at DESC);
+
+-- ============================================================================
+-- QUOTE_REQUESTS TABLE INDEXES
+-- ============================================================================
+
+-- Add index for customer quote lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quote_requests_customer_created
+ON public.quote_requests(customer_id, created_at DESC);
+
+-- Add index for mechanic quote lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quote_requests_mechanic_created
+ON public.quote_requests(mechanic_id, created_at DESC);
+
+-- Add index for job quote lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quote_requests_job_status
+ON public.quote_requests(job_id, status);
+
+-- Add index for status filtering
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quote_requests_status_created
+ON public.quote_requests(status, created_at DESC);
+
+-- Add index for accepted quotes (time-protection calculations)
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_quote_requests_accepted_at
+ON public.quote_requests(accepted_at)
+WHERE accepted_at IS NOT NULL;
+
+-- ============================================================================
+-- MESSAGES TABLE INDEXES
+-- ============================================================================
+
+-- Already exists:
+-- idx_messages_recipient_read
+-- idx_messages_unread
+
+-- Add index for job message threads
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_job_created
+ON public.messages(job_id, created_at DESC);
+
+-- Add index for sender lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_messages_sender_created
+ON public.messages(sender_id, created_at DESC);
+
+-- ============================================================================
+-- MECHANIC TABLES INDEXES
+-- ============================================================================
+
+-- mechanic_locations: Add index for nearby mechanic searches
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mechanic_locations_user_location
+ON public.mechanic_locations(user_id, latitude, longitude);
+
+-- mechanic_profiles: Add index for user lookups
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mechanic_profiles_user_id
+ON public.mechanic_profiles(user_id);
+
+-- mechanic_availability: Add index for availability checks
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mechanic_availability_mechanic_day
+ON public.mechanic_availability(mechanic_id, day_of_week);
+
+-- ============================================================================
+-- NOTIFICATIONS TABLE INDEXES
+-- ============================================================================
+
+-- Add index for user notifications feed
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_user_created
+ON public.notifications(user_id, created_at DESC);
+
+-- Add index for unread notifications
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_user_read
+ON public.notifications(user_id, read)
+WHERE read = false;
+
+-- ============================================================================
+-- ANALYZE TABLES
+-- ============================================================================
+
+ANALYZE public.vehicles;
+ANALYZE public.jobs;
+ANALYZE public.quote_requests;
+ANALYZE public.messages;
+ANALYZE public.mechanic_locations;
+ANALYZE public.mechanic_profiles;
+ANALYZE public.mechanic_availability;
+ANALYZE public.notifications;
+
+-- ============================================================================
+-- VERIFICATION
+-- ============================================================================
+
+-- Check all indexes were created
+-- SELECT schemaname, tablename, indexname
+-- FROM pg_indexes
+-- WHERE schemaname = 'public'
+-- AND tablename IN ('vehicles', 'jobs', 'quote_requests', 'messages')
+-- ORDER BY tablename, indexname;
+
+-- Check index usage (run after some production traffic)
+-- SELECT schemaname, tablename, indexname, idx_scan, idx_tup_read
+-- FROM pg_stat_user_indexes
+-- WHERE schemaname = 'public'
+-- ORDER BY idx_scan DESC;
+
+-- ============================================================================
+-- ROLLBACK
+-- ============================================================================
+
+-- To rollback, drop indexes:
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_vehicles_id_customer_id;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_jobs_status_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_jobs_accepted_mechanic_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_jobs_customer_status_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_quote_requests_customer_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_quote_requests_mechanic_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_quote_requests_job_status;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_quote_requests_status_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_quote_requests_accepted_at;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_messages_job_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_messages_sender_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_mechanic_locations_user_location;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_mechanic_profiles_user_id;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_mechanic_availability_mechanic_day;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_notifications_user_created;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_notifications_user_read;
+
+-- ============================================================================
+-- PERFORMANCE NOTES
+-- ============================================================================
+
+-- CONCURRENTLY: Indexes are built without blocking reads/writes
+-- Partial indexes (WHERE clauses): Smaller, faster for specific queries
+-- Composite indexes: Order matters - most selective column first
+-- DESC indexes: Optimizes ORDER BY ... DESC queries
+
+-- Expected improvements:
+-- - Garage load: 10-50x faster
+-- - Explore/matching: 20-100x faster
+-- - Quote requests: 10-50x faster
+-- - Jobs feed: 10-50x faster

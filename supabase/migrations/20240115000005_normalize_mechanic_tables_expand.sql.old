@@ -1,0 +1,123 @@
+-- ============================================================================
+-- Migration: Normalize Mechanic Tables - EXPAND Phase
+-- Phase: 3A (Naming Normalization - EXPAND)
+-- Downtime: NONE
+-- Strategy: Add new columns alongside old ones
+-- Next: 20240115000006 (BACKFILL)
+-- ============================================================================
+
+-- PROBLEM: mechanic_locations, mechanic_profiles use user_id instead of mechanic_id
+-- SOLUTION: Add mechanic_id columns, keep user_id for compatibility
+
+-- ============================================================================
+-- MECHANIC_LOCATIONS: Add mechanic_id column
+-- ============================================================================
+
+-- Add new column (nullable for now)
+ALTER TABLE public.mechanic_locations
+ADD COLUMN IF NOT EXISTS mechanic_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+
+-- Add index for new column
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mechanic_locations_mechanic_id
+ON public.mechanic_locations(mechanic_id);
+
+-- Add comment
+COMMENT ON COLUMN public.mechanic_locations.mechanic_id IS 'New canonical column (replaces user_id). Will be NOT NULL after backfill.';
+
+-- ============================================================================
+-- MECHANIC_PROFILES: Add mechanic_id column
+-- ============================================================================
+
+-- Add new column (nullable for now)
+ALTER TABLE public.mechanic_profiles
+ADD COLUMN IF NOT EXISTS mechanic_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+
+-- Add index for new column
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_mechanic_profiles_mechanic_id
+ON public.mechanic_profiles(mechanic_id);
+
+-- Add comment
+COMMENT ON COLUMN public.mechanic_profiles.mechanic_id IS 'New canonical column (replaces user_id). Will be NOT NULL after backfill.';
+
+-- ============================================================================
+-- MECHANICS: Already uses user_id correctly (no change needed)
+-- ============================================================================
+
+-- Note: mechanics table uses user_id which is correct (it's a user profile table)
+-- No changes needed here
+
+-- ============================================================================
+-- ADD COMPATIBILITY VIEWS (Optional - for gradual app migration)
+-- ============================================================================
+
+-- Create view that shows both old and new columns
+CREATE OR REPLACE VIEW public.mechanic_locations_v2 AS
+SELECT
+  id,
+  COALESCE(mechanic_id, user_id) as mechanic_id,  -- Prefer new column
+  user_id,  -- Keep for compatibility
+  latitude,
+  longitude,
+  address,
+  city,
+  state,
+  zip_code,
+  created_at,
+  updated_at
+FROM public.mechanic_locations;
+
+CREATE OR REPLACE VIEW public.mechanic_profiles_v2 AS
+SELECT
+  id,
+  COALESCE(mechanic_id, user_id) as mechanic_id,  -- Prefer new column
+  user_id,  -- Keep for compatibility
+  bio,
+  years_experience,
+  hourly_rate_cents,
+  service_radius_miles,
+  created_at,
+  updated_at
+FROM public.mechanic_profiles;
+
+-- Grant permissions on views
+GRANT SELECT ON public.mechanic_locations_v2 TO authenticated;
+GRANT SELECT ON public.mechanic_profiles_v2 TO authenticated;
+
+-- ============================================================================
+-- VERIFICATION
+-- ============================================================================
+
+-- Check columns exist
+-- SELECT column_name, data_type, is_nullable
+-- FROM information_schema.columns
+-- WHERE table_name IN ('mechanic_locations', 'mechanic_profiles')
+-- AND column_name IN ('user_id', 'mechanic_id')
+-- ORDER BY table_name, column_name;
+
+-- Check indexes
+-- SELECT tablename, indexname
+-- FROM pg_indexes
+-- WHERE tablename IN ('mechanic_locations', 'mechanic_profiles')
+-- ORDER BY tablename, indexname;
+
+-- ============================================================================
+-- ROLLBACK
+-- ============================================================================
+
+-- To rollback:
+-- DROP VIEW IF EXISTS public.mechanic_locations_v2;
+-- DROP VIEW IF EXISTS public.mechanic_profiles_v2;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_mechanic_locations_mechanic_id;
+-- DROP INDEX CONCURRENTLY IF EXISTS idx_mechanic_profiles_mechanic_id;
+-- ALTER TABLE public.mechanic_locations DROP COLUMN IF EXISTS mechanic_id;
+-- ALTER TABLE public.mechanic_profiles DROP COLUMN IF EXISTS mechanic_id;
+
+-- ============================================================================
+-- NEXT STEPS
+-- ============================================================================
+
+-- 1. Deploy this migration (EXPAND phase)
+-- 2. Run 20240115000006 to backfill data (BACKFILL phase)
+-- 3. Update app code to use mechanic_id instead of user_id
+-- 4. Run 20240115000007 to make mechanic_id NOT NULL (SWITCH phase)
+-- 5. Run 20240115000008 to drop user_id column (CONTRACT phase)

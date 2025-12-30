@@ -1,0 +1,56 @@
+-- Migration: Optimize Jobs and Messages Queries
+-- Created: 2024-01-10
+-- Description: Add composite indexes for frequently queried patterns in jobs and messages tables
+
+-- ============================================================================
+-- JOBS TABLE OPTIMIZATION
+-- ============================================================================
+
+-- Index for: SELECT * FROM jobs WHERE customer_id = ? ORDER BY created_at DESC
+-- This is the most common query pattern on the home screen
+CREATE INDEX IF NOT EXISTS idx_jobs_customer_created 
+ON public.jobs(customer_id, created_at DESC);
+
+-- ============================================================================
+-- MESSAGES TABLE OPTIMIZATION
+-- ============================================================================
+
+-- Index for: SELECT * FROM messages WHERE recipient_id = ? AND read = false
+-- This is used for unread message counts
+CREATE INDEX IF NOT EXISTS idx_messages_recipient_read 
+ON public.messages(recipient_id, read);
+
+-- Partial index for unread messages only (more efficient for unread counts)
+CREATE INDEX IF NOT EXISTS idx_messages_unread 
+ON public.messages(recipient_id) 
+WHERE read = false;
+
+-- ============================================================================
+-- ANALYZE TABLES
+-- ============================================================================
+
+-- Update query planner statistics for optimized tables
+ANALYZE public.jobs;
+ANALYZE public.messages;
+
+-- ============================================================================
+-- VERIFICATION QUERIES
+-- ============================================================================
+
+-- To verify indexes are being used, run these EXPLAIN ANALYZE queries:
+--
+-- Jobs query (should use idx_jobs_customer_created):
+-- EXPLAIN ANALYZE 
+-- SELECT id, title, status, created_at, preferred_time 
+-- FROM jobs 
+-- WHERE customer_id = 'your-user-id' 
+-- ORDER BY created_at DESC;
+--
+-- Messages unread count (should use idx_messages_unread):
+-- EXPLAIN ANALYZE 
+-- SELECT COUNT(*) 
+-- FROM messages 
+-- WHERE recipient_id = 'your-user-id' AND read = false;
+--
+-- Expected output should show "Index Scan" or "Index Only Scan"
+-- instead of "Seq Scan" for optimal performance.
