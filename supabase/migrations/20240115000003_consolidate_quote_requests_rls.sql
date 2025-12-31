@@ -27,6 +27,11 @@ DROP POLICY IF EXISTS "quotes_insert_mechanic" ON public.quote_requests;
 DROP POLICY IF EXISTS "quotes_select_party" ON public.quote_requests;
 DROP POLICY IF EXISTS "quotes_update_party" ON public.quote_requests;
 
+-- Drop the new consolidated policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "quote_requests_insert_mechanic" ON public.quote_requests;
+DROP POLICY IF EXISTS "quote_requests_update_participants" ON public.quote_requests;
+DROP POLICY IF EXISTS "quote_requests_delete_mechanic" ON public.quote_requests;
+
 -- ============================================================================
 -- STEP 2: Create consolidated policies
 -- ============================================================================
@@ -39,7 +44,6 @@ TO authenticated
 USING (
   customer_id = auth.uid()
   OR mechanic_id = auth.uid()
-  OR is_admin()
 );
 
 -- INSERT: Mechanics create quotes for jobs
@@ -49,7 +53,6 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   mechanic_id = auth.uid()
-  AND is_mechanic()
 );
 
 -- UPDATE: Both parties can update (customer accepts/rejects, mechanic updates quote)
@@ -60,12 +63,10 @@ TO authenticated
 USING (
   customer_id = auth.uid()
   OR mechanic_id = auth.uid()
-  OR is_admin()
 )
 WITH CHECK (
   customer_id = auth.uid()
   OR mechanic_id = auth.uid()
-  OR is_admin()
 );
 
 -- DELETE: Only mechanics can withdraw their quotes (soft delete recommended)
@@ -75,7 +76,6 @@ FOR DELETE
 TO authenticated
 USING (
   mechanic_id = auth.uid()
-  OR is_admin()
 );
 
 -- ============================================================================

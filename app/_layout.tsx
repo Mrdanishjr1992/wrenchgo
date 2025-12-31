@@ -1,13 +1,12 @@
 // app/_layout.tsx
 import { Stack } from "expo-router";
-import { useEffect } from "react";
+import React ,{ useEffect } from "react";
 import { ThemeProvider } from "../src/ui/theme-context";
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { configureGoogleSignIn } from "../src/lib/googleAuth";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Platform, StatusBar } from "react-native";
 import * as ScreenOrientation from "expo-screen-orientation";
-import React from "react";
 
 export default function RootLayout() {
   useEffect(() => {

@@ -62,7 +62,7 @@ BEGIN
 
   RETURN QUERY
   WITH job_quotes AS (
-    SELECT
+    SELECT DISTINCT ON (q.job_id)
       q.job_id,
       q.id AS quote_id,
       q.price_cents::NUMERIC AS quote_amount,
@@ -70,6 +70,7 @@ BEGIN
       q.created_at AS quote_created_at
     FROM quotes q
     WHERE q.mechanic_id = p_mechanic_id
+    ORDER BY q.job_id, q.created_at DESC
   ),
   customer_ratings AS (
     SELECT
@@ -124,9 +125,10 @@ BEGIN
       AND j.deleted_at IS NULL
       AND j.canceled_at IS NULL
       AND (
-        (p_filter = 'all')
+        (p_filter = 'all' AND jq.quote_id IS NULL)
         OR
         (p_filter = 'nearby'
+         AND jq.quote_id IS NULL
          AND j.public_latitude IS NOT NULL
          AND j.public_longitude IS NOT NULL
          AND v_mechanic_lat IS NOT NULL

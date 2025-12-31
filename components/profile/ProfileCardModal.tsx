@@ -43,7 +43,7 @@ export function ProfileCardModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.bg, margin: spacing.lg }]}>
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, margin: spacing.lg }]}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <View style={styles.headerLeft}>
             <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>

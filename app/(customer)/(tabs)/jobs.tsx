@@ -559,28 +559,22 @@ export default function CustomerJobs() {
             {active.length === 0 ? (
               <Text style={{ marginTop: 6, ...text.muted }}>Nothing active right now.</Text>
             ) : (
-              <FlatList
-                style={{ marginTop: spacing.md }}
-                data={active}
-                keyExtractor={(j) => j.id}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-                renderItem={({ item }) => <JobCard item={item} />}
-              />
+              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+                {active.map((item) => (
+                  <JobCard key={item.id} item={item} />
+                ))}
+              </View>
             )}
 
             <SectionHeader title="Completed" count={completed.length} />
             {completed.length === 0 ? (
               <Text style={{ marginTop: 6, ...text.muted }}>No completed jobs yet.</Text>
             ) : (
-              <FlatList
-                style={{ marginTop: spacing.md }}
-                data={completed}
-                keyExtractor={(j) => j.id}
-                scrollEnabled={false}
-                ItemSeparatorComponent={() => <View style={{ height: spacing.md }} />}
-                renderItem={({ item }) => <JobCard item={item} />}
-              />
+              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+                {completed.map((item) => (
+                  <JobCard key={item.id} item={item} />
+                ))}
+              </View>
             )}
 
             <View style={{ height: spacing.lg }} />

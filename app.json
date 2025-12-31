@@ -53,13 +53,6 @@
       "expo-secure-store",
       "expo-video",
       "expo-web-browser",
-      "@react-native-google-signin/google-signin",
-      [
-        "@stripe/stripe-react-native",
-        {
-          "merchantIdentifier": "merchant.com.wrenchgo.app"
-        }
-      ],
       [
         "expo-location",
         {

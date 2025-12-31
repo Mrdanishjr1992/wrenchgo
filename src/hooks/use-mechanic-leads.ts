@@ -14,6 +14,7 @@ interface UseMechanicLeadsResult {
   loading: boolean;
   error: string | null;
   hasMore: boolean;
+  sortBy: LeadSortType;
   refetch: () => Promise<void>;
   loadMore: () => Promise<void>;
   changeSortBy: (sortBy: LeadSortType) => void;
@@ -140,6 +141,7 @@ export function useMechanicLeads(
     loading,
     error,
     hasMore,
+    sortBy,
     refetch,
     loadMore,
     changeSortBy,

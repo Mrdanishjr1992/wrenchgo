@@ -1,23 +1,19 @@
-import React, { useCallback, useState, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
+  ScrollView,
+  StyleSheet,
+  RefreshControl,
   Pressable,
   Alert,
-  ActivityIndicator,
-  ScrollView,
-  RefreshControl,
-  FlatList,
   Image,
-} from "react-native";
-import { useFocusEffect } from "@react-navigation/native";
-import { useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
-
-import { supabase } from "../../../src/lib/supabase";
-import { useTheme } from "../../../src/ui/theme-context";
-import { spacing } from "../../../src/ui/theme";
-import { createCard, cardPressed } from "../../../src/ui/styles";
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTheme } from '../../../src/ui/theme-context';
+import { supabase } from '../../../src/lib/supabase';
 
 type Job = {
   id: string;
@@ -43,10 +39,6 @@ type EducationCard = {
   summary: string;
   is_it_safe: string;
   order_index: number;
-  what_we_check?: string;
-  how_quotes_work?: string;
-  what_to_prepare?: string;
-  quote_strategy?: string;
 };
 
 type SymptomMapping = {
@@ -61,68 +53,84 @@ type SymptomMapping = {
 export default function CustomerHome() {
   const router = useRouter();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
 
-  const textStyles = useMemo(
-    () => ({
-      title: { fontSize: 24, fontWeight: "900" as const, color: colors.textPrimary },
-      section: { fontSize: 16, fontWeight: "800" as const, color: colors.textPrimary },
-      body: { fontSize: 14, fontWeight: "600" as const, color: colors.textPrimary },
-      muted: { fontSize: 13, fontWeight: "600" as const, color: colors.textMuted },
-    }),
-    [colors]
-  );
-
-  const card = useMemo(() => createCard(colors), [colors]);
-
+  const [customerId, setCustomerId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [unread, setUnread] = useState(0);
-  const [fullName, setFullName] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [fullName, setFullName] = useState('');
   const [educationCards, setEducationCards] = useState<EducationCard[]>([]);
   const [symptoms, setSymptoms] = useState<SymptomMapping[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const firstName = useMemo(() => fullName.split(" ")[0] || "", [fullName]);
+  const firstName = useMemo(() => fullName.split(' ')[0] || '', [fullName]);
 
-  const activeJobs = useMemo(() => jobs.filter((j) => j.status !== "completed" && j.status !== "cancelled"), [jobs]);
-
-  const preview = useMemo(() => activeJobs.slice(0, 3), [activeJobs]);
+  const activeJobs = useMemo(
+    () => jobs.filter((j) => j.status !== 'completed' && j.status !== 'cancelled'),
+    [jobs]
+  );
 
   const quickLabel = useMemo(() => {
-    if (activeJobs.length === 0) return "No active jobs";
-    if (activeJobs.length === 1) return "1 active job";
+    if (activeJobs.length === 0) return 'No active jobs';
+    if (activeJobs.length === 1) return '1 active job';
     return `${activeJobs.length} active jobs`;
   }, [activeJobs]);
 
-  const statusColor = useCallback(
-    (status: string) => {
-      if (status === "completed") return "#10b981";
-      if (status === "in_progress") return colors.accent;
-      if (status === "cancelled") return "#ef4444";
-      return colors.textMuted;
-    },
-    [colors]
-  );
-
-  const load = useCallback(async () => {
-    try {
-      const { data: userData, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
-
-      const userId = userData.user?.id;
-      if (!userId) {
-        router.replace("/(auth)/sign-in");
-        return;
+  useEffect(() => {
+    const getCurrentUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        setCustomerId(user.id);
+      } else {
+        router.replace('/(auth)/sign-in');
       }
+    };
+    getCurrentUser();
+  }, [router]);
 
+  useEffect(() => {
+    if (customerId) {
+      fetchData();
+    }
+  }, [customerId]);
+
+  const fetchData = useCallback(async () => {
+    if (!customerId) return;
+
+    try {
       const [jobsRes, vehiclesRes, profileRes, inboxRes, eduCardsRes, symptomsRes] = await Promise.all([
-        supabase.from("jobs").select("id,title,status,created_at,preferred_time").eq("customer_id", userId).order("created_at", { ascending: false }),
-        supabase.from("vehicles").select("id,year,make,model,nickname").eq("customer_id", userId).order("created_at", { ascending: true }),
-        supabase.from("profiles").select("full_name").eq("id", userId).single(),
-        supabase.from("messages").select("id", { count: "exact", head: false }).eq("recipient_id", userId).eq("read", false),
-        supabase.from("education_cards").select("id,symptom_key,card_key,title,summary,is_it_safe,order_index").order("order_index").limit(6),
-        supabase.from("symptom_mappings").select("id,symptom_key,symptom_label,category,risk_level,customer_explainer").order("symptom_label").limit(8),
+        supabase
+          .from('jobs')
+          .select('id,title,status,created_at,preferred_time')
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: false }),
+        supabase
+          .from('vehicles')
+          .select('id,year,make,model,nickname')
+          .eq('customer_id', customerId)
+          .order('created_at', { ascending: true }),
+        supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', customerId)
+          .single(),
+        supabase
+          .from('messages')
+          .select('id', { count: 'exact', head: false })
+          .eq('recipient_id', customerId)
+          .eq('read', false),
+        supabase
+          .from('education_cards')
+          .select('id,symptom_key,card_key,title,summary,is_it_safe,order_index')
+          .order('order_index')
+          .limit(6),
+        supabase
+          .from('symptom_mappings')
+          .select('id,symptom_key,symptom_label,category,risk_level,customer_explainer')
+          .order('symptom_label')
+          .limit(8),
       ]);
 
       if (jobsRes.error) throw jobsRes.error;
@@ -130,529 +138,870 @@ export default function CustomerHome() {
 
       setJobs((jobsRes.data as Job[]) ?? []);
       setVehicles((vehiclesRes.data as Vehicle[]) ?? []);
-      setFullName(profileRes.data?.full_name ?? "");
+      setFullName(profileRes.data?.full_name ?? '');
       setUnread(inboxRes.count ?? 0);
       setEducationCards((eduCardsRes.data as EducationCard[]) ?? []);
       setSymptoms((symptomsRes.data as SymptomMapping[]) ?? []);
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to load data");
+      Alert.alert('Error', e?.message ?? 'Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [router]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  }, [customerId]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    load();
-  }, [load]);
+    fetchData();
+  }, [fetchData]);
 
-  function StatusPill({ status }: { status: string }) {
-    const bg = statusColor(status);
-    const label = status.replace(/_/g, " ").toUpperCase();
-    return (
-      <View style={{ backgroundColor: bg + "22", paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
-        <Text style={{ fontSize: 11, fontWeight: "900", color: bg }}>{label}</Text>
-      </View>
-    );
-  }
+  const statusColor = useCallback(
+    (status: string) => {
+      if (status === 'completed') return '#10b981';
+      if (status === 'in_progress') return colors.accent;
+      if (status === 'cancelled') return '#ef4444';
+      return colors.textMuted;
+    },
+    [colors]
+  );
 
-  function StatCard({ title, value, hint, onPress }: { title: string; value: string; hint: string; onPress: () => void }) {
-    return (
-      <Pressable
-        onPress={onPress}
-        style={({ pressed }) => [
-          {
-            flex: 1,
-            backgroundColor: colors.surface,
-            borderRadius: 14,
-            borderWidth: 1,
-            borderColor: colors.accent,
-            padding: spacing.md,
-            gap: 4,
-            opacity: pressed ? 0.92 : 1,
-            transform: [{ scale: pressed ? 0.98 : 1 }],
-          },
-        ]}
-      >
-        <Text style={{ fontSize: 10, fontWeight: "800", color: colors.textMuted, textTransform: "uppercase", letterSpacing: 0.5 }}>{title}</Text>
-        <Text style={{ fontSize: 25, fontWeight: "900", color: colors.textPrimary }}>{value}</Text>
-        <Text style={{ fontSize: 10, fontWeight: "700", color: colors.textMuted }}>{hint}</Text>
-      </Pressable>
-    );
-  }
+  const handleRequestMechanic = () => {
+    router.push('/(customer)/(tabs)/explore' as any);
+  };
 
-  function SectionHeader({ title, rightText, onRightPress, icon }: { title: string; rightText?: string; onRightPress?: () => void; icon?: any }) {
-    return (
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-          {icon && <Image source={icon} style={{ width: 24, height: 24 }} resizeMode="contain" />}
-          <Text style={textStyles.title}>{title}</Text>
+  const handleViewJobs = () => {
+    router.push('/(customer)/(tabs)/jobs');
+  };
+
+  const handleViewInbox = () => {
+    router.push('/(customer)/(tabs)/inbox');
+  };
+
+  const handleAddVehicle = () => {
+    router.push('/(customer)/garage/add' as any);
+  };
+
+  const handleViewGarage = () => {
+    router.push('/(customer)/garage' as any);
+  };
+
+  const handleViewEducation = () => {
+    router.push('/(customer)/education');
+  };
+
+  const handleViewVehicle = (vehicleId: string) => {
+    router.push({
+      pathname: '/(customer)/garage/[id]' as any,
+      params: { id: vehicleId },
+    });
+  };
+
+  const renderHeader = () => (
+    <LinearGradient
+      colors={[colors.accent, colors.accent + '28']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={[styles.header, { paddingTop: insets.top }]}
+    >
+      <View style={styles.headerContent}>
+        <View style={styles.headerTitleRow}>
+          <Image
+            source={require('../../../assets/wave.png')}
+            style={styles.headerIcon}
+            resizeMode="contain"
+          />
+          <Text style={styles.headerTitle}>
+            {firstName ? `Hey, ${firstName} 👋` : 'WrenchGo'}
+          </Text>
         </View>
-        {rightText && onRightPress && (
-          <Pressable onPress={onRightPress}>
-            <Text style={{ color: colors.accent, fontWeight: "900" }}>{rightText}</Text>
-          </Pressable>
-        )}
+        <Text style={styles.headerSubtitle}>{quickLabel}</Text>
       </View>
-    );
-  }
+    </LinearGradient>
+  );
+
+  const renderQuickActions = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface }]}>
+      <View style={styles.quickActionsContainer}>
+        <Pressable
+          onPress={handleRequestMechanic}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            { opacity: pressed ? 0.95 : 1, transform: [{ scale: pressed ? 0.99 : 1 }] },
+          ]}
+        >
+          <LinearGradient
+            colors={[colors.accent, colors.accent]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.primaryButtonGradient}
+          >
+            <Text style={styles.primaryButtonText}>REQUEST A MECHANIC</Text>
+          </LinearGradient>
+        </Pressable>
+
+        <Pressable
+          onPress={handleViewJobs}
+          style={({ pressed }) => [
+            styles.secondaryButton,
+            {
+              borderColor: colors.border,
+              backgroundColor: colors.surface,
+              opacity: pressed ? 0.92 : 1,
+              transform: [{ scale: pressed ? 0.99 : 1 }],
+            },
+          ]}
+        >
+          <Text style={[styles.secondaryButtonText, { color: colors.textPrimary }]}>
+            VIEW MY JOBS
+          </Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.statsRow}>
+        <StatCard
+          title="Active Jobs"
+          value={String(activeJobs.length)}
+          hint={activeJobs.length ? 'Tap to view' : 'Start one now'}
+          onPress={handleViewJobs}
+          colors={colors}
+        />
+        <StatCard
+          title="Unread Messages"
+          value={String(unread)}
+          hint={unread ? 'Check inbox' : 'All caught up'}
+          onPress={handleViewInbox}
+          colors={colors}
+        />
+      </View>
+    </View>
+  );
+
+  const renderGarageSection = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface }]}>
+      <View style={styles.decorativeCircle1} />
+      <View style={styles.decorativeCircle2} />
+
+      <SectionHeader
+        title="My Garage"
+        rightText="Add"
+        onRightPress={handleAddVehicle}
+        icon={require('../../../assets/garage.png')}
+        colors={colors}
+      />
+
+      {vehicles.length === 0 ? (
+        <EmptyGarageState onAddVehicle={handleAddVehicle} colors={colors} />
+      ) : (
+        <View style={styles.vehicleList}>
+          {vehicles.slice(0, 3).map((vehicle) => (
+            <VehicleCard
+              key={vehicle.id}
+              vehicle={vehicle}
+              onPress={() => handleViewVehicle(vehicle.id)}
+              colors={colors}
+            />
+          ))}
+          {vehicles.length > 3 && (
+            <Pressable onPress={handleViewGarage}>
+              <Text style={[styles.viewAllText, { color: colors.accent }]}>
+                View all vehicles →
+              </Text>
+            </Pressable>
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  const renderCarCareTipsSection = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface }]}>
+      <View style={styles.decorativeCircle3} />
+      <View style={styles.decorativeCircle4} />
+
+      <SectionHeader
+        title="Car Care Tips"
+        rightText="View All"
+        onRightPress={handleViewEducation}
+        icon={require('../../../assets/garage.png')}
+        colors={colors}
+      />
+
+      <Text style={[styles.sectionDescription, { color: colors.textPrimary }]}>
+        Learn about common car issues and what to do
+      </Text>
+
+      {symptoms.length > 0 ? (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.horizontalScrollContent}
+        >
+          {symptoms.slice(0, 4).map((symptom) => (
+            <SymptomCard
+              key={symptom.id}
+              symptom={symptom}
+              onPress={handleViewEducation}
+              colors={colors}
+            />
+          ))}
+        </ScrollView>
+      ) : (
+        <View style={[styles.emptyCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            Loading car care tips...
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+
+  const renderEducationSection = () => (
+    <View style={[styles.section, { backgroundColor: colors.surface }]}>
+      <View style={styles.decorativeCircle5} />
+      <View style={styles.decorativeCircle6} />
+
+      <SectionHeader
+        title="What to Know"
+        rightText="See All"
+        onRightPress={handleViewEducation}
+        colors={colors}
+      />
+
+      <Text style={[styles.sectionDescription, { color: colors.textPrimary }]}>
+        Educational guides to help you understand your car better
+      </Text>
+
+      {educationCards.length > 0 ? (
+        <View style={styles.educationList}>
+          {educationCards.slice(0, 3).map((eduCard) => (
+            <EducationCardItem
+              key={eduCard.id}
+              card={eduCard}
+              onPress={handleViewEducation}
+              colors={colors}
+            />
+          ))}
+        </View>
+      ) : (
+        <View style={[styles.emptyCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+          <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+            Loading educational content...
+          </Text>
+        </View>
+      )}
+    </View>
+  );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      {renderHeader()}
+
       <ScrollView
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.md, borderColor: colors.accent }}  
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+          />
+        }
       >
-        <LinearGradient
-          colors={[colors.accent + "20", colors.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.accent +"80",
-            borderBottomColor: colors.accent + "40",
-            borderTopColor: colors.accent + "40",
-            padding: spacing.lg,
-            overflow: "hidden",
-            marginBottom: spacing.lg,
-          }}
-        >
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              right: -60,
-              top: -40,
-              width: 180,
-              height: 180,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "40",
-            }}
-          />
-
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <View style={{ width: 62, height: 62, borderRadius: 18, alignItems: "center", justifyContent: "center" }}>
-              <Image source={require("../../../assets/wave.png")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...textStyles.title, fontSize: 22 }}>{firstName ? `Hey, ${firstName} 👋` : "WrenchGo"}</Text>
-              <Text style={{ ...textStyles.muted, marginTop: 4 }}>{quickLabel}</Text>
-            </View>
-          </View>
-
-          <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-            <Pressable
-              onPress={() => router.push("/(customer)/(tabs)/explore" as any)}
-              style={({ pressed }) => [
-                {
-                  borderRadius: 18,
-                  overflow: "hidden",
-                  transform: [{ scale: pressed ? 0.99 : 1 }],
-                  opacity: pressed ? 0.95 : 1,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={[colors.accent , colors.accent]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={{
-                  paddingVertical: 16,
-                  paddingHorizontal: spacing.md,
-                  alignItems: "center",
-                  borderRadius: 18,
-                }}
-              >
-                <Text style={{ fontWeight: "900", color: "#000", letterSpacing: 0.4 }}>REQUEST A MECHANIC</Text>
-              </LinearGradient>
-            </Pressable>
-
-            <Pressable
-              onPress={() => router.push("/(customer)/(tabs)/jobs")}
-              style={({ pressed }) => [
-                {
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  paddingVertical: 16,
-                  borderRadius: 18,
-                  alignItems: "center",
-                  backgroundColor: colors.surface,
-                  opacity: pressed ? 0.92 : 1,
-                  transform: [{ scale: pressed ? 0.99 : 1 }],
-                },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: colors.textPrimary, letterSpacing: 0.3 }}>VIEW MY JOBS</Text>
-            </Pressable>
-          </View>
-
-          <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.lg }}>
-            <StatCard
-              title="Active Jobs"
-              value={String(activeJobs.length)}
-              hint={activeJobs.length ? "Tap to view" : "Start one now"}
-              onPress={() => router.push("/(customer)/(tabs)/jobs")}
-            />
-            <StatCard
-              title="Unread Messages"
-              value={String(unread)}
-              hint={unread ? "Check inbox" : "All caught up"}
-              onPress={() => router.push("/(customer)/(tabs)/inbox")}
-            />
-          </View>
-        </LinearGradient>
-
-        <LinearGradient
-          colors={[colors.accent + "20", colors.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.accent +"80",
-            borderBottomColor: colors.accent + "40",
-            borderTopColor: colors.accent + "40",
-            padding: spacing.lg,
-            overflow: "hidden",
-            marginTop: spacing.lg,
-          }}
-        >
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: -60,
-              top: -40,
-              width: 180,
-              height: 180,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "40",
-            }}
-          />
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              right: -50,
-              bottom: -70,
-              width: 220,
-              height: 220,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "40",
-            }}
-          />
-
-          <SectionHeader
-            title="My Garage"
-            rightText="Add"
-            onRightPress={() => router.push("/(customer)/garage/add" as any)}
-            icon={require("../../../assets/garage.png")}
-          />
-
-          {vehicles.length === 0 ? (
-            <View style={{ marginTop: spacing.md }}>
-              <View style={[card, { padding: spacing.lg }]}>
-                <Text style={textStyles.section}>No vehicles yet</Text>
-                <Text style={{ marginTop: 6, ...textStyles.muted }}>
-                  Add your car to get faster, more accurate quotes.
-                </Text>
-                <Pressable
-                  onPress={() => router.push("/(customer)/garage/add" as any)}
-                  style={{
-                    marginTop: spacing.md,
-                    backgroundColor: colors.accent,
-                    paddingVertical: 12,
-                    borderRadius: 14,
-                    alignItems: "center",
-                  }}
-                >
-                  <Text style={{ fontWeight: "900", color: "#000" }}>ADD A VEHICLE</Text>
-                </Pressable>
-              </View>
-            </View>
-          ) : (
-            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-              {vehicles.slice(0, 3).map((v) => {
-                const carImageUrl = `https://cdn.imagin.studio/getimage?customer=hrjavascript-mastery&zoomType=fullscreen&modelFamily=${v.model.split(" ")[0]}&make=${v.make}&modelYear=${v.year}&angle=29`;
-
-                return (
-                  <Pressable
-                    key={v.id}
-                    onPress={() => router.push({
-                      pathname: "/(customer)/garage/[id]" as any,
-                      params: { id: v.id },
-                    })}
-                    style={({ pressed }) => [card, pressed && cardPressed, { padding: spacing.md, flexDirection: "row", alignItems: "center", gap: spacing.md }]}
-                  >
-                    <View style={{ width: 80, height: 50, borderRadius: 12, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, overflow: "hidden" }}>
-                      <Image
-                        source={{ uri: carImageUrl }}
-                        style={{ width: "100%", height: "100%" }}
-                        resizeMode="contain"
-                      />
-                    </View>
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <Text style={textStyles.section}>
-                        {v.year} {v.make} {v.model}
-                      </Text>
-                      {v.nickname ? <Text style={textStyles.muted}>&ldquo;{v.nickname}&rdquo;</Text> : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
-
-              {vehicles.length > 3 ? (
-                <Pressable onPress={() => router.push("/(customer)/garage" as any)}>
-                  <Text style={{ color: colors.accent, fontWeight: "900" }}>View all vehicles →</Text>
-                </Pressable>
-              ) : null}
-            </View>
-          )}
-        </LinearGradient>
-
-        <LinearGradient
-          colors={[colors.surface, colors.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.accent +"80",
-            borderBottomColor: colors.accent + "40",
-            borderTopColor: colors.accent + "40",
-            padding: spacing.lg,
-            overflow: "hidden",
-            marginTop: spacing.lg,
-          }}
-        >
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              right: -60,
-              bottom: -40,
-              width: 180,
-              height: 180,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "40",
-            }}
-          />
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: -50,
-              top: -70,
-              width: 220,
-              height: 220,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "25",
-            }}
-          />
-
-          <SectionHeader
-            title="Car Care Tips"
-            rightText="View All"
-            onRightPress={() => router.push("/(customer)/education")}
-            icon={require("../../../assets/garage.png")}
-          />
-
-          <Text style={{ ...textStyles.section, marginTop: spacing.sm }}>
-            Learn about common car issues and what to do
-          </Text>
-
-          {symptoms.length > 0 ? (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ gap: spacing.md, marginTop: spacing.md, paddingRight: spacing.md }}
-            >
-              {symptoms.slice(0, 4).map((symptom) => {
-                const riskColor = symptom.risk_level === "high" ? "#ef4444" : symptom.risk_level === "medium" ? "#f59e0b" : "#10b981";
-                return (
-                  <Pressable
-                    key={symptom.id}
-                    onPress={() => router.push("/(customer)/education")}
-                    style={({ pressed }) => [
-                      card,
-                      pressed && cardPressed,
-                      {
-                        width: 280,
-                        padding: spacing.md,
-                      },
-                    ]}
-                  >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: spacing.sm }}>
-                      <Text style={{ ...textStyles.section, flex: 1 }} numberOfLines={1}>{symptom.symptom_label}</Text>
-                      <View
-                        style={{
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 8,
-                          backgroundColor: riskColor + "22",
-                          marginLeft: spacing.xs,
-                        }}
-                      >
-                        <Text style={{ fontSize: 10, fontWeight: "900", color: riskColor }}>
-                          {symptom.risk_level.toUpperCase()}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text style={{ ...textStyles.muted, fontSize: 13, lineHeight: 18 }} numberOfLines={3}>
-                      {symptom.customer_explainer}
-                    </Text>
-                    <View
-                      style={{
-                        marginTop: spacing.sm,
-                        paddingTop: spacing.sm,
-                        borderTopWidth: 1,
-                        borderTopColor: colors.border,
-                      }}
-                    >
-                      <Text style={{ color: colors.accent, fontWeight: "800", fontSize: 12 }}>
-                        Learn more →
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : (
-            <View style={{ marginTop: spacing.md }}>
-              <View style={[card, { padding: spacing.lg }]}>
-                <Text style={textStyles.muted}>Loading car care tips...</Text>
-              </View>
-            </View>
-          )}
-        </LinearGradient>
-
-        <LinearGradient
-          colors={[colors.surface, colors.bg]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{
-            borderRadius: 22,
-            borderWidth: 1,
-            borderColor: colors.accent +"80",
-            borderBottomColor: colors.accent + "40",
-            borderTopColor: colors.accent + "40",
-            padding: spacing.lg,
-            overflow: "hidden",
-            marginTop: spacing.lg,
-          }}
-        >
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              left: -60,
-              top: -40,
-              width: 180,
-              height: 180,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "30",
-            }}
-          />
-          <View
-            pointerEvents="none"
-            style={{
-              position: "absolute",
-              right: -50,
-              bottom: -70,
-              width: 220,
-              height: 220,
-              borderRadius: 999,
-              backgroundColor: colors.accent + "20",
-            }}
-          />
-
-          <SectionHeader
-            title="What to Know"
-            rightText="See All"
-            onRightPress={() => router.push("/(customer)/education")}
-          />
-
-          <Text style={{ ...textStyles.section, marginTop: spacing.sm }}>
-            Educational guides to help you understand your car better
-          </Text>
-
-          {educationCards.length > 0 ? (
-            <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
-              {educationCards.slice(0, 3).map((eduCard) => {
-                const safetyColor = eduCard.is_it_safe.toLowerCase().includes("safe") ? "#10b981" : eduCard.is_it_safe.toLowerCase().includes("not") ? "#ef4444" : "#f59e0b";
-                return (
-                  <Pressable
-                    key={eduCard.id}
-                    onPress={() => router.push("/(customer)/education")}
-                    style={({ pressed }) => [
-                      card,
-                      pressed && cardPressed,
-                      {
-                        padding: spacing.md,
-                      },
-                    ]}
-                  >
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: spacing.sm, marginBottom: spacing.xs }}>
-                      <Text style={{ ...textStyles.section, flex: 1 }}>{eduCard.title}</Text>
-                      <View
-                        style={{
-                          width: 10,
-                          height: 10,
-                          borderRadius: 5,
-                          backgroundColor: safetyColor,
-                        }}
-                      />
-                    </View>
-                    <Text style={{ ...textStyles.muted, fontSize: 13, lineHeight: 18, marginBottom: spacing.sm }} numberOfLines={2}>
-                      {eduCard.summary}
-                    </Text>
-
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm }}>
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.accent + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.accent }}>✅ What we&apos;ll check</Text>
-                      </View>
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: safetyColor + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: safetyColor }}>🛟 Is it safe?</Text>
-                      </View>
-                      <View style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, backgroundColor: colors.textMuted + "15", flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted }}>💵 How quotes work</Text>
-                      </View>
-                    </View>
-
-                    <View
-                      style={{
-                        paddingTop: spacing.sm,
-                        borderTopWidth: 1,
-                        borderTopColor: colors.border,
-                      }}
-                    >
-                      <Text style={{ color: colors.accent, fontWeight: "800", fontSize: 12 }}>
-                        Learn more →
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={{ marginTop: spacing.md }}>
-              <View style={[card, { padding: spacing.lg }]}>
-                <Text style={textStyles.muted}>Loading educational content...</Text>
-              </View>
-            </View>
-          )}
-        </LinearGradient>
+        {renderQuickActions()}
+        {renderGarageSection()}
+        {renderCarCareTipsSection()}
+        {renderEducationSection()}
       </ScrollView>
-
     </View>
   );
 }
+
+function StatCard({
+  title,
+  value,
+  hint,
+  onPress,
+  colors,
+}: {
+  title: string;
+  value: string;
+  hint: string;
+  onPress: () => void;
+  colors: any;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.statCard,
+        {
+          backgroundColor: colors.surface,
+          borderColor: colors.accent,
+          opacity: pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        },
+      ]}
+    >
+      <Text style={[styles.statTitle, { color: colors.textMuted }]}>{title}</Text>
+      <Text style={[styles.statValue, { color: colors.textPrimary }]}>{value}</Text>
+      <Text style={[styles.statHint, { color: colors.textMuted }]}>{hint}</Text>
+    </Pressable>
+  );
+}
+
+function SectionHeader({
+  title,
+  rightText,
+  onRightPress,
+  icon,
+  colors,
+}: {
+  title: string;
+  rightText?: string;
+  onRightPress?: () => void;
+  icon?: any;
+  colors: any;
+}) {
+  return (
+    <View style={styles.sectionHeader}>
+      <View style={styles.sectionHeaderLeft}>
+        {icon && <Image source={icon} style={styles.sectionIcon} resizeMode="contain" />}
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>{title}</Text>
+      </View>
+      {rightText && onRightPress && (
+        <Pressable onPress={onRightPress}>
+          <Text style={[styles.sectionHeaderAction, { color: colors.accent }]}>{rightText}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function EmptyGarageState({ onAddVehicle, colors }: { onAddVehicle: () => void; colors: any }) {
+  return (
+    <View style={[styles.emptyCard, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+      <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>No vehicles yet</Text>
+      <Text style={[styles.emptyText, { color: colors.textMuted }]}>
+        Add your car to get faster, more accurate quotes.
+      </Text>
+      <Pressable
+        onPress={onAddVehicle}
+        style={[styles.emptyButton, { backgroundColor: colors.accent }]}
+      >
+        <Text style={styles.emptyButtonText}>ADD A VEHICLE</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function VehicleCard({
+  vehicle,
+  onPress,
+  colors,
+}: {
+  vehicle: Vehicle;
+  onPress: () => void;
+  colors: any;
+}) {
+  const carImageUrl = `https://cdn.imagin.studio/getimage?customer=hrjavascript-mastery&zoomType=fullscreen&modelFamily=${vehicle.model.split(' ')[0]}&make=${vehicle.make}&modelYear=${vehicle.year}&angle=29`;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.vehicleCard,
+        {
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+          opacity: pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        },
+      ]}
+    >
+      <View
+        style={[
+          styles.vehicleImageContainer,
+          { backgroundColor: colors.bg, borderColor: colors.border },
+        ]}
+      >
+        <Image source={{ uri: carImageUrl }} style={styles.vehicleImage} resizeMode="contain" />
+      </View>
+      <View style={styles.vehicleInfo}>
+        <Text style={[styles.vehicleName, { color: colors.textPrimary }]}>
+          {vehicle.year} {vehicle.make} {vehicle.model}
+        </Text>
+        {vehicle.nickname && (
+          <Text style={[styles.vehicleNickname, { color: colors.textMuted }]}>
+            &ldquo;{vehicle.nickname}&rdquo;
+          </Text>
+        )}
+      </View>
+    </Pressable>
+  );
+}
+
+function SymptomCard({
+  symptom,
+  onPress,
+  colors,
+}: {
+  symptom: SymptomMapping;
+  onPress: () => void;
+  colors: any;
+}) {
+  const riskColor =
+    symptom.risk_level === 'high'
+      ? '#ef4444'
+      : symptom.risk_level === 'medium'
+      ? '#f59e0b'
+      : '#10b981';
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.symptomCard,
+        {
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+          opacity: pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        },
+      ]}
+    >
+      <View style={styles.symptomHeader}>
+        <Text style={[styles.symptomTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+          {symptom.symptom_label}
+        </Text>
+        <View style={[styles.riskBadge, { backgroundColor: riskColor + '22' }]}>
+          <Text style={[styles.riskText, { color: riskColor }]}>
+            {symptom.risk_level.toUpperCase()}
+          </Text>
+        </View>
+      </View>
+      <Text style={[styles.symptomDescription, { color: colors.textMuted }]} numberOfLines={3}>
+        {symptom.customer_explainer}
+      </Text>
+      <View style={[styles.symptomFooter, { borderTopColor: colors.border }]}>
+        <Text style={[styles.learnMoreText, { color: colors.accent }]}>Learn more →</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+function EducationCardItem({
+  card,
+  onPress,
+  colors,
+}: {
+  card: EducationCard;
+  onPress: () => void;
+  colors: any;
+}) {
+  const safetyColor = card.is_it_safe.toLowerCase().includes('safe')
+    ? '#10b981'
+    : card.is_it_safe.toLowerCase().includes('not')
+    ? '#ef4444'
+    : '#f59e0b';
+
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.educationCard,
+        {
+          backgroundColor: colors.bg,
+          borderColor: colors.border,
+          opacity: pressed ? 0.92 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        },
+      ]}
+    >
+      <View style={styles.educationCardHeader}>
+        <Text style={[styles.educationCardTitle, { color: colors.textPrimary }]}>
+          {card.title}
+        </Text>
+        <View style={[styles.safetyIndicator, { backgroundColor: safetyColor }]} />
+      </View>
+      <Text
+        style={[styles.educationCardDescription, { color: colors.textMuted }]}
+        numberOfLines={2}
+      >
+        {card.summary}
+      </Text>
+
+      <View style={styles.educationCardTags}>
+        <View style={[styles.tag, { backgroundColor: colors.accent + '15' }]}>
+          <Text style={[styles.tagText, { color: colors.accent }]}>✅ What we'll check</Text>
+        </View>
+        <View style={[styles.tag, { backgroundColor: safetyColor + '15' }]}>
+          <Text style={[styles.tagText, { color: safetyColor }]}>🛟 Is it safe?</Text>
+        </View>
+        <View style={[styles.tag, { backgroundColor: colors.textMuted + '15' }]}>
+          <Text style={[styles.tagText, { color: colors.textMuted }]}>💵 How quotes work</Text>
+        </View>
+      </View>
+
+      <View style={[styles.educationCardFooter, { borderTopColor: colors.border }]}>
+        <Text style={[styles.learnMoreText, { color: colors.accent }]}>Learn more →</Text>
+      </View>
+    </Pressable>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  header: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerContent: {
+    gap: 4,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: {
+    width: 32,
+    height: 32,
+  },
+  headerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#fff',
+    opacity: 0.9,
+    marginLeft: 44,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 32,
+  },
+  section: {
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+    padding: 16,
+    marginBottom: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  decorativeCircle1: {
+    position: 'absolute',
+    left: -60,
+    top: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  decorativeCircle2: {
+    position: 'absolute',
+    right: -50,
+    bottom: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  decorativeCircle3: {
+    position: 'absolute',
+    right: -60,
+    bottom: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  decorativeCircle4: {
+    position: 'absolute',
+    left: -50,
+    top: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+  },
+  decorativeCircle5: {
+    position: 'absolute',
+    left: -60,
+    top: -40,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  decorativeCircle6: {
+    position: 'absolute',
+    right: -50,
+    bottom: -70,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+  },
+  quickActionsContainer: {
+    gap: 12,
+  },
+  primaryButton: {
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  primaryButtonGradient: {
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    borderRadius: 18,
+  },
+  primaryButtonText: {
+    fontWeight: '900',
+    color: '#000',
+    letterSpacing: 0.4,
+    fontSize: 14,
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    paddingVertical: 16,
+    borderRadius: 18,
+    alignItems: 'center',
+  },
+  secondaryButtonText: {
+    fontWeight: '900',
+    letterSpacing: 0.3,
+    fontSize: 14,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  statCard: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 14,
+    gap: 4,
+  },
+  statTitle: {
+    fontSize: 10,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  statValue: {
+    fontSize: 25,
+    fontWeight: '900',
+  },
+  statHint: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  sectionIcon: {
+    width: 24,
+    height: 24,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  sectionHeaderAction: {
+    fontWeight: '900',
+    fontSize: 14,
+  },
+  sectionDescription: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 12,
+  },
+  emptyCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 16,
+    marginTop: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  emptyText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  emptyButton: {
+    marginTop: 12,
+    paddingVertical: 12,
+    borderRadius: 14,
+    alignItems: 'center',
+  },
+  emptyButtonText: {
+    fontWeight: '900',
+    color: '#000',
+    fontSize: 13,
+  },
+  vehicleList: {
+    gap: 12,
+    marginTop: 8,
+  },
+  vehicleCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  vehicleImageContainer: {
+    width: 80,
+    height: 50,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  vehicleImage: {
+    width: '100%',
+    height: '100%',
+  },
+  vehicleInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  vehicleName: {
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  vehicleNickname: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  viewAllText: {
+    fontWeight: '900',
+    fontSize: 14,
+    marginTop: 4,
+  },
+  horizontalScrollContent: {
+    gap: 12,
+    marginTop: 8,
+    paddingRight: 16,
+  },
+  symptomCard: {
+    width: 280,
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  symptomHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  symptomTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    flex: 1,
+  },
+  riskBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  riskText: {
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  symptomDescription: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  symptomFooter: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+  learnMoreText: {
+    fontWeight: '800',
+    fontSize: 12,
+  },
+  educationList: {
+    gap: 12,
+    marginTop: 8,
+  },
+  educationCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    padding: 12,
+  },
+  educationCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
+    marginBottom: 8,
+  },
+  educationCardTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    flex: 1,
+  },
+  safetyIndicator: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  educationCardDescription: {
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
+    marginBottom: 8,
+  },
+  educationCardTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  tag: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  tagText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  educationCardFooter: {
+    paddingTop: 8,
+    borderTopWidth: 1,
+  },
+});

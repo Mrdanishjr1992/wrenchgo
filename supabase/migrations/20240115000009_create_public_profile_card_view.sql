@@ -19,11 +19,11 @@ DECLARE
   ratings_data jsonb;
   badges_data jsonb;
   skills_data jsonb;
+  user_role text;
 BEGIN
   -- Fetch basic profile (public fields only)
   SELECT jsonb_build_object(
     'id', p.id,
-    'role', p.role,
     'display_name', COALESCE(p.display_name, p.full_name),
     'photo_url', p.photo_url,
     'city', p.city,
@@ -31,8 +31,8 @@ BEGIN
     'bio', p.bio,
     'is_available', p.is_available,
     'created_at', p.created_at
-  )
-  INTO profile_data
+  ), COALESCE(p.role, 'customer')
+  INTO profile_data, user_role
   FROM profiles p
   WHERE p.id = user_id
     AND p.deleted_at IS NULL;
@@ -41,6 +41,9 @@ BEGIN
   IF profile_data IS NULL THEN
     RETURN NULL;
   END IF;
+
+  -- Add role to profile data
+  profile_data := profile_data || jsonb_build_object('role', user_role);
 
   -- Fetch ratings (if exists)
   SELECT jsonb_build_object(
@@ -93,7 +96,7 @@ BEGIN
   END IF;
 
   -- Fetch skills (mechanic only)
-  IF (profile_data->>'role') = 'mechanic' THEN
+  IF user_role = 'mechanic' THEN
     SELECT jsonb_agg(
       jsonb_build_object(
         'id', ms.id,
@@ -139,16 +142,48 @@ GRANT EXECUTE ON FUNCTION get_public_profile_card(uuid) TO authenticated;
 COMMENT ON FUNCTION get_public_profile_card(uuid) IS 
 'Returns public profile card data for display in quotes flow. Only safe, public fields are returned.';
 
--- Create index on profiles for faster lookups
-CREATE INDEX IF NOT EXISTS idx_profiles_public_card 
-ON profiles(id, role, deleted_at) 
-WHERE deleted_at IS NULL;
+-- Create index on profiles for faster lookups (without role column if it doesn't exist yet)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'profiles'
+      AND column_name = 'role'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_profiles_public_card
+    ON profiles(id, role, deleted_at)
+    WHERE deleted_at IS NULL;
+  ELSE
+    CREATE INDEX IF NOT EXISTS idx_profiles_public_card
+    ON profiles(id, deleted_at)
+    WHERE deleted_at IS NULL;
+  END IF;
+END $$;
 
--- Create index on user_badges for faster lookups
-CREATE INDEX IF NOT EXISTS idx_user_badges_active 
-ON user_badges(user_id, awarded_at) 
-WHERE expires_at IS NULL OR expires_at > NOW();
+-- Create index on user_badges for faster lookups (only if table exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'user_badges'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_user_badges_active
+    ON user_badges(user_id, awarded_at)
+    WHERE expires_at IS NULL OR expires_at > NOW();
+  END IF;
+END $$;
 
--- Create index on mechanic_skills for faster lookups
-CREATE INDEX IF NOT EXISTS idx_mechanic_skills_card 
-ON mechanic_skills(mechanic_id, is_verified, level);
+-- Create index on mechanic_skills for faster lookups (only if table exists)
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'mechanic_skills'
+  ) THEN
+    CREATE INDEX IF NOT EXISTS idx_mechanic_skills_card
+    ON mechanic_skills(mechanic_id, is_verified, level);
+  END IF;
+END $$;

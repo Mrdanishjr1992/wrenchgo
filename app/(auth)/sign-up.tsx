@@ -1,4 +1,4 @@
-﻿import React, { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -63,19 +63,29 @@ export default function SignUp() {
       const { data, error } = await supabase.auth.signUp({
         email: emailClean,
         password,
+        options: {
+          data: {
+            full_name: nameClean,
+            role: role,
+          },
+        },
       });
       if (error) throw error;
 
       const userId = data.user?.id;
       if (!userId) throw new Error("User not created");
 
-      // Create profile row (RLS must allow insert for the signed-in user)
-      const { error: pErr } = await supabase.from("profiles").insert({
-        id: userId,
+      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
+        role_hint: role,
         full_name: nameClean,
-        role,
+        phone: null,
+        photo_url: null,
       });
-      if (pErr) throw pErr;
+
+      if (rpcError) {
+        console.error("Profile consistency error:", rpcError);
+        throw new Error("Database error granting user");
+      }
 
       Alert.alert("Account created", "You can now sign in.");
       router.replace("/(auth)/sign-in");

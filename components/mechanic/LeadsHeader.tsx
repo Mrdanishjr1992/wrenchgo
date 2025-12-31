@@ -23,18 +23,27 @@ export function LeadsHeader({ summary, sortBy, onChangeSortBy }: LeadsHeaderProp
     <View style={[styles.container, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
       {summary && (
         <View style={styles.summaryRow}>
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryCount, { color: colors.accent }]}>{summary.all_count}</Text>
+          <View key="summary-all" style={styles.summaryItem}>
+            <View style={[styles.summaryBadge, { backgroundColor: colors.primaryBg }]}>
+              <Ionicons name="briefcase" size={20} color={colors.primary} />
+            </View>
+            <Text style={[styles.summaryCount, { color: colors.primary }]}>{summary.all_count}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Open Leads</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryCount, { color: colors.accent }]}>{summary.nearby_count}</Text>
+          <View key="divider-1" style={[styles.divider, { backgroundColor: colors.gray }]} />
+          <View key="summary-nearby" style={styles.summaryItem}>
+            <View style={[styles.summaryBadge, { backgroundColor: colors.blueBg }]}>
+              <Ionicons name="location" size={20} color={colors.blue} />
+            </View>
+            <Text style={[styles.summaryCount, { color: colors.blue }]}>{summary.nearby_count}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Nearby</Text>
           </View>
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          <View style={styles.summaryItem}>
-            <Text style={[styles.summaryCount, { color: colors.accent }]}>{summary.quoted_count}</Text>
+          <View key="divider-2" style={[styles.divider, { backgroundColor: colors.gray }]} />
+          <View key="summary-quoted" style={styles.summaryItem}>
+            <View style={[styles.summaryBadge, { backgroundColor: colors.greenBg }]}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.green} />
+            </View>
+            <Text style={[styles.summaryCount, { color: colors.green }]}>{summary.quoted_count}</Text>
             <Text style={[styles.summaryLabel, { color: colors.textMuted }]}>Quoted</Text>
           </View>
         </View>
@@ -57,7 +66,7 @@ export function LeadsHeader({ summary, sortBy, onChangeSortBy }: LeadsHeaderProp
               <Ionicons
                 name={option.icon}
                 size={14}
-                color={sortBy === option.value ? '#fff' : colors.textMuted}
+                color={sortBy === option.value ? colors.bg : colors.textMuted}
               />
               <Text
                 style={[
@@ -79,27 +88,35 @@ export function LeadsHeader({ summary, sortBy, onChangeSortBy }: LeadsHeaderProp
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingVertical: 8,
     borderBottomWidth: 1,
   },
   summaryRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
-    marginBottom: 16,
+    marginBottom: 11,
   },
   summaryItem: {
     alignItems: 'center',
     flex: 1,
+    gap: 3,
   },
   summaryCount: {
     fontSize: 24,
     fontWeight: '700',
-    marginBottom: 4,
   },
   summaryLabel: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  summaryBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 2,
   },
   divider: {
     width: 1,

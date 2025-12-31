@@ -108,17 +108,15 @@ function MiniProfileCard({
           )}
         </View>
 
-        {hasRatings && (
-          <View style={styles.miniRating}>
-            <Ionicons name="star" size={14} color="#FFB800" />
-            <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
-              {profile.ratings.overall_avg.toFixed(1)}
-            </Text>
-            <Text style={[styles.reviewCount, { color: colors.textMuted }]}>
-              ({profile.ratings.review_count})
-            </Text>
-          </View>
-        )}
+        <View style={styles.miniRating}>
+          <Ionicons name="star" size={14} color={hasRatings ? colors.primary : colors.textMuted} />
+          <Text style={[styles.ratingText, { color: colors.textPrimary }]}>
+            {hasRatings ? profile.ratings.overall_avg.toFixed(1) : '0.0'}
+          </Text>
+          <Text style={[styles.reviewCount, { color: colors.textMuted }]}>
+            {hasRatings ? `(${profile.ratings.review_count})` : '(No ratings yet)'}
+          </Text>
+        </View>
 
         {profile.badges.length > 0 && (
           <View style={styles.miniBadges}>
@@ -167,7 +165,7 @@ function FullProfileCard({
   const { colors } = useTheme();
 
   const hasRatings = profile.ratings.review_count > 0;
-  const hasContent = hasRatings || profile.badges.length > 0 || (profile.role === 'mechanic' && profile.skills.length > 0);
+  const hasContent = profile.badges.length > 0 || (profile.role === 'mechanic' && profile.skills.length > 0);
 
   return (
     <View style={[styles.fullCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: insets.top, marginBottom: insets.bottom, marginLeft: insets.left, marginRight: insets.right }]}>
@@ -193,45 +191,50 @@ function FullProfileCard({
         </View>
       </View>
 
-      {!hasContent && (
-        <View style={styles.emptyState}>
-          <Ionicons name="information-circle-outline" size={48} color={colors.textMuted} />
-          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-            {profile.role === 'customer'
-              ? 'This customer is new to the platform'
-              : 'No additional information available'}
-          </Text>
+      {profile.role === 'mechanic' && (
+        <View style={styles.ratingsSection}>
+          <View style={styles.overallRating}>
+            <Ionicons name="star" size={32} color={hasRatings ? colors.primary : colors.textMuted} />
+            <Text style={[styles.overallRatingText, { color: colors.textPrimary }]}>
+              {hasRatings ? profile.ratings.overall_avg.toFixed(1) : '0.0'}
+            </Text>
+            <Text style={[styles.reviewCountText, { color: colors.textMuted }]}>
+              {hasRatings
+                ? `${profile.ratings.review_count} ${profile.ratings.review_count === 1 ? 'review' : 'reviews'}`
+                : 'No ratings yet'
+              }
+            </Text>
+          </View>
+
+          {hasRatings && (
+            <>
+              <View style={styles.ratingBreakdown}>
+                <RatingBar
+                  label="Performance"
+                  value={profile.ratings.performance_avg}
+                  icon="speedometer"
+                />
+                <RatingBar label="Timing" value={profile.ratings.timing_avg} icon="time" />
+                <RatingBar label="Cost" value={profile.ratings.cost_avg} icon="cash" />
+              </View>
+
+              {showActions && onPressReviews && profile.ratings.review_count > 0 && (
+                <TouchableOpacity onPress={onPressReviews} style={styles.reviewsButton}>
+                  <Text style={[styles.reviewsButtonText, { color: colors.accent }]}>View All Reviews</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
       )}
 
-      {hasRatings && (
-        <View style={styles.ratingsSection}>
-          <View style={styles.overallRating}>
-            <Ionicons name="star" size={32} color="#FFB800" />
-            <Text style={[styles.overallRatingText, { color: colors.textPrimary }]}>
-              {profile.ratings.overall_avg.toFixed(1)}
-            </Text>
-            <Text style={[styles.reviewCountText, { color: colors.textMuted }]}>
-              {profile.ratings.review_count} {profile.ratings.review_count === 1 ? 'review' : 'reviews'}
-            </Text>
-          </View>
-
-          <View style={styles.ratingBreakdown}>
-            <RatingBar
-              label="Performance"
-              value={profile.ratings.performance_avg}
-              icon="speedometer"
-            />
-            <RatingBar label="Timing" value={profile.ratings.timing_avg} icon="time" />
-            <RatingBar label="Cost" value={profile.ratings.cost_avg} icon="cash" />
-          </View>
-
-          {showActions && onPressReviews && profile.ratings.review_count > 0 && (
-            <TouchableOpacity onPress={onPressReviews} style={styles.reviewsButton}>
-              <Text style={[styles.reviewsButtonText, { color: colors.accent }]}>View All Reviews</Text>
-              <Ionicons name="chevron-forward" size={16} color={colors.accent} />
-            </TouchableOpacity>
-          )}
+      {!hasContent && profile.role === 'customer' && (
+        <View style={styles.emptyState}>
+          <Ionicons name="information-circle-outline" size={48} color={colors.textMuted} />
+          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
+            This customer is new to the platform
+          </Text>
         </View>
       )}
 
@@ -251,29 +254,38 @@ function FullProfileCard({
         </View>
       )}
 
-      {profile.role === 'mechanic' && profile.skills.length > 0 && (
+      {profile.role === 'mechanic' && (
         <View style={styles.skillsSection}>
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Skills & Expertise</Text>
-          <View style={styles.skillsList}>
-            {profile.skills.map((skill) => (
-              <View key={skill.id} style={[styles.skillItem, { borderColor: colors.border }]}>
-                <View style={styles.skillHeader}>
-                  <Text style={[styles.skillName, { color: colors.textPrimary }]}>{skill.skill.name}</Text>
-                  {skill.is_verified && (
-                    <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                  )}
-                </View>
-                <View style={styles.skillMeta}>
-                  <View style={[styles.levelBadge, { backgroundColor: getLevelColor(skill.level) }]}>
-                    <Text style={styles.levelText}>{skill.level}</Text>
+          {profile.skills.length > 0 ? (
+            <View style={styles.skillsList}>
+              {profile.skills.map((skill) => (
+                <View key={skill.id} style={[styles.skillItem, { borderColor: colors.border }]}>
+                  <View style={styles.skillHeader}>
+                    <Text style={[styles.skillName, { color: colors.textPrimary }]}>{skill.skill.name}</Text>
+                    {skill.is_verified && (
+                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                    )}
                   </View>
-                  <Text style={[styles.experienceText, { color: colors.textMuted }]}>
-                    {skill.years_experience} {skill.years_experience === 1 ? 'year' : 'years'}
-                  </Text>
+                  <View style={styles.skillMeta}>
+                    <View style={[styles.levelBadge, { backgroundColor: getLevelColor(skill.level) }]}>
+                      <Text style={styles.levelText}>{skill.level}</Text>
+                    </View>
+                    <Text style={[styles.experienceText, { color: colors.textMuted }]}>
+                      {skill.years_experience} {skill.years_experience === 1 ? 'year' : 'years'}
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            ))}
-          </View>
+              ))}
+            </View>
+          ) : (
+            <View style={styles.emptySkillsState}>
+              <Ionicons name="construct-outline" size={24} color={colors.textMuted} />
+              <Text style={[styles.emptySkillsText, { color: colors.textSecondary }]}>
+                No verified skills yet
+              </Text>
+            </View>
+          )}
         </View>
       )}
     </View>
@@ -638,5 +650,16 @@ const styles = StyleSheet.create({
   },
   experienceText: {
     fontSize: 12,
+  },
+  emptySkillsState: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 20,
+    gap: 8,
+  },
+  emptySkillsText: {
+    fontSize: 14,
+    fontWeight: '500',
   },
 });

@@ -60,16 +60,5 @@ USING (
   (storage.foldername(name))[1] = auth.uid()::text
 );
 
--- Policy: Admins can read all ID documents for verification
-CREATE POLICY "Admins can read all ID documents"
-ON storage.objects
-FOR SELECT
-TO authenticated
-USING (
-  bucket_id = 'identity-docs' AND
-  EXISTS (
-    SELECT 1 FROM profiles
-    WHERE profiles.id = auth.uid()
-    AND profiles.role = 'admin'
-  )
-);
+-- Policy: Admins can read all ID documents for verification (removed - role column doesn't exist yet)
+-- This policy will be added in a later migration after the role column is created

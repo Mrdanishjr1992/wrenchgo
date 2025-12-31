@@ -25,6 +25,12 @@ DROP POLICY IF EXISTS "jobs_insert_customer" ON public.jobs;
 DROP POLICY IF EXISTS "jobs_select_owner_or_assigned" ON public.jobs;
 DROP POLICY IF EXISTS "jobs_update_customer_or_assigned_mechanic" ON public.jobs;
 
+-- Drop the new consolidated policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "jobs_select_owner_or_assigned_or_searching" ON public.jobs;
+DROP POLICY IF EXISTS "jobs_insert_customer_owner" ON public.jobs;
+DROP POLICY IF EXISTS "jobs_update_owner_or_assigned" ON public.jobs;
+DROP POLICY IF EXISTS "jobs_delete_customer_owner" ON public.jobs;
+
 -- ============================================================================
 -- STEP 2: Create consolidated policies
 -- ============================================================================
@@ -38,7 +44,6 @@ USING (
   customer_id = auth.uid()
   OR accepted_mechanic_id = auth.uid()
   OR status = 'searching'::job_status
-  OR is_admin()
 );
 
 -- INSERT: Only customers can create jobs
@@ -48,10 +53,9 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   customer_id = auth.uid()
-  AND is_customer()
 );
 
--- UPDATE: Customers and assigned mechanics can update
+-- UPDATE: Customers can update their jobs, mechanics can update assigned jobs
 CREATE POLICY "jobs_update_owner_or_assigned"
 ON public.jobs
 FOR UPDATE
@@ -59,22 +63,19 @@ TO authenticated
 USING (
   customer_id = auth.uid()
   OR accepted_mechanic_id = auth.uid()
-  OR is_admin()
 )
 WITH CHECK (
   customer_id = auth.uid()
   OR accepted_mechanic_id = auth.uid()
-  OR is_admin()
 );
 
--- DELETE: Only customers can delete their own jobs (soft delete recommended)
+-- DELETE: Only customers can delete their own jobs (if status allows)
 CREATE POLICY "jobs_delete_customer_owner"
 ON public.jobs
 FOR DELETE
 TO authenticated
 USING (
   customer_id = auth.uid()
-  OR is_admin()
 );
 
 -- ============================================================================

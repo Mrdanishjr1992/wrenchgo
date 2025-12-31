@@ -19,15 +19,8 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
       id,
       role,
       full_name,
-      display_name,
       phone,
       photo_url,
-      city,
-      service_area,
-      bio,
-      radius_miles,
-      is_available,
-      profile_complete,
       created_at
     `)
     .eq('id', userId)
@@ -47,10 +40,15 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
 
   return {
     ...profile,
+    display_name: undefined,
+    city: undefined,
+    bio: undefined,
+    is_available: undefined,
+    profile_complete: undefined,
     ratings: ratings || undefined,
     badges,
     skills,
-  };
+  } as PublicProfile;
 }
 
 export async function getUserRatings(userId: string): Promise<UserRating | null> {
@@ -198,14 +196,12 @@ export async function getUserReviews(
       reviewer:profiles!reviews_reviewer_id_fkey (
         id,
         full_name,
-        display_name,
         photo_url,
         role
       ),
       reviewee:profiles!reviews_reviewee_id_fkey (
         id,
         full_name,
-        display_name,
         photo_url,
         role
       )
@@ -443,11 +439,7 @@ export async function searchMechanicsBySkill(
         id,
         role,
         full_name,
-        display_name,
-        photo_url,
-        city,
-        service_area,
-        is_available
+        photo_url
       )
     `)
     .eq('skill_id', skillId);
@@ -466,7 +458,7 @@ export async function searchMechanicsBySkill(
   }
 
   const mechanicIds = data?.map((item: any) => item.mechanic_id) || [];
-  
+
   const profiles = await Promise.all(
     mechanicIds.map((id: string) => getPublicProfile(id))
   );

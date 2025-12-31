@@ -8,6 +8,8 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -29,7 +31,7 @@ export default function MechanicLeadsPage() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
 
-  const { leads, summary, loading, error, hasMore, refetch, loadMore, changeSortBy } = useMechanicLeads(
+  const { leads, summary, loading, error, hasMore, sortBy, refetch, loadMore, changeSortBy } = useMechanicLeads(
     mechanicId,
     filter,
     location?.latitude,
@@ -69,11 +71,14 @@ export default function MechanicLeadsPage() {
   }, []);
 
   const handleViewJob = (jobId: string) => {
-    router.push(`/(mechanic)/job-detail/${jobId}`);
+    const lead = leads.find(l => l.job_id === jobId);
+    if (lead) {
+      router.push(`/profile/${lead.customer_id}`);
+    }
   };
 
   const handleQuoteJob = (jobId: string) => {
-    router.push(`/(mechanic)/quote-composer/${jobId}`);
+    router.push(`/(mechanic)/quote-composer/${jobId}` as any);
   };
 
   const handleEnableLocation = async () => {
@@ -129,22 +134,38 @@ export default function MechanicLeadsPage() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <View style={[styles.header, { paddingTop: insets.top, backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Leads</Text>
-      </View>
+      <LinearGradient
+        colors={[colors.accent, colors.accent + '28']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top }]}
+      >
+        <View style={styles.headerContent}>
+          <View style={styles.headerTitleRow}>
+            <Ionicons name="briefcase" size={32} color="#fff" />
+            <Text style={styles.headerTitle}>Leads</Text>
+          </View>
+          <Text style={styles.headerSubtitle}>Find your next job opportunity</Text>
+        </View>
+      </LinearGradient>
 
-      <View style={[styles.filterTabs, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
+      <View style={[styles.filterTabs, { backgroundColor: colors.surface, borderBottomColor: colors.gray }]}>
         <TouchableOpacity
           style={[
             styles.filterTab,
-            filter === 'all' && { borderBottomColor: colors.accent, borderBottomWidth: 2 },
+            filter === 'all' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
           ]}
           onPress={() => setFilter('all')}
         >
+          <Ionicons
+            name="list"
+            size={18}
+            color={filter === 'all' ? colors.primary : colors.textMuted}
+          />
           <Text
             style={[
               styles.filterTabText,
-              filter === 'all' ? { color: colors.accent, fontWeight: '600' } : { color: colors.textMuted },
+              filter === 'all' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
             ]}
           >
             All
@@ -154,14 +175,19 @@ export default function MechanicLeadsPage() {
         <TouchableOpacity
           style={[
             styles.filterTab,
-            filter === 'nearby' && { borderBottomColor: colors.accent, borderBottomWidth: 2 },
+            filter === 'nearby' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
           ]}
           onPress={() => setFilter('nearby')}
         >
+          <Ionicons
+            name="location"
+            size={18}
+            color={filter === 'nearby' ? colors.primary : colors.textMuted}
+          />
           <Text
             style={[
               styles.filterTabText,
-              filter === 'nearby' ? { color: colors.accent, fontWeight: '600' } : { color: colors.textMuted },
+              filter === 'nearby' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
             ]}
           >
             Nearby
@@ -171,14 +197,19 @@ export default function MechanicLeadsPage() {
         <TouchableOpacity
           style={[
             styles.filterTab,
-            filter === 'quoted' && { borderBottomColor: colors.accent, borderBottomWidth: 2 },
+            filter === 'quoted' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
           ]}
           onPress={() => setFilter('quoted')}
         >
+          <Ionicons
+            name="document-text"
+            size={18}
+            color={filter === 'quoted' ? colors.primary : colors.textMuted}
+          />
           <Text
             style={[
               styles.filterTabText,
-              filter === 'quoted' ? { color: colors.accent, fontWeight: '600' } : { color: colors.textMuted },
+              filter === 'quoted' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
             ]}
           >
             Quoted
@@ -186,7 +217,7 @@ export default function MechanicLeadsPage() {
         </TouchableOpacity>
       </View>
 
-      <LeadsHeader summary={summary} sortBy="newest" onChangeSortBy={changeSortBy} />
+      <LeadsHeader summary={summary} sortBy={sortBy} onChangeSortBy={changeSortBy} />
 
       {error && (
         <View style={[styles.errorBanner, { backgroundColor: '#FEE2E2' }]}>
@@ -233,21 +264,53 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-  },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-  },
-  filterTabs: {
+    paddingBottom: 20,
+    shadowColor: '#000',
+  shadowOffset: { width: 0, height: 2 },
+  shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    },
+  headerContent: {
+  gap: 4,
+    },
+    headerLeft: {
     flexDirection: 'row',
-    borderBottomWidth: 1,
+  alignItems: 'center',
+  gap: 12,
+    },
+    headerTitleRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+    gap: 12,
+    },
+  headerTitle: {
+  fontSize: 32,
+    fontWeight: '700',
+    color: '#fff',
+    },
+    headerSubtitle: {
+    fontSize: 14,
+  color: '#fff',
+  opacity: 0.9,
+    marginLeft: 44,
+    },
+    filterTabs: {
+  flexDirection: 'row',
+  borderBottomWidth: 1,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 1 },
+  shadowOpacity: 0.05,
+  shadowRadius: 2,
+  elevation: 2,
   },
   filterTab: {
-    flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
+  flex: 1,
+  paddingVertical: 14,
+  alignItems: 'center',
+  flexDirection: 'row',
+  justifyContent: 'center',
+  gap: 6,
   },
   filterTabText: {
     fontSize: 15,

@@ -29,6 +29,13 @@ DROP POLICY IF EXISTS "vehicles_select_owner" ON public.vehicles;
 DROP POLICY IF EXISTS "vehicles_update_owner" ON public.vehicles;
 DROP POLICY IF EXISTS "vehicles_write_owner" ON public.vehicles;
 
+-- Drop the new consolidated policies if they exist (for idempotency)
+DROP POLICY IF EXISTS "vehicles_select_customer_owner" ON public.vehicles;
+DROP POLICY IF EXISTS "vehicles_insert_customer_owner" ON public.vehicles;
+DROP POLICY IF EXISTS "vehicles_update_customer_owner" ON public.vehicles;
+DROP POLICY IF EXISTS "vehicles_delete_customer_owner" ON public.vehicles;
+DROP POLICY IF EXISTS "vehicles_select_mechanic_jobs" ON public.vehicles;
+
 -- Keep this one - it's unique for mechanics
 -- DROP POLICY IF EXISTS "Mechanics can view vehicles for their jobs" ON public.vehicles;
 
@@ -43,7 +50,6 @@ FOR SELECT
 TO authenticated
 USING (
   customer_id = auth.uid()
-  OR is_admin()
 );
 
 -- INSERT: Customers can create their own vehicles
@@ -53,7 +59,6 @@ FOR INSERT
 TO authenticated
 WITH CHECK (
   customer_id = auth.uid()
-  OR is_admin()
 );
 
 -- UPDATE: Customers can update their own vehicles
@@ -61,8 +66,8 @@ CREATE POLICY "vehicles_update_customer_owner"
 ON public.vehicles
 FOR UPDATE
 TO authenticated
-USING (customer_id = auth.uid() OR is_admin())
-WITH CHECK (customer_id = auth.uid() OR is_admin());
+USING (customer_id = auth.uid())
+WITH CHECK (customer_id = auth.uid());
 
 -- DELETE: Customers can delete their own vehicles
 CREATE POLICY "vehicles_delete_customer_owner"
@@ -71,7 +76,6 @@ FOR DELETE
 TO authenticated
 USING (
   customer_id = auth.uid()
-  OR is_admin()
 );
 
 -- SELECT: Mechanics can view vehicles for jobs they're quoting/working on

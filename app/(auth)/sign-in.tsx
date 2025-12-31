@@ -50,33 +50,7 @@ export default function SignIn() {
     }
   };
 
-const ensureProfile = async (userId: string, userEmail: string, fullName?: string) => {
-  const { data: existing, error } = await supabase
-    .from("profiles")
-    .select("id, role")
-    .eq("id", userId)
-    .maybeSingle();
 
-  if (error) throw error;
-
-  // already has profile
-  if (existing) return { created: false, profile: existing };
-
-  // DO NOT set role here — let user choose
-  const { data: inserted, error: insertErr } = await supabase
-    .from("profiles")
-    .insert({
-      id: userId,
-      full_name: fullName || userEmail.split("@")[0],
-      role: null, // or omit role completely if DB allows
-    })
-    .select("id, role")
-    .single();
-
-  if (insertErr) throw insertErr;
-
-  return { created: true, profile: inserted };
-};
 
 
 const handleGoogleSignIn = async (idToken: string) => {
@@ -101,15 +75,29 @@ const handleGoogleSignIn = async (idToken: string) => {
         await AsyncStorage.removeItem("@saved_email");
       }
 
-      const result = await ensureProfile(
-        data.user.id,
-        data.user.email || "",
-        data.user.user_metadata?.full_name || data.user.user_metadata?.name
-      );
+      console.log('[DEBUG] About to call ensure_profile_consistency RPC');
+      console.log('[DEBUG] User metadata:', JSON.stringify(data.user.user_metadata, null, 2));
 
-      // If profile was just created (or role missing), go to role selection
-      if (result.created || !result.profile?.role) {
-        router.replace("/(auth)/choose-role"); // <-- make this your screen
+      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
+        role_hint: data.user.user_metadata?.role || null,
+        full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || null,
+        phone: data.user.user_metadata?.phone || null,
+        photo_url: data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture || null,
+      });
+
+      console.log('[DEBUG] RPC response - profile:', profile);
+      console.log('[DEBUG] RPC response - error:', JSON.stringify(rpcError, null, 2));
+
+      if (rpcError) {
+        console.error("Profile consistency error:", rpcError);
+        Alert.alert("Database Error", `${rpcError.message || rpcError.code || JSON.stringify(rpcError)}`);
+        setErr(`Database error: ${rpcError.message || rpcError.code || 'Unknown error'}`);
+        return;
+      }
+
+      if (!profile?.role) {
+        console.log('[DEBUG] No role found, redirecting to choose-role');
+        router.replace("/(auth)/choose-role");
         return;
       }
     }
@@ -185,6 +173,32 @@ const handleGoogleSignIn = async (idToken: string) => {
       } else {
         await AsyncStorage.removeItem("@saved_email");
         await AsyncStorage.removeItem("@saved_password");
+      }
+
+      console.log('[DEBUG] About to call ensure_profile_consistency RPC (email/password)');
+      console.log('[DEBUG] User metadata:', JSON.stringify(data.user?.user_metadata, null, 2));
+
+      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
+        role_hint: data.user?.user_metadata?.role || null,
+        full_name: data.user?.user_metadata?.full_name || null,
+        phone: data.user?.user_metadata?.phone || null,
+        photo_url: data.user?.user_metadata?.photo_url || null,
+      });
+
+      console.log('[DEBUG] RPC response - profile:', profile);
+      console.log('[DEBUG] RPC response - error:', JSON.stringify(rpcError, null, 2));
+
+      if (rpcError) {
+        console.error("Profile consistency error:", rpcError);
+        Alert.alert("Database Error", `${rpcError.message || rpcError.code || JSON.stringify(rpcError)}`);
+        setErr(`Database error: ${rpcError.message || rpcError.code || 'Unknown error'}`);
+        return;
+      }
+
+      if (!profile?.role) {
+        console.log('[DEBUG] No role found, redirecting to choose-role');
+        router.replace("/(auth)/choose-role");
+        return;
       }
 
       router.replace("/");

@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { useTheme } from '@/src/ui/theme-context';
 import type { Review } from '@/src/types/reviews';
 
 interface ReviewsListProps {
@@ -10,6 +10,8 @@ interface ReviewsListProps {
   hasMore?: boolean;
   loading?: boolean;
   onReportReview?: (reviewId: string) => void;
+  ListHeaderComponent?: React.ReactElement;
+  mechanicName?: string;
 }
 
 export function ReviewsList({
@@ -18,17 +20,15 @@ export function ReviewsList({
   hasMore = false,
   loading = false,
   onReportReview,
+  ListHeaderComponent,
+  mechanicName,
 }: ReviewsListProps) {
-  const textColor = useThemeColor({}, 'text');
-  const iconColor = useThemeColor({}, 'icon');
-  const backgroundColor = useThemeColor({}, 'background');
+  const { colors } = useTheme();
 
   const renderReview = ({ item }: { item: Review }) => (
     <ReviewCard
       review={item}
-      textColor={textColor}
-      iconColor={iconColor}
-      backgroundColor={backgroundColor}
+      colors={colors}
       onReport={onReportReview}
     />
   );
@@ -40,10 +40,24 @@ export function ReviewsList({
       keyExtractor={(item) => item.id}
       onEndReached={hasMore && !loading ? onLoadMore : undefined}
       onEndReachedThreshold={0.5}
+      ListHeaderComponent={ListHeaderComponent}
       ListEmptyComponent={
         <View style={styles.emptyContainer}>
-          <Ionicons name="chatbubbles-outline" size={48} color={iconColor} />
-          <Text style={[styles.emptyText, { color: iconColor }]}>No reviews yet</Text>
+          <View style={[styles.emptyIconCircle, { backgroundColor: colors.primary + '15' }]}>
+            <Ionicons name="star-outline" size={40} color={colors.primary} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
+            {mechanicName ? `${mechanicName} is new to WrenchGo` : 'New to WrenchGo'}
+          </Text>
+          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
+            Reviews will appear after completed jobs
+          </Text>
+          <View style={[styles.emptyHint, { backgroundColor: colors.textMuted + '08', borderColor: colors.border }]}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+            <Text style={[styles.emptyHintText, { color: colors.textSecondary }]}>
+              Be the first to leave a review
+            </Text>
+          </View>
         </View>
       }
     />
@@ -52,13 +66,11 @@ export function ReviewsList({
 
 interface ReviewCardProps {
   review: Review;
-  textColor: string;
-  iconColor: string;
-  backgroundColor: string;
+  colors: any;
   onReport?: (reviewId: string) => void;
 }
 
-function ReviewCard({ review, textColor, iconColor, backgroundColor, onReport }: ReviewCardProps) {
+function ReviewCard({ review, colors, onReport }: ReviewCardProps) {
   const reviewerName = review.reviewer?.display_name || review.reviewer?.full_name || 'Anonymous';
 
   const renderStars = (rating: number) => {
@@ -91,54 +103,58 @@ function ReviewCard({ review, textColor, iconColor, backgroundColor, onReport }:
   };
 
   return (
-    <View style={[styles.reviewCard, { backgroundColor }]}>
+    <View style={[styles.reviewCard, {
+      backgroundColor: colors.surface,
+      borderColor: colors.border,
+      shadowColor: colors.textPrimary,
+    }]}>
       <View style={styles.reviewHeader}>
         <View style={styles.reviewerInfo}>
-          <Text style={[styles.reviewerName, { color: textColor }]}>{reviewerName}</Text>
-          <Text style={[styles.reviewDate, { color: iconColor }]}>
+          <Text style={[styles.reviewerName, { color: colors.textPrimary }]}>{reviewerName}</Text>
+          <Text style={[styles.reviewDate, { color: colors.textSecondary }]}>
             {formatDate(review.created_at)}
           </Text>
         </View>
         {onReport && (
           <TouchableOpacity onPress={() => onReport(review.id)} style={styles.reportButton}>
-            <Ionicons name="flag-outline" size={20} color={iconColor} />
+            <Ionicons name="flag-outline" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         )}
       </View>
 
       <View style={styles.overallRating}>
         <View style={styles.stars}>{renderStars(review.overall_rating)}</View>
-        <Text style={[styles.ratingValue, { color: textColor }]}>
+        <Text style={[styles.ratingValue, { color: colors.textPrimary }]}>
           {review.overall_rating}.0
         </Text>
       </View>
 
-      <View style={styles.categoryRatings}>
+      <View style={[styles.categoryRatings, { borderColor: colors.border }]}>
         <CategoryRating
           icon="speedometer-outline"
           label="Performance"
           value={review.performance_rating}
-          iconColor={iconColor}
-          textColor={textColor}
+          iconColor={colors.textSecondary}
+          textColor={colors.textPrimary}
         />
         <CategoryRating
           icon="time-outline"
           label="Timing"
           value={review.timing_rating}
-          iconColor={iconColor}
-          textColor={textColor}
+          iconColor={colors.textSecondary}
+          textColor={colors.textPrimary}
         />
         <CategoryRating
           icon="cash-outline"
           label="Cost"
           value={review.cost_rating}
-          iconColor={iconColor}
-          textColor={textColor}
+          iconColor={colors.textSecondary}
+          textColor={colors.textPrimary}
         />
       </View>
 
       {review.comment && (
-        <Text style={[styles.comment, { color: textColor }]}>{review.comment}</Text>
+        <Text style={[styles.comment, { color: colors.textPrimary }]}>{review.comment}</Text>
       )}
     </View>
   );
@@ -176,9 +192,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginVertical: 8,
-    shadowColor: '#000',
+    borderWidth: 1,
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
   },
@@ -222,7 +238,6 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#E0E0E0',
   },
   categoryRating: {
     alignItems: 'center',
@@ -244,9 +259,38 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 48,
+    paddingHorizontal: 24,
   },
-  emptyText: {
-    fontSize: 16,
-    marginTop: 12,
+  emptyIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  emptyHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    gap: 6,
+  },
+  emptyHintText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
 });

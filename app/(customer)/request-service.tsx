@@ -21,6 +21,9 @@ import { VehiclePickerDrawer } from "../../src/components/VehiclePickerDrawer";
 import { useFocusEffect } from "@react-navigation/native";
 import { normalize } from "../../src/ui/theme";
 import React from "react";
+import QuestionRenderer from "../../src/components/QuestionRenderer";
+import { symptomQuestions } from "../../src/data/symptomQuestions";
+import { symptomDatabase } from "../../src/data/symptomDatabase";
 
 type Step = "education" | "questions" | "context" | "safety_measures" | "review" | "searching";
 
@@ -30,213 +33,6 @@ type Vehicle = {
   make: string;
   model: string;
   nickname: string | null;
-};
-
-type SymptomData = {
-  key: string;
-  label: string;
-  icon: string;
-  education: {
-    title: string;
-    summary: string;
-    is_it_safe: string;
-    what_we_check: string;
-    how_quotes_work: string;
-  };
-  questions: {
-    id: string;
-    question: string;
-    options: string[];
-    explanation?: string;
-  }[];
-};
-
-const symptomDatabase: Record<string, SymptomData> = {
-  wont_start: {
-    key: "wont_start",
-    label: "Won't start",
-    icon: "🚨",
-    education: {
-      title: "Car Won't Start",
-      summary: "Most no-start issues are related to the battery, starter, or fuel system. A quick diagnosis can identify the exact cause.",
-      is_it_safe: "Don't drive - needs diagnosis first",
-      what_we_check: "Battery voltage, starter motor, fuel pump, ignition system",
-      how_quotes_work: "Diagnostic fee first, then repair quote based on findings",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What happens when you turn the key?",
-        options: ["Nothing at all", "Clicking sound", "Engine cranks but won't start", "Not sure"],
-        explanation: "This helps identify if it's electrical or fuel-related",
-      },
-      {
-        id: "q2",
-        question: "Are your dashboard lights working?",
-        options: ["Yes, normal", "Dim or flickering", "Not working", "Not sure"],
-        explanation: "Dashboard lights indicate battery health",
-      },
-    ],
-  },
-  warning_light: {
-    key: "warning_light",
-    label: "Warning light",
-    icon: "🔔",
-    education: {
-      title: "Warning Light On",
-      summary: "Warning lights indicate your car's computer detected an issue. Some are urgent, others can wait. We'll help you understand what it means.",
-      is_it_safe: "Depends on the light - we'll assess",
-      what_we_check: "Diagnostic scan, sensor readings, system health",
-      how_quotes_work: "Diagnostic scan first, then repair estimate",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "Which light is on?",
-        options: ["Check Engine", "ABS/Brake", "Oil pressure", "Battery", "Other/Multiple"],
-      },
-      {
-        id: "q2",
-        question: "Is the light solid or flashing?",
-        options: ["Solid", "Flashing", "Not sure"],
-        explanation: "Flashing lights usually indicate more urgent issues",
-      },
-    ],
-  },
-  brakes_wrong: {
-    key: "brakes_wrong",
-    label: "Brakes feel wrong",
-    icon: "🛑",
-    education: {
-      title: "Brake Issues",
-      summary: "Brake problems should never be ignored. Whether it's noise, soft pedal, or pulling, we'll inspect the entire system for safety.",
-      is_it_safe: "Drive carefully - get checked ASAP",
-      what_we_check: "Pads, rotors, fluid, calipers, brake lines",
-      how_quotes_work: "Inspection first, then itemized repair quote",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What do you notice when braking?",
-        options: ["Grinding noise", "Squealing", "Soft/spongy pedal", "Pulls to one side", "Vibration"],
-      },
-      {
-        id: "q2",
-        question: "How long has this been happening?",
-        options: ["Just started", "Few days", "Few weeks", "Longer"],
-      },
-    ],
-  },
-  strange_noise: {
-    key: "strange_noise",
-    label: "Strange noise",
-    icon: "🔊",
-    education: {
-      title: "Unusual Sounds",
-      summary: "Different noises point to different issues. Describing when and where you hear it helps mechanics diagnose faster.",
-      is_it_safe: "Usually safe to drive short distances",
-      what_we_check: "Belts, bearings, exhaust, suspension components",
-      how_quotes_work: "Diagnostic inspection, then repair estimate",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What kind of noise?",
-        options: ["Squealing", "Grinding", "Knocking", "Rattling", "Humming", "Other"],
-      },
-      {
-        id: "q2",
-        question: "When do you hear it?",
-        options: ["When starting", "While driving", "When turning", "When braking", "All the time"],
-      },
-    ],
-  },
-  fluid_leak: {
-    key: "fluid_leak",
-    label: "Fluid leak",
-    icon: "💧",
-    education: {
-      title: "Fluid Leak",
-      summary: "Different fluids mean different issues. The color and location help identify what's leaking and how urgent it is.",
-      is_it_safe: "Depends on fluid type - we'll assess",
-      what_we_check: "Leak source, fluid levels, hoses, seals",
-      how_quotes_work: "Inspection to locate leak, then repair quote",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What color is the fluid?",
-        options: ["Clear/water", "Green/yellow", "Red/pink", "Brown/black", "Not sure"],
-      },
-      {
-        id: "q2",
-        question: "Where is the puddle?",
-        options: ["Front of car", "Middle", "Back", "Not sure"],
-      },
-    ],
-  },
-  battery_issues: {
-    key: "battery_issues",
-    label: "Battery issues",
-    icon: "🔋",
-    education: {
-      title: "Battery Problems",
-      summary: "Battery issues can be the battery itself, alternator, or electrical system. Testing will identify the root cause.",
-      is_it_safe: "Safe to drive if it starts",
-      what_we_check: "Battery voltage, alternator output, connections",
-      how_quotes_work: "Quick test, then replacement or repair quote",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What's happening?",
-        options: ["Slow to start", "Won't hold charge", "Electrical issues", "Battery light on"],
-      },
-      {
-        id: "q2",
-        question: "How old is your battery?",
-        options: ["Less than 2 years", "2-4 years", "4+ years", "Not sure"],
-      },
-    ],
-  },
-  maintenance: {
-    key: "maintenance",
-    label: "Maintenance",
-    icon: "🧰",
-    education: {
-      title: "Scheduled Maintenance",
-      summary: "Regular maintenance keeps your car running smoothly and prevents bigger issues. We'll handle everything your car needs.",
-      is_it_safe: "Safe to drive",
-      what_we_check: "Based on your service needs",
-      how_quotes_work: "Clear pricing for standard services",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What service do you need?",
-        options: ["Oil change", "Tire rotation", "Brake inspection", "Full service", "Other"],
-      },
-    ],
-  },
-  not_sure: {
-    key: "not_sure",
-    label: "Not sure",
-    icon: "❓",
-    education: {
-      title: "Need Diagnosis",
-      summary: "No problem! Our mechanics will perform a thorough inspection to identify what's going on with your car.",
-      is_it_safe: "We'll assess during diagnosis",
-      what_we_check: "Complete vehicle inspection",
-      how_quotes_work: "Diagnostic fee, then detailed findings and quote",
-    },
-    questions: [
-      {
-        id: "q1",
-        question: "What made you concerned?",
-        options: ["Something feels off", "Preventive check", "Recent issue", "Other"],
-      },
-    ],
-  },
 };
 
 export default function RequestService() {
@@ -269,7 +65,7 @@ export default function RequestService() {
 
   const [step, setStep] = useState<Step>("education");
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [answers, setAnswers] = useState<Record<string, string | string[]>>({});
   const [canMove, setCanMove] = useState<string | null>(null);
   const [locationType, setLocationType] = useState<string | null>(null);
   const [mileage, setMileage] = useState("");
@@ -290,6 +86,7 @@ export default function RequestService() {
 
   const symptomKey = normalizeParam(params.symptom) || "not_sure";
   const symptomData = symptomDatabase[symptomKey];
+  const questions = symptomQuestions[symptomKey] || [];
 
   const vehicleIdParam = normalizeParam(params.vehicleId);
   const vehicleYearParam = normalizeParam(params.vehicleYear);
@@ -478,11 +275,11 @@ export default function RequestService() {
     }
   };
 
-  const handleAnswerQuestion = (answer: string) => {
-    const currentQuestion = symptomData.questions[currentQuestionIndex];
-    setAnswers({ ...answers, [currentQuestion.id]: answer });
+  const handleAnswerQuestion = (answer: string | string[]) => {
+    const currentQuestion = questions[currentQuestionIndex];
+    setAnswers({ ...answers, [currentQuestion.question_key]: answer });
 
-    if (currentQuestionIndex < symptomData.questions.length - 1) {
+    if (currentQuestionIndex < questions.length - 1) {
       setCurrentQuestionIndex(currentQuestionIndex + 1);
     } else {
       setStep("context");
@@ -888,8 +685,13 @@ export default function RequestService() {
   };
 
   const renderQuestions = () => {
-    const currentQuestion = symptomData.questions[currentQuestionIndex];
-    const progress = ((currentQuestionIndex + 1) / symptomData.questions.length) * 100;
+    if (questions.length === 0) {
+      setStep("context");
+      return null;
+    }
+
+    const currentQuestion = questions[currentQuestionIndex];
+    const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
 
     return (
       <ScrollView
@@ -927,12 +729,12 @@ export default function RequestService() {
             />
           </View>
           <Text style={textStyles.muted}>
-            Question {currentQuestionIndex + 1} of {symptomData.questions.length}
+            Question {currentQuestionIndex + 1} of {questions.length}
           </Text>
         </View>
 
         <Text style={{ ...textStyles.title, fontSize: 20 }}>
-          {currentQuestion.question}
+          {currentQuestion.question_label}
         </Text>
 
         <View
@@ -972,7 +774,7 @@ export default function RequestService() {
           />
         </View>
 
-        {currentQuestion.explanation && (
+        {currentQuestion.helps_mechanic_with && (
           <View
             style={{
               padding: spacing.md,
@@ -983,32 +785,16 @@ export default function RequestService() {
             }}
           >
             <Text style={{ fontSize: 13, fontWeight: "600", color: colors.accent }}>
-              💡 {currentQuestion.explanation}
+              💡 {currentQuestion.helps_mechanic_with}
             </Text>
           </View>
         )}
 
-        <View style={{ gap: spacing.sm }}>
-          {currentQuestion.options.map((option) => (
-            <Pressable
-              key={option}
-              onPress={() => handleAnswerQuestion(option)}
-              style={({ pressed }) => [
-                card,
-                pressed && cardPressed,
-                {
-                  padding: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                },
-              ]}
-            >
-              <Text style={textStyles.body}>{option}</Text>
-              <Text style={{ fontSize: 18, color: colors.textMuted }}>›</Text>
-            </Pressable>
-          ))}
-        </View>
+        <QuestionRenderer
+          question={currentQuestion}
+          value={answers[currentQuestion.question_key]}
+          onAnswer={handleAnswerQuestion}
+        />
       </ScrollView>
     );
   };

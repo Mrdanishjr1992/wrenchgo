@@ -1,16 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  ScrollView,
   ActivityIndicator,
   TouchableOpacity,
   Alert,
 } from 'react-native';
-import { useLocalSearchParams, Stack, router } from 'expo-router';
+import { useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { useTheme } from '@/src/ui/theme-context';
 import { UserProfileCard } from '@/components/profile/UserProfileCard';
 import { ReviewsList } from '@/components/reviews/ReviewsList';
 import { getPublicProfile, getUserReviews, reportReview } from '@/src/lib/reviews';
@@ -18,10 +17,7 @@ import type { PublicProfile, Review } from '@/src/types/reviews';
 
 export default function ProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();
-  const textColor = useThemeColor({}, 'text');
-  const iconColor = useThemeColor({}, 'icon');
-  const backgroundColor = useThemeColor({}, 'background');
-  const tintColor = useThemeColor({}, 'tint');
+  const { colors } = useTheme();
 
   const [profile, setProfile] = useState<PublicProfile | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -31,23 +27,15 @@ export default function ProfileScreen() {
   const [totalReviews, setTotalReviews] = useState(0);
   const [sortBy, setSortBy] = useState<'created_at' | 'overall_rating'>('created_at');
 
-  useEffect(() => {
-    loadProfile();
-  }, [userId]);
-
-  useEffect(() => {
-    loadReviews(true);
-  }, [userId, sortBy]);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     const data = await getPublicProfile(userId);
     setProfile(data);
     setLoading(false);
-  };
+  }, [userId]);
 
-  const loadReviews = async (reset = false) => {
+  const loadReviews = useCallback(async (reset = false) => {
     if (!userId) return;
     setReviewsLoading(true);
     const offset = reset ? 0 : page * 10;
@@ -66,7 +54,15 @@ export default function ProfileScreen() {
     }
     setTotalReviews(total);
     setReviewsLoading(false);
-  };
+  }, [userId, page, sortBy, reviews]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
+
+  useEffect(() => {
+    loadReviews(true);
+  }, [userId, sortBy]);
 
   const handleLoadMore = () => {
     if (!reviewsLoading && reviews.length < totalReviews) {
@@ -116,17 +112,17 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor }]}>
-        <ActivityIndicator size="large" color={tintColor} />
+      <View style={[styles.loadingContainer, { backgroundColor: colors.bg }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   if (!profile) {
     return (
-      <View style={[styles.errorContainer, { backgroundColor }]}>
-        <Ionicons name="person-outline" size={64} color={iconColor} />
-        <Text style={[styles.errorText, { color: textColor }]}>Profile not found</Text>
+      <View style={[styles.errorContainer, { backgroundColor: colors.bg }]}>
+        <Ionicons name="person-outline" size={64} color={colors.textMuted} />
+        <Text style={[styles.errorText, { color: colors.textPrimary }]}>Profile not found</Text>
       </View>
     );
   }
@@ -137,24 +133,28 @@ export default function ProfileScreen() {
     <>
       <Stack.Screen
         options={{
-          title: displayName,
-          headerBackTitle: 'Back',
+          title: "Profile",
+          headerShown: true,
         }}
       />
-      <ScrollView style={[styles.container, { backgroundColor }]}>
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
         <UserProfileCard profile={profile} />
 
         {profile.role === 'mechanic' && profile.service_area && (
-          <View style={[styles.infoCard, { backgroundColor }]}>
+          <View style={[styles.infoCard, {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+            shadowColor: colors.textPrimary,
+          }]}>
             <View style={styles.infoRow}>
-              <Ionicons name="location" size={20} color={tintColor} />
-              <Text style={[styles.infoLabel, { color: textColor }]}>Service Area</Text>
+              <Ionicons name="location" size={20} color={colors.primary} />
+              <Text style={[styles.infoLabel, { color: colors.textPrimary }]}>Service Area</Text>
             </View>
-            <Text style={[styles.infoValue, { color: iconColor }]}>
+            <Text style={[styles.infoValue, { color: colors.textSecondary }]}>
               {profile.service_area}
             </Text>
             {profile.radius_miles && (
-              <Text style={[styles.infoSubtext, { color: iconColor }]}>
+              <Text style={[styles.infoSubtext, { color: colors.textMuted }]}>
                 Within {profile.radius_miles} miles
               </Text>
             )}
@@ -163,16 +163,16 @@ export default function ProfileScreen() {
 
         <View style={styles.reviewsSection}>
           <View style={styles.reviewsHeader}>
-            <Text style={[styles.reviewsTitle, { color: textColor }]}>
+            <Text style={[styles.reviewsTitle, { color: colors.textPrimary }]}>
               Reviews ({totalReviews})
             </Text>
             <TouchableOpacity onPress={toggleSort} style={styles.sortButton}>
               <Ionicons
                 name={sortBy === 'created_at' ? 'time-outline' : 'star-outline'}
                 size={20}
-                color={tintColor}
+                color={colors.primary}
               />
-              <Text style={[styles.sortText, { color: tintColor }]}>
+              <Text style={[styles.sortText, { color: colors.primary }]}>
                 {sortBy === 'created_at' ? 'Recent' : 'Rating'}
               </Text>
             </TouchableOpacity>
@@ -184,9 +184,10 @@ export default function ProfileScreen() {
             hasMore={reviews.length < totalReviews}
             loading={reviewsLoading}
             onReportReview={handleReportReview}
+            mechanicName={profile.role === 'mechanic' ? displayName : undefined}
           />
         </View>
-      </ScrollView>
+      </View>
     </>
   );
 }
@@ -215,11 +216,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginVertical: 8,
-    shadowColor: '#000',
+    borderWidth: 1,
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   infoRow: {
     flexDirection: 'row',

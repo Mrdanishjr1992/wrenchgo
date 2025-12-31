@@ -40,7 +40,15 @@ export const lightColors = {
   divider: "#EDF2F7",
   accent: "#14B8A6",
   overlay: "rgba(0, 0, 0, 0.5)",
-  black: "#000000"
+  black: "#000000",
+  primary: "#FF6B35",
+  primaryLight: "#F7931E",
+  primaryBg: "#FFF5F0",
+  blue: "#3B82F6",
+  blueBg: "#EFF6FF",
+  green: "#10B981",
+  greenBg: "#F0FDF4",
+  gray: "#E5E7EB",
 };
 
 export const darkColors = {
@@ -54,6 +62,14 @@ export const darkColors = {
   divider: "#222222",
   accent: "#5EEAD4",
   overlay: "rgba(0, 0, 0, 0.7)",
+  primary: "#FF8C5A",
+  primaryLight: "#FFB347",
+  primaryBg: "#2D1810",
+  blue: "#60A5FA",
+  blueBg: "#1E3A5F",
+  green: "#34D399",
+  greenBg: "#1A3A2E",
+  gray: "#374151",
 };
 
 export const spacing = {
