@@ -24,6 +24,7 @@ import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { uploadIDPhoto, deleteIDPhoto, getIDPhotoUrl } from "../../../src/lib/verification";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -106,7 +107,8 @@ export default function MechanicProfile() {
           home_latitude,
           home_longitude
         `)
-        .eq("id", userId)
+        .eq("auth_id", userId)
+
         .single();
 
       if (error) throw error;
@@ -231,8 +233,9 @@ export default function MechanicProfile() {
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       await supabase
         .from("profiles")
-        .update({ photo_url: `${pub.publicUrl}?t=${Date.now()}` })
-        .eq("id", userId);
+        .update({ avatar_url:  `${pub.publicUrl}?t=${Date.now()}` })
+        .eq("auth_id", userId)
+;
 
       Alert.alert("Success", "Profile photo updated.");
       load();
@@ -267,7 +270,8 @@ export default function MechanicProfile() {
           home_latitude: lat,
           home_longitude: lng,
         })
-        .eq("id", userId);
+        .eq("auth_id", userId)
+;
 
       await supabase
         .from("mechanic_profiles")
@@ -326,7 +330,8 @@ export default function MechanicProfile() {
     try {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
-      router.replace("/(auth)/sign-in");
+      try { await GoogleSignin.signOut(); } catch {}
+router.replace("/(auth)/sign-in");
     } catch (e: any) {
       Alert.alert("Sign out failed", e.message ?? "Could not sign out.");
     }

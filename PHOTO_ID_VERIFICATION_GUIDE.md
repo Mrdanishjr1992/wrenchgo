@@ -146,7 +146,8 @@ identity-docs/
 const { data: profileData } = await supabase
   .from("profiles")
   .select("id_status")
-  .eq("id", userId)
+  .eq("auth_id", userId)
+
   .single();
 
 if (profileData.id_status !== "verified") {

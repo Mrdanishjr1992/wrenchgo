@@ -1,21 +1,30 @@
 // app/_layout.tsx
+import React, { useEffect } from "react";
 import { Stack } from "expo-router";
-import React ,{ useEffect } from "react";
-import { ThemeProvider } from "../src/ui/theme-context";
-import { StripeProvider } from "@stripe/stripe-react-native";
-import { configureGoogleSignIn } from "../src/lib/googleAuth";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { Platform, StatusBar } from "react-native";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { StripeProvider } from "@stripe/stripe-react-native";
+
+import { ThemeProvider } from "../src/ui/theme-context";
+import { configureGoogleSignIn } from "../src/lib/googleAuth";
 
 export default function RootLayout() {
   useEffect(() => {
-    configureGoogleSignIn();
+    // Configure Google Sign-In (avoid running this on web if it uses native modules)
+    if (Platform.OS !== "web") configureGoogleSignIn();
 
-    // Allow portrait rotation (normal + upside down) but prevent landscape
-    ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT);
+    (async () => {
+      try {
+        // Lock to portrait (prevents landscape)
+        await ScreenOrientation.lockAsync(
+          ScreenOrientation.OrientationLock.PORTRAIT_UP
+        );
+      } catch (e) {
+        console.warn("Screen orientation lock failed", e);
+      }
+    })();
 
-    // Set translucent status bar for Android edge-to-edge
     if (Platform.OS === "android") {
       StatusBar.setTranslucent(true);
       StatusBar.setBackgroundColor("transparent");
@@ -24,30 +33,25 @@ export default function RootLayout() {
 
   const pk = process.env.EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY;
 
-  if (!pk) {
-    console.warn("Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY");
-    return (
-      <SafeAreaProvider>
-        <ThemeProvider>
-          <Stack screenOptions={{ headerShown: false }} />
-        </ThemeProvider>
-      </SafeAreaProvider>
-    );
-  }
-
   return (
     <SafeAreaProvider>
-      <StripeProvider publishableKey={pk} merchantIdentifier="merchant.com.wrenchgo.app">
-        <ThemeProvider>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              // Ensure content respects safe areas
-              contentStyle: { backgroundColor: "transparent" },
-            }}
-          />
-        </ThemeProvider>
-      </StripeProvider>
+      {pk ? (
+        <StripeProvider
+          publishableKey={pk}
+          merchantIdentifier="merchant.com.wrenchgo.app"
+        >
+          <ThemeProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ThemeProvider>
+        </StripeProvider>
+      ) : (
+        <>
+          {console.warn("Missing EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY")}
+          <ThemeProvider>
+            <Stack screenOptions={{ headerShown: false }} />
+          </ThemeProvider>
+        </>
+      )}
     </SafeAreaProvider>
   );
 }

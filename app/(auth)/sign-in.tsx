@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,10 +13,12 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
-import { LinearGradient } from "expo-linear-gradient";
 import { configureGoogleSignIn, signInWithGoogle } from "../../src/lib/googleAuth";
+
+type AnyUser = any;
 
 export default function SignIn() {
   const router = useRouter();
@@ -24,93 +26,192 @@ export default function SignIn() {
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
   const [rememberMe, setRememberMe] = useState(true);
   const [isGoogleAvailable, setIsGoogleAvailable] = useState(false);
 
+  // ---------- helpers ----------
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  const inputStyle = useMemo(
+    () => ({
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 16,
+      padding: 14,
+      color: colors.textPrimary,
+      backgroundColor: colors.surface,
+    }),
+    [colors]
+  );
+
+  const canSubmit = useMemo(() => {
+    return email.trim().length > 3 && password.length >= 6 && !loading;
+  }, [email, password, loading]);
+
+  const loadSavedCredentials = async () => {
+    try {
+      const savedEmail = await AsyncStorage.getItem("@saved_email");
+      if (savedEmail) setEmail(savedEmail);
+      // NOTE: I'd avoid restoring passwords (security). Keeping your behavior:
+      const savedPw = await AsyncStorage.getItem("@saved_password");
+      if (savedPw) setPassword(savedPw);
+    } catch {
+      // ignore
+    }
+  };
+
+  /**
+   * Ensures a profile row exists for this auth user and routes:
+   * - role null -> choose-role
+   * - role set  -> "/" (Index will route to correct tabs)
+   */
+  const ensureProfileAndRoute = async (user: AnyUser) => {
+    const authId = user.id;
+
+    // 1) Give DB triggers a moment (if you have them)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { data: profile, error } = await supabase
+        .from("profiles")
+        .select("auth_id, role")
+        .eq("auth_id", authId)
+        .maybeSingle();
+
+      console.log(`[AUTH] profile attempt ${attempt}`, { profile, error });
+
+      if (error) throw new Error(error.message);
+
+      if (profile) {
+        if (!profile.role) {
+          router.replace("/(auth)/choose-role");
+          return;
+        }
+        router.replace("/");
+        return;
+      }
+
+      await sleep(250);
+    }
+
+    // 2) Still missing -> insert minimal profile row (fallback)
+    const fullName =
+      user.user_metadata?.full_name ||
+      user.user_metadata?.name ||
+      (user.email ? user.email.split("@")[0] : "User");
+
+    const { error: insErr } = await supabase.from("profiles").insert({
+      auth_id: authId,
+      email: user.email ?? null,
+      full_name: fullName,
+      role: null,
+      updated_at: new Date().toISOString(),
+    });
+
+    console.log("[AUTH] fallback insert profile err:", insErr);
+
+    if (insErr) throw new Error(insErr.message);
+
+    router.replace("/(auth)/choose-role");
+  };
+
+  // ---------- lifecycle ----------
   useEffect(() => {
     loadSavedCredentials();
 
     try {
       configureGoogleSignIn();
       setIsGoogleAvailable(true);
-    } catch (error) {
-      console.log('Google Sign-In not available (likely running in Expo Go)');
+    } catch {
+      console.log("Google Sign-In not available (likely running in Expo Go)");
       setIsGoogleAvailable(false);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const loadSavedCredentials = async () => {
-    try {
-      const savedEmail = await AsyncStorage.getItem("@saved_email");
-      if (savedEmail) setEmail(savedEmail);
-    } catch (e) {
-      console.log("Failed to load saved credentials");
-    }
-  };
-
-
-
-
-const handleGoogleSignIn = async (idToken: string) => {
-  try {
-    setLoading(true);
+  // ---------- email/password ----------
+  const onSignIn = async () => {
     setErr(null);
+    const emailClean = email.trim().toLowerCase();
 
-    const { data, error } = await supabase.auth.signInWithIdToken({
-      provider: "google",
-      token: idToken,
-    });
-
-    if (error) {
-      setErr(error.message);
+    if (!emailClean || !password) {
+      setErr("Enter your email and password.");
       return;
     }
 
-    if (data.user) {
+    try {
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: emailClean,
+        password,
+      });
+
+      if (error) {
+        setErr(error.message);
+        return;
+      }
+
+      const user = data.user;
+      if (!user) {
+        setErr("Signed in, but no user returned.");
+        return;
+      }
+
       if (rememberMe) {
-        await AsyncStorage.setItem("@saved_email", data.user.email || "");
+        await AsyncStorage.setItem("@saved_email", emailClean);
+        await AsyncStorage.setItem("@saved_password", password);
+      } else {
+        await AsyncStorage.removeItem("@saved_email");
+        await AsyncStorage.removeItem("@saved_password");
+      }
+
+      await ensureProfileAndRoute(user);
+    } catch (e: any) {
+      console.error("Sign-in error:", e);
+      setErr(e?.message ?? "Failed to sign in");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---------- google ----------
+  const handleGoogleSignIn = async (idToken: string) => {
+    try {
+      setErr(null);
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (error) {
+        setErr(error.message);
+        return;
+      }
+
+      const user = data.user;
+      if (!user) {
+        setErr("Signed in, but no user returned.");
+        return;
+      }
+
+      // remember email (no password in Google flow)
+      if (rememberMe) {
+        await AsyncStorage.setItem("@saved_email", user.email || "");
       } else {
         await AsyncStorage.removeItem("@saved_email");
       }
 
-      console.log('[DEBUG] About to call ensure_profile_consistency RPC');
-      console.log('[DEBUG] User metadata:', JSON.stringify(data.user.user_metadata, null, 2));
-
-      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
-        role_hint: data.user.user_metadata?.role || null,
-        full_name: data.user.user_metadata?.full_name || data.user.user_metadata?.name || null,
-        phone: data.user.user_metadata?.phone || null,
-        photo_url: data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture || null,
-      });
-
-      console.log('[DEBUG] RPC response - profile:', profile);
-      console.log('[DEBUG] RPC response - error:', JSON.stringify(rpcError, null, 2));
-
-      if (rpcError) {
-        console.error("Profile consistency error:", rpcError);
-        Alert.alert("Database Error", `${rpcError.message || rpcError.code || JSON.stringify(rpcError)}`);
-        setErr(`Database error: ${rpcError.message || rpcError.code || 'Unknown error'}`);
-        return;
-      }
-
-      if (!profile?.role) {
-        console.log('[DEBUG] No role found, redirecting to choose-role');
-        router.replace("/(auth)/choose-role");
-        return;
-      }
+      await ensureProfileAndRoute(user);
+    } catch (e: any) {
+      console.error("Google sign-in error:", e);
+      Alert.alert("Google sign in failed", e?.message ?? "Try again.");
+      setErr(e?.message ?? "Failed to sign in with Google");
     }
-
-    router.replace("/");
-  } catch (e: any) {
-    console.error("Google sign-in error:", e);
-    Alert.alert("Google sign in failed", e?.message ?? "Try again.");
-  } finally {
-    setLoading(false);
-  }
-};
-
+  };
 
   const onGoogleSignIn = async () => {
     setErr(null);
@@ -131,93 +232,14 @@ const handleGoogleSignIn = async (idToken: string) => {
 
       await handleGoogleSignIn(idToken);
     } catch (e: any) {
-      console.error('Google sign-in error:', e);
+      console.error("Google sign-in error:", e);
       setErr(e?.message ?? "Failed to sign in with Google");
     } finally {
       setLoading(false);
     }
   };
 
-  const canSubmit = email.trim().length > 3 && password.length >= 6 && !loading;
-
-  const onSignIn = async () => {
-    setErr(null);
-    const emailClean = email.trim().toLowerCase();
-
-    if (!emailClean || !password) {
-      setErr("Enter your email and password.");
-      return;
-    }
-
-    try {
-      setLoading(true);
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: emailClean,
-        password,
-      });
-
-      if (error) {
-        setErr(error.message);
-        return;
-      }
-
-      const session = data.session ?? (await supabase.auth.getSession()).data.session;
-      if (!session) {
-        setErr("Sign-in succeeded, but session not ready. Please try again.");
-        return;
-      }
-
-      if (rememberMe) {
-        await AsyncStorage.setItem("@saved_email", emailClean);
-        await AsyncStorage.setItem("@saved_password", password);
-      } else {
-        await AsyncStorage.removeItem("@saved_email");
-        await AsyncStorage.removeItem("@saved_password");
-      }
-
-      console.log('[DEBUG] About to call ensure_profile_consistency RPC (email/password)');
-      console.log('[DEBUG] User metadata:', JSON.stringify(data.user?.user_metadata, null, 2));
-
-      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
-        role_hint: data.user?.user_metadata?.role || null,
-        full_name: data.user?.user_metadata?.full_name || null,
-        phone: data.user?.user_metadata?.phone || null,
-        photo_url: data.user?.user_metadata?.photo_url || null,
-      });
-
-      console.log('[DEBUG] RPC response - profile:', profile);
-      console.log('[DEBUG] RPC response - error:', JSON.stringify(rpcError, null, 2));
-
-      if (rpcError) {
-        console.error("Profile consistency error:", rpcError);
-        Alert.alert("Database Error", `${rpcError.message || rpcError.code || JSON.stringify(rpcError)}`);
-        setErr(`Database error: ${rpcError.message || rpcError.code || 'Unknown error'}`);
-        return;
-      }
-
-      if (!profile?.role) {
-        console.log('[DEBUG] No role found, redirecting to choose-role');
-        router.replace("/(auth)/choose-role");
-        return;
-      }
-
-      router.replace("/");
-    } catch (e: any) {
-      Alert.alert("Sign in failed", e?.message ?? "Try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const inputStyle = {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 16,
-    padding: 14,
-    color: colors.textPrimary,
-    backgroundColor: colors.surface,
-  };
-
+  // ---------- UI ----------
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
@@ -300,7 +322,7 @@ const handleGoogleSignIn = async (idToken: string) => {
           </View>
 
           <Pressable
-            onPress={() => setRememberMe(!rememberMe)}
+            onPress={() => setRememberMe((v) => !v)}
             hitSlop={10}
             style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
           >

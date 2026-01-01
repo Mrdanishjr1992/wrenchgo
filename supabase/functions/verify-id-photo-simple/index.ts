@@ -37,7 +37,8 @@ serve(async (req) => {
         id_rejected_reason: null,
         id_verified_by: "auto-test",
       })
-      .eq("id", userId);
+      .eq("auth_id", userId)
+;
 
     if (updateError) {
       console.error("[SIMPLE-VERIFY] Update error:", updateError);

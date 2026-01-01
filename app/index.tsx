@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import React, { useEffect, useRef, useState } from "react";
 import { View, Text, ActivityIndicator, ScrollView, Image, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
@@ -6,40 +6,76 @@ import { spacing } from "../src/ui/theme";
 import { createCard, cardPressed } from "../src/ui/styles";
 import { AppButton } from "../src/ui/components/AppButton";
 import { useTheme } from "../src/ui/theme-context";
-import React from "react";
 
 export default function Index() {
   const router = useRouter();
-  const [booting, setBooting] = useState(true);
-
   const { colors, text } = useTheme();
   const card = createCard(colors);
+
+  const [booting, setBooting] = useState(true);
+  const bootingRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
 
-    (async () => {
+    const boot = async () => {
+      if (bootingRef.current) return; // prevent duplicate runs
+      bootingRef.current = true;
+
       try {
-        const { data } = await supabase.auth.getSession();
-        const userId = data.session?.user?.id;
+        const { data: sessionData, error: sErr } = await supabase.auth.getSession();
+        if (sErr) console.warn("boot getSession error:", sErr);
 
-        if (!userId) return;
+        const user = sessionData.session?.user;
 
-        const { data: p } = await supabase
+        // Not signed in -> show landing screen
+        if (!user) return;
+
+        const authId = user.id;
+
+        // Read profile role
+        const { data: p, error: pErr } = await supabase
           .from("profiles")
           .select("role")
-          .eq("id", userId)
+          .eq("auth_id", authId)
           .maybeSingle();
 
-        const role = p?.role ?? "customer";
+        console.log("boot user:", authId, "profile:", p, "error:", pErr);
+
+        if (pErr) {
+          // If RLS / transient issue, don't hard-crash. You can choose to sign out here if you want.
+          console.warn("boot profile read error:", pErr);
+          return;
+        }
+
+        const role = (p?.role as string | null) ?? null;
+
+        // No role yet -> choose-role screen
+        if (!role) {
+          router.replace("/(auth)/choose-role");
+          return;
+        }
+
+        // Route to correct app area
         router.replace(role === "mechanic" ? "/(mechanic)/(tabs)/leads" : "/(customer)/(tabs)");
       } finally {
+        bootingRef.current = false;
         if (mounted) setBooting(false);
       }
-    })();
+    };
+
+    boot();
+
+    // React to login/logout without restart
+    const { data: sub } = supabase.auth.onAuthStateChange(() => {
+      // When auth changes, show loader briefly and re-run boot
+      if (mounted) setBooting(true);
+      boot();
+    });
 
     return () => {
       mounted = false;
+      sub.subscription.unsubscribe();
     };
   }, [router]);
 
@@ -51,6 +87,7 @@ export default function Index() {
     );
   }
 
+  // Landing screen (only shows when NOT signed in)
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
@@ -60,7 +97,7 @@ export default function Index() {
           paddingBottom: 40,
         }}
       >
-        <View style={{ justifyContent: "center", gap: spacing.xl }}> 
+        <View style={{ justifyContent: "center", gap: spacing.xl }}>
           <View style={{ alignItems: "center", marginBottom: spacing.lg }}>
             <View
               style={{
@@ -99,9 +136,7 @@ export default function Index() {
           >
             <Text style={text.section}>Why WrenchGo?</Text>
             <Text style={[text.body, { marginTop: 10 }]}>• Compare quotes fast</Text>
-            <Text style={[text.body, { marginTop: 6 }]}>
-              • Safer process (no contact until accepted)
-            </Text>
+            <Text style={[text.body, { marginTop: 6 }]}>• Safer process (no contact until accepted)</Text>
             <Text style={[text.body, { marginTop: 6 }]}>• Track jobs + Inbox</Text>
             <Text style={[text.body, { marginTop: 6 }]}>• Affordable and reliable services</Text>
             <Text style={[text.title, { marginTop: 6, color: colors.accent }]}>Click For More Info</Text>
@@ -119,11 +154,7 @@ export default function Index() {
             />
           </Pressable>
 
-          <AppButton
-            title="Get started"
-            variant="primary"
-            onPress={() => router.replace("/(auth)/sign-up")}
-          />
+          <AppButton title="Get started" variant="primary" onPress={() => router.replace("/(auth)/sign-up")} />
           <AppButton
             title="Log in"
             variant="outline"

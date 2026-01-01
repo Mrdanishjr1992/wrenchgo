@@ -112,7 +112,8 @@ export const uploadIDPhoto = async (
         id_verified_at: null,
         id_rejected_reason: null,
       })
-      .eq("id", userId);
+      .eq("auth_id", userId)
+;
 
     if (updateError) throw updateError;
 
@@ -204,7 +205,8 @@ export const deleteIDPhoto = async (
         id_rejected_reason: null,
         id_verified_by: null,
       })
-      .eq("id", userId);
+      .eq("auth_id", userId)
+;
 
     if (updateError) throw updateError;
 

@@ -24,7 +24,6 @@ export default function ChooseRole() {
   const [saving, setSaving] = useState(false);
   const [role, setRole] = useState<Role | null>(null);
 
-
   const canContinue = useMemo(() => !saving && !loading && !!role, [saving, loading, role]);
 
   useEffect(() => {
@@ -34,11 +33,11 @@ export default function ChooseRole() {
       try {
         setLoading(true);
 
-        const { data: sessionData } = await supabase.auth.getSession();
-        const user = sessionData.session?.user;
+        const { data: sessionData, error: sErr } = await supabase.auth.getSession();
+        if (sErr) console.log("choose-role getSession error:", sErr.message);
 
+        const user = sessionData.session?.user;
         if (!user) {
-          // Not signed in -> send back to sign in
           router.replace("/(auth)/sign-in");
           return;
         }
@@ -47,19 +46,16 @@ export default function ChooseRole() {
         const { data: profile, error: pErr } = await supabase
           .from("profiles")
           .select("role")
-          .eq("id", user.id)
+          .eq("auth_id", user.id)
           .maybeSingle();
 
-        if (pErr) {
-          console.log("choose-role: profile fetch error:", pErr.message);
-        }
+        if (pErr) console.log("choose-role: profile fetch error:", pErr.message);
 
         if (profile?.role) {
           router.replace("/");
           return;
         }
 
-        // Otherwise show the chooser
         if (mounted) setLoading(false);
       } catch (e: any) {
         console.log("choose-role init error:", e?.message);
@@ -73,48 +69,56 @@ export default function ChooseRole() {
     };
   }, [router]);
 
-  const upsertRole = async () => {
+  const saveRole = async () => {
     try {
+      if (!role) return;
+
       setSaving(true);
 
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
+      const { data: sessionData, error: sErr } = await supabase.auth.getSession();
+      if (sErr) console.log("choose-role getSession error:", sErr.message);
 
+      const user = sessionData.session?.user;
       if (!user) {
         Alert.alert("Session missing", "Please sign in again.");
         router.replace("/(auth)/sign-in");
         return;
       }
 
-      // Fetch existing profile (if any)
-      const { data: existing, error: exErr } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      if (exErr) {
-        console.log("choose-role existing profile error:", exErr.message);
-      }
-
-      // Prefer metadata name if present
       const fullName =
-        existing?.full_name ||
         (user.user_metadata?.full_name as string | undefined) ||
         (user.user_metadata?.name as string | undefined) ||
         (user.email ? user.email.split("@")[0] : "User");
 
-      // Upsert profile with role
-      const { error: upErr } = await supabase.from("profiles").upsert(
-        {
-          id: user.id,
-          full_name: fullName,
-          role,
-        },
-        { onConflict: "id" }
-      );
+      const payload = {
+        role,
+        full_name: fullName,
+        email: user.email ?? null,
+        updated_at: new Date().toISOString(),
+      };
+
+      // 1) UPDATE first
+      const { data: updatedRows, error: upErr } = await supabase
+        .from("profiles")
+        .update(payload)
+        .eq("auth_id", user.id)
+        .select("auth_id");
+
+      console.log("choose-role update:", { role, user: user.id, upErr, updatedRows });
 
       if (upErr) throw upErr;
+
+      // If update affected 0 rows, profile row doesn't exist yet -> INSERT fallback
+      if (!updatedRows || updatedRows.length === 0) {
+        const { error: insErr } = await supabase.from("profiles").insert({
+          auth_id: user.id,
+          ...payload,
+        });
+
+        console.log("choose-role insert fallback:", { insErr });
+
+        if (insErr) throw insErr;
+      }
 
       router.replace("/");
     } catch (e: any) {
@@ -180,9 +184,7 @@ export default function ChooseRole() {
               />
             ) : null}
           </View>
-          <Text style={{ ...text.muted, fontSize: 12 }}>
-            {active ? "Selected" : "Tap to select"}
-          </Text>
+          <Text style={{ ...text.muted, fontSize: 12 }}>{active ? "Selected" : "Tap to select"}</Text>
         </View>
       </Pressable>
     );
@@ -215,9 +217,7 @@ export default function ChooseRole() {
           }}
         >
           <Text style={{ ...text.title, fontSize: 28 }}>Choose your role</Text>
-          <Text style={{ ...text.muted, marginTop: 8 }}>
-            This helps us customize your experience.
-          </Text>
+          <Text style={{ ...text.muted, marginTop: 8 }}>This helps us customize your experience.</Text>
         </LinearGradient>
 
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md, marginTop: spacing.md }}>
@@ -237,7 +237,7 @@ export default function ChooseRole() {
           </View>
 
           <Pressable
-            onPress={upsertRole}
+            onPress={saveRole}
             disabled={!canContinue}
             style={({ pressed }) => ({
               marginTop: spacing.lg,
@@ -251,9 +251,7 @@ export default function ChooseRole() {
             {saving ? (
               <ActivityIndicator color="#000" />
             ) : (
-              <Text style={{ fontWeight: "900", color: "#000", letterSpacing: 0.6 }}>
-                CONTINUE
-              </Text>
+              <Text style={{ fontWeight: "900", color: "#000", letterSpacing: 0.6 }}>CONTINUE</Text>
             )}
           </Pressable>
 
@@ -265,9 +263,7 @@ export default function ChooseRole() {
             disabled={saving}
             style={{ alignSelf: "center", marginTop: 14 }}
           >
-            <Text style={{ ...text.muted, textDecorationLine: "underline" }}>
-              Sign out
-            </Text>
+            <Text style={{ ...text.muted, textDecorationLine: "underline" }}>Sign out</Text>
           </Pressable>
         </View>
       </ScrollView>

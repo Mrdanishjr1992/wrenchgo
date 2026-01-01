@@ -71,7 +71,8 @@
 +     const { data: existing } = await supabase
 +       .from("profiles")
 +       .select("id")
-+       .eq("id", userId)
++       .eq("auth_id", userId)
+
 +       .maybeSingle();
 +
 +     if (!existing) {

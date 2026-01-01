@@ -8,7 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   Image,
-  BackHandler
+  BackHandler,
 } from "react-native";
 import { Stack, router, useLocalSearchParams } from "expo-router";
 import * as Location from "expo-location";
@@ -25,7 +25,13 @@ import QuestionRenderer from "../../src/components/QuestionRenderer";
 import { symptomQuestions } from "../../src/data/symptomQuestions";
 import { symptomDatabase } from "../../src/data/symptomDatabase";
 
-type Step = "education" | "questions" | "context" | "safety_measures" | "review" | "searching";
+type Step =
+  | "education"
+  | "questions"
+  | "context"
+  | "safety_measures"
+  | "review"
+  | "searching";
 
 type Vehicle = {
   id: string;
@@ -44,10 +50,13 @@ export default function RequestService() {
     vehicleModel?: string | string[];
     vehicleNickname?: string | string[];
   }>();
+
   const { colors, spacing } = useTheme();
   const card = createCard(colors);
 
-  const normalizeParam = (param: string | string[] | undefined): string | undefined => {
+  const normalizeParam = (
+    param: string | string[] | undefined
+  ): string | undefined => {
     if (!param) return undefined;
     if (Array.isArray(param)) return param[0];
     return param;
@@ -55,10 +64,26 @@ export default function RequestService() {
 
   const textStyles = useMemo(
     () => ({
-      title: { fontSize: normalize(24), fontWeight: "900" as const, color: colors.textPrimary },
-      section: { fontSize: normalize(16), fontWeight: "800" as const, color: colors.textPrimary },
-      body: { fontSize: normalize(14), fontWeight: "600" as const, color: colors.textPrimary },
-      muted: { fontSize: normalize(13), fontWeight: "600" as const, color: colors.textMuted },
+      title: {
+        fontSize: normalize(24),
+        fontWeight: "900" as const,
+        color: colors.textPrimary,
+      },
+      section: {
+        fontSize: normalize(16),
+        fontWeight: "800" as const,
+        color: colors.textPrimary,
+      },
+      body: {
+        fontSize: normalize(14),
+        fontWeight: "600" as const,
+        color: colors.textPrimary,
+      },
+      muted: {
+        fontSize: normalize(13),
+        fontWeight: "600" as const,
+        color: colors.textMuted,
+      },
     }),
     [colors]
   );
@@ -70,6 +95,7 @@ export default function RequestService() {
   const [locationType, setLocationType] = useState<string | null>(null);
   const [mileage, setMileage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
   const [safetyChecks, setSafetyChecks] = useState({
     vehicleConfirmed: false,
     locationAccurate: false,
@@ -77,7 +103,9 @@ export default function RequestService() {
     understandsProcess: false,
   });
 
-  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(
+    null
+  );
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -94,7 +122,12 @@ export default function RequestService() {
   const vehicleModelParam = normalizeParam(params.vehicleModel);
   const vehicleNicknameParam = normalizeParam(params.vehicleNickname);
 
-  const hasVehicleParams = vehicleIdParam && vehicleYearParam && vehicleMakeParam && vehicleModelParam && isValidUUID(vehicleIdParam);
+  const hasVehicleParams =
+    vehicleIdParam &&
+    vehicleYearParam &&
+    vehicleMakeParam &&
+    vehicleModelParam &&
+    isValidUUID(vehicleIdParam);
 
   console.log("🚗 RequestService: Params received", {
     symptom: symptomKey,
@@ -106,10 +139,18 @@ export default function RequestService() {
     isValidUUID: vehicleIdParam ? isValidUUID(vehicleIdParam) : false,
   });
 
+  // ✅ If we land on "questions" but there are no questions, move to context (no setState inside render)
+  useEffect(() => {
+    if (step === "questions" && questions.length === 0) {
+      setStep("context");
+    }
+  }, [step, questions.length]);
+
   const loadVehicles = useCallback(async () => {
     try {
       setLoadingVehicles(true);
       setVehicleLoadError(null);
+
       const { data: userData, error: uErr } = await supabase.auth.getUser();
       if (uErr) throw new Error("Authentication failed. Please log in again.");
 
@@ -123,10 +164,14 @@ export default function RequestService() {
         .order("created_at", { ascending: true });
 
       if (error) throw new Error("Failed to load vehicles from database. Please try again.");
+
       setVehicles((data as Vehicle[]) ?? []);
     } catch (e: any) {
       console.error("Failed to load vehicles:", e);
-      setVehicleLoadError(e.message || "Unable to load vehicles. Please check your connection and try again.");
+      setVehicleLoadError(
+        e.message ||
+          "Unable to load vehicles. Please check your connection and try again."
+      );
     } finally {
       setLoadingVehicles(false);
     }
@@ -185,7 +230,14 @@ export default function RequestService() {
     };
 
     verifyVehicleFromParams();
-  }, [hasVehicleParams, vehicleIdParam, vehicleYearParam, vehicleMakeParam, vehicleModelParam, vehicleNicknameParam]);
+  }, [
+    hasVehicleParams,
+    vehicleIdParam,
+    vehicleYearParam,
+    vehicleMakeParam,
+    vehicleModelParam,
+    vehicleNicknameParam,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -209,9 +261,7 @@ export default function RequestService() {
     }
   }, [step, selectedVehicleId, vehicles.length]);
 
-  const handleChangeVehicle = () => {
-    setShowVehicleDrawer(true);
-  };
+  const handleChangeVehicle = () => setShowVehicleDrawer(true);
 
   const handleSelectVehicleFromDrawer = (vehicle: Vehicle) => {
     setSelectedVehicleId(vehicle.id);
@@ -227,48 +277,70 @@ export default function RequestService() {
     if (step === "education") {
       router.back();
       return true;
-    } else if (step === "questions") {
+    }
+
+    if (step === "questions") {
       if (currentQuestionIndex > 0) {
-        setCurrentQuestionIndex(currentQuestionIndex - 1);
+        setCurrentQuestionIndex((i) => i - 1);
       } else {
         setStep("education");
       }
-      return true;
-    } else if (step === "context") {
-      if (symptomData.questions.length > 0) {
-        setStep("questions");
-        setCurrentQuestionIndex(symptomData.questions.length - 1);
-      } else {
-        setStep("education");
-      }
-      return true;
-    } else if (step === "safety_measures") {
-      setStep("context");
-      return true;
-    } else if (step === "review") {
-      setStep("safety_measures");
-      return true;
-    } else if (step === "searching") {
       return true;
     }
+
+    if (step === "context") {
+      if (questions.length > 0) {
+        setStep("questions");
+        setCurrentQuestionIndex(questions.length - 1);
+      } else {
+        setStep("education");
+      }
+      return true;
+    }
+
+    if (step === "safety_measures") {
+      setStep("context");
+      return true;
+    }
+
+    if (step === "review") {
+      setStep("safety_measures");
+      return true;
+    }
+
+    if (step === "searching") {
+      return true; // block back while searching/submitting
+    }
+
     return false;
-  }, [step, currentQuestionIndex, symptomData.questions.length]);
+  }, [step, currentQuestionIndex, questions.length]);
 
   useEffect(() => {
-    const backHandler = BackHandler.addEventListener("hardwareBackPress", handleBack);
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      handleBack
+    );
     return () => backHandler.remove();
   }, [handleBack]);
 
   if (!symptomData) {
     return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: colors.bg }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.bg,
+        }}
+      >
         <Text style={textStyles.body}>Invalid symptom</Text>
       </View>
     );
   }
 
   const handleContinueFromEducation = () => {
-    if (symptomData.questions.length > 0) {
+    if (questions.length > 0) {
+      setCurrentQuestionIndex(0);
       setStep("questions");
     } else {
       setStep("context");
@@ -277,10 +349,11 @@ export default function RequestService() {
 
   const handleAnswerQuestion = (answer: string | string[]) => {
     const currentQuestion = questions[currentQuestionIndex];
-    setAnswers({ ...answers, [currentQuestion.question_key]: answer });
+
+    setAnswers((prev) => ({ ...prev, [currentQuestion.question_key]: answer }));
 
     if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setCurrentQuestionIndex((i) => i + 1);
     } else {
       setStep("context");
     }
@@ -292,36 +365,44 @@ export default function RequestService() {
 
       if (!symptomData || !symptomData.label) {
         Alert.alert("Missing Information", "Please select a symptom to continue.");
-        setSubmitting(false);
+        setStep("education");
         return;
       }
 
       if (!canMove || !locationType) {
-        Alert.alert("Missing Information", "Please provide context about your vehicle's condition and location.");
-        setSubmitting(false);
+        Alert.alert(
+          "Missing Information",
+          "Please provide context about your vehicle's condition and location."
+        );
         setStep("context");
         return;
       }
 
       const allSafetyChecked = Object.values(safetyChecks).every((v) => v === true);
       if (!allSafetyChecked) {
-        Alert.alert("Safety Checklist", "Please complete all safety checks before submitting.");
-        setSubmitting(false);
+        Alert.alert(
+          "Safety Checklist",
+          "Please complete all safety checks before submitting."
+        );
         setStep("safety_measures");
         return;
       }
 
       if (!selectedVehicleId || !isValidUUID(selectedVehicleId)) {
-        Alert.alert("Vehicle Required", "Please select a valid vehicle before submitting your request.");
-        setSubmitting(false);
+        Alert.alert(
+          "Vehicle Required",
+          "Please select a valid vehicle before submitting your request."
+        );
         setShowVehicleDrawer(true);
         setStep("review");
         return;
       }
 
       if (!selectedVehicle) {
-        Alert.alert("Vehicle Required", "Vehicle information is missing. Please select a vehicle.");
-        setSubmitting(false);
+        Alert.alert(
+          "Vehicle Required",
+          "Vehicle information is missing. Please select a vehicle."
+        );
         setShowVehicleDrawer(true);
         setStep("review");
         return;
@@ -341,12 +422,14 @@ export default function RequestService() {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("id_status")
-        .eq("id", userId)
+        .eq("auth_id", userId)
         .single();
 
       if (profileError) {
-        Alert.alert("Error", "Failed to verify your account status. Please try again.");
-        setSubmitting(false);
+        Alert.alert(
+          "Error",
+          "Failed to verify your account status. Please try again."
+        );
         setStep("review");
         return;
       }
@@ -359,17 +442,13 @@ export default function RequestService() {
             {
               text: "Verify Now",
               onPress: () => {
-                setSubmitting(false);
                 router.push("/(auth)/photo-id");
               },
             },
             {
               text: "Cancel",
               style: "cancel",
-              onPress: () => {
-                setSubmitting(false);
-                setStep("review");
-              },
+              onPress: () => setStep("review"),
             },
           ]
         );
@@ -388,7 +467,6 @@ export default function RequestService() {
           "The selected vehicle no longer exists. Please select another vehicle.",
           [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
         );
-        setSubmitting(false);
         setStep("review");
         return;
       }
@@ -399,7 +477,6 @@ export default function RequestService() {
           "This vehicle does not belong to your account. Please select a valid vehicle.",
           [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
         );
-        setSubmitting(false);
         setStep("review");
         return;
       }
@@ -407,7 +484,6 @@ export default function RequestService() {
       const perm = await Location.requestForegroundPermissionsAsync();
       if (perm.status !== "granted") {
         Alert.alert("Permission needed", "Location permission is needed.");
-        setSubmitting(false);
         setStep("review");
         return;
       }
@@ -425,35 +501,22 @@ export default function RequestService() {
         ownershipVerified: true,
       });
 
-      let intake;
-      try {
-        intake = {
-          symptom: { key: symptomKey, label: symptomData.label },
-          answers,
-          context: {
-            can_move: canMove,
-            location_type: locationType,
-            mileage: mileage || null,
-          },
-          vehicle: {
-            id: selectedVehicle.id,
-            year: selectedVehicle.year,
-            make: selectedVehicle.make,
-            model: selectedVehicle.model,
-            nickname: selectedVehicle.nickname || null,
-          },
-        };
-      } catch (vehicleConstructionError) {
-        console.error("❌ Vehicle object construction failed:", vehicleConstructionError);
-        Alert.alert(
-          "Vehicle Error",
-          "Failed to process vehicle information. Please select your vehicle again.",
-          [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
-        );
-        setSubmitting(false);
-        setStep("review");
-        return;
-      }
+      const intake = {
+        symptom: { key: symptomKey, label: symptomData.label },
+        answers,
+        context: {
+          can_move: canMove,
+          location_type: locationType,
+          mileage: mileage || null,
+        },
+        vehicle: {
+          id: selectedVehicle.id,
+          year: selectedVehicle.year,
+          make: selectedVehicle.make,
+          model: selectedVehicle.model,
+          nickname: selectedVehicle.nickname || null,
+        },
+      };
 
       const jobPayload = {
         customer_id: userId,
@@ -485,15 +548,11 @@ export default function RequestService() {
           savedVehicleId: insertedJob.vehicle_id,
           jobId: insertedJob.id,
         });
+
         Alert.alert(
           "Warning",
           "Job created but vehicle information may not have been saved. Please contact support if needed.",
-          [
-            {
-              text: "OK",
-              onPress: () => router.replace("/(customer)/(tabs)/index" as any),
-            },
-          ]
+          [{ text: "OK", onPress: () => router.replace("/(customer)/(tabs)/index" as any) }]
         );
         return;
       }
@@ -501,10 +560,13 @@ export default function RequestService() {
       setTimeout(() => {
         Alert.alert("Request sent!", "We're notifying nearby mechanics.");
         router.replace("/(customer)/(tabs)/jobs" as any);
-      }, 2000);
+      }, 1200);
     } catch (e: any) {
       console.error("❌ Job Creation Failed:", e);
-      Alert.alert("Error", e?.message ?? "Failed to create request. Please try again.");
+      Alert.alert(
+        "Error",
+        e?.message ?? "Failed to create request. Please try again."
+      );
       setStep("review");
     } finally {
       setSubmitting(false);
@@ -512,9 +574,10 @@ export default function RequestService() {
   };
 
   const renderEducation = () => {
-    const safetyColor = symptomData.education.is_it_safe.toLowerCase().includes("safe")
+    const safeText = (symptomData.education.is_it_safe || "").toLowerCase();
+    const safetyColor = safeText.includes("safe")
       ? "#10b981"
-      : symptomData.education.is_it_safe.toLowerCase().includes("don't")
+      : safeText.includes("don't") || safeText.includes("do not")
       ? "#ef4444"
       : "#f59e0b";
 
@@ -536,11 +599,7 @@ export default function RequestService() {
           />
         )}
 
-        <View style={{ 
-          alignItems: "center", 
-          gap: spacing.md, 
-          marginTop: spacing.sm 
-          }}>
+        <View style={{ alignItems: "center", gap: spacing.md, marginTop: spacing.sm }}>
           <View
             style={{
               width: 88,
@@ -576,7 +635,15 @@ export default function RequestService() {
               }}
             >
               <Text style={{ fontSize: 18 }}>🛟</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: safetyColor, flex: 1, lineHeight: 18 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: safetyColor,
+                  flex: 1,
+                  lineHeight: 18,
+                }}
+              >
                 {symptomData.education.is_it_safe}
               </Text>
             </View>
@@ -593,7 +660,15 @@ export default function RequestService() {
               }}
             >
               <Text style={{ fontSize: 18 }}>🔍</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.accent, flex: 1, lineHeight: 18 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.accent,
+                  flex: 1,
+                  lineHeight: 18,
+                }}
+              >
                 {symptomData.education.what_we_check}
               </Text>
             </View>
@@ -610,7 +685,15 @@ export default function RequestService() {
               }}
             >
               <Text style={{ fontSize: 18 }}>💵</Text>
-              <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textMuted, flex: 1, lineHeight: 18 }}>
+              <Text
+                style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.textMuted,
+                  flex: 1,
+                  lineHeight: 18,
+                }}
+              >
                 {symptomData.education.how_quotes_work}
               </Text>
             </View>
@@ -656,7 +739,7 @@ export default function RequestService() {
           onPress={handleContinueFromEducation}
           style={({ pressed }) => [
             {
-              backgroundColor: colors.accent ,
+              backgroundColor: colors.accent,
               padding: spacing.lg,
               borderRadius: 14,
               opacity: pressed ? 0.85 : 1,
@@ -685,10 +768,7 @@ export default function RequestService() {
   };
 
   const renderQuestions = () => {
-    if (questions.length === 0) {
-      setStep("context");
-      return null;
-    }
+    if (questions.length === 0) return null;
 
     const currentQuestion = questions[currentQuestionIndex];
     const progress = ((currentQuestionIndex + 1) / questions.length) * 100;
@@ -806,15 +886,15 @@ export default function RequestService() {
         gap: spacing.lg,
       }}
     >
-        {hasVehicleParams && selectedVehicle && (
-          <VehicleChip
-            year={selectedVehicle.year.toString()}
-            make={selectedVehicle.make}
-            model={selectedVehicle.model}
-            nickname={selectedVehicle.nickname || undefined}
-            onPress={handleChangeVehicle}
-          />
-        )}
+      {hasVehicleParams && selectedVehicle && (
+        <VehicleChip
+          year={selectedVehicle.year.toString()}
+          make={selectedVehicle.make}
+          model={selectedVehicle.model}
+          nickname={selectedVehicle.nickname || undefined}
+          onPress={handleChangeVehicle}
+        />
+      )}
 
       <View
         style={{
@@ -1038,168 +1118,89 @@ export default function RequestService() {
           <Text style={{ ...textStyles.section, marginBottom: spacing.xs }}>Quick Summary</Text>
           <View style={{ gap: 4 }}>
             <Text style={textStyles.muted}>
-              🚗 Vehicle: {selectedVehicle ? `${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}` : "Not selected"}
+              🚗 Vehicle:{" "}
+              {selectedVehicle
+                ? `${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}`
+                : "Not selected"}
             </Text>
-            <Text style={textStyles.muted}>
-              📍 Location: {locationType || "Not set"}
-            </Text>
-            <Text style={textStyles.muted}>
-              🔧 Issue: {symptomData.label}
-            </Text>
-            <Text style={textStyles.muted}>
-              🚙 Can move: {canMove || "Not set"}
-            </Text>
+            <Text style={textStyles.muted}>📍 Location: {locationType || "Not set"}</Text>
+            <Text style={textStyles.muted}>🔧 Issue: {symptomData.label}</Text>
+            <Text style={textStyles.muted}>🚙 Can move: {canMove || "Not set"}</Text>
           </View>
         </View>
 
         <View style={{ gap: spacing.md }}>
-          <Pressable
-            onPress={() => setSafetyChecks({ ...safetyChecks, vehicleConfirmed: !safetyChecks.vehicleConfirmed })}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                backgroundColor: colors.bg,
-                borderWidth: 2,
-                borderColor: safetyChecks.vehicleConfirmed ? colors.accent : colors.border,
-              },
-            ]}
-          >
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: safetyChecks.vehicleConfirmed ? colors.accent : colors.border,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {safetyChecks.vehicleConfirmed && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>✓</Text>}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...textStyles.body, fontWeight: "800" }}>
-                I confirm this is the correct vehicle
-              </Text>
-              <Text style={{ ...textStyles.muted, fontSize: 12, marginTop: 2 }}>
-                {selectedVehicle ? `${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}` : "No vehicle selected"}
-              </Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setSafetyChecks({ ...safetyChecks, locationAccurate: !safetyChecks.locationAccurate })}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                backgroundColor: colors.bg,
-                borderWidth: 2,
-                borderColor: safetyChecks.locationAccurate ? colors.accent : colors.border,
-              },
-            ]}
-          >
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: safetyChecks.locationAccurate ? colors.accent : colors.border,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {safetyChecks.locationAccurate && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>✓</Text>}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...textStyles.body, fontWeight: "800" }}>
-                My location is accurate
-              </Text>
-              <Text style={{ ...textStyles.muted, fontSize: 12, marginTop: 2 }}>
-                Mechanics will use your location to find you
-              </Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setSafetyChecks({ ...safetyChecks, availableForContact: !safetyChecks.availableForContact })}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                backgroundColor: colors.bg,
-                borderWidth: 2,
-                borderColor: safetyChecks.availableForContact ? colors.accent : colors.border,
-              },
-            ]}
-          >
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: safetyChecks.availableForContact ? colors.accent : colors.border,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {safetyChecks.availableForContact && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>✓</Text>}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...textStyles.body, fontWeight: "800" }}>
-                I&apos;m available to respond to mechanics
-              </Text>
-              <Text style={{ ...textStyles.muted, fontSize: 12, marginTop: 2 }}>
-                Check your messages for quotes and questions
-              </Text>
-            </View>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setSafetyChecks({ ...safetyChecks, understandsProcess: !safetyChecks.understandsProcess })}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                backgroundColor: colors.bg,
-                borderWidth: 2,
-                borderColor: safetyChecks.understandsProcess ? colors.accent : colors.border,
-              },
-            ]}
-          >
-            <View
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 14,
-                backgroundColor: safetyChecks.understandsProcess ? colors.accent : colors.border,
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              {safetyChecks.understandsProcess && <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>✓</Text>}
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...textStyles.body, fontWeight: "800" }}>
-                I understand the quote process
-              </Text>
-              <Text style={{ ...textStyles.muted, fontSize: 12, marginTop: 2 }}>
-                No payment until you accept a quote
-              </Text>
-            </View>
-          </Pressable>
+          {[
+            {
+              key: "vehicleConfirmed" as const,
+              title: "I confirm this is the correct vehicle",
+              subtitle: selectedVehicle
+                ? `${selectedVehicle.year} ${selectedVehicle.make} ${selectedVehicle.model}`
+                : "No vehicle selected",
+            },
+            {
+              key: "locationAccurate" as const,
+              title: "My location is accurate",
+              subtitle: "Mechanics will use your location to find you",
+            },
+            {
+              key: "availableForContact" as const,
+              title: "I&apos;m available to respond to mechanics",
+              subtitle: "Check your messages for quotes and questions",
+            },
+            {
+              key: "understandsProcess" as const,
+              title: "I understand the quote process",
+              subtitle: "No payment until you accept a quote",
+            },
+          ].map((item) => {
+            const checked = safetyChecks[item.key];
+            return (
+              <Pressable
+                key={item.key}
+                onPress={() =>
+                  setSafetyChecks((prev) => ({ ...prev, [item.key]: !prev[item.key] }))
+                }
+                style={[
+                  card,
+                  {
+                    padding: spacing.md,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.md,
+                    backgroundColor: colors.bg,
+                    borderWidth: 2,
+                    borderColor: checked ? colors.accent : colors.border,
+                  },
+                ]}
+              >
+                <View
+                  style={{
+                    width: 28,
+                    height: 28,
+                    borderRadius: 14,
+                    backgroundColor: checked ? colors.accent : colors.border,
+                    justifyContent: "center",
+                    alignItems: "center",
+                  }}
+                >
+                  {checked && (
+                    <Text style={{ color: "#fff", fontSize: 16, fontWeight: "900" }}>
+                      ✓
+                    </Text>
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...textStyles.body, fontWeight: "800" }}>
+                    {item.title as any}
+                  </Text>
+                  <Text style={{ ...textStyles.muted, fontSize: 12, marginTop: 2 }}>
+                    {item.subtitle}
+                  </Text>
+                </View>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View
@@ -1211,8 +1212,14 @@ export default function RequestService() {
             borderColor: colors.accent + "30",
           }}
         >
-          <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary, textAlign: "center" }}>
-
+          <Text
+            style={{
+              fontSize: 13,
+              fontWeight: "700",
+              color: colors.textPrimary,
+              textAlign: "center",
+            }}
+          >
             💡 Mechanics typically respond within 1-2 hours
           </Text>
         </View>
@@ -1264,6 +1271,7 @@ export default function RequestService() {
         error={vehicleLoadError}
         onRetry={loadVehicles}
       />
+
       <ScrollView
         contentContainerStyle={{
           padding: spacing.lg,
@@ -1369,14 +1377,16 @@ export default function RequestService() {
           {Object.keys(answers).length > 0 && (
             <View>
               <Text style={textStyles.muted}>Your answers</Text>
-              {Object.entries(answers).map(([qId, answer]) => {
-                const q = symptomData.questions.find((q) => q.id === qId);
+              {Object.entries(answers).map(([qKey, answer]) => {
+                const q = questions.find((qq) => qq.question_key === qKey);
                 return (
-                  <View key={qId} style={{ marginTop: spacing.xs }}>
+                  <View key={qKey} style={{ marginTop: spacing.xs }}>
                     <Text style={{ fontSize: 12, color: colors.textMuted }}>
-                      {q?.question}
+                      {q?.question_label ?? "Question"}
                     </Text>
-                    <Text style={{ ...textStyles.body, marginTop: 2 }}>{answer}</Text>
+                    <Text style={{ ...textStyles.body, marginTop: 2 }}>
+                      {Array.isArray(answer) ? answer.join(", ") : answer}
+                    </Text>
                   </View>
                 );
               })}
@@ -1401,7 +1411,7 @@ export default function RequestService() {
               borderColor: colors.accent,
             }}
           >
-            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary}}> 
+            <Text style={{ fontSize: 13, fontWeight: "700", color: colors.textPrimary }}>
               {symptomData.education.how_quotes_work}
             </Text>
           </View>
@@ -1449,7 +1459,11 @@ export default function RequestService() {
               letterSpacing: 0.3,
             }}
           >
-            {submitting ? "Submitting..." : !selectedVehicleId ? "Select Vehicle to Continue" : "🔵 Request Mechanics"}
+            {submitting
+              ? "Submitting..."
+              : !selectedVehicleId
+              ? "Select Vehicle to Continue"
+              : "🔵 Request Mechanics"}
           </Text>
         </Pressable>
       </ScrollView>
@@ -1536,7 +1550,7 @@ export default function RequestService() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg, gap: spacing.md }}>   
+    <View style={{ flex: 1, backgroundColor: colors.bg, gap: spacing.md }}>
       <Stack.Screen
         options={{
           title: getHeaderTitle(),
@@ -1548,19 +1562,24 @@ export default function RequestService() {
             fontSize: 17,
           },
           headerShadowVisible: false,
-          headerLeft: step !== "searching" ? () => (
-            <Pressable
-              onPress={handleBack}
-              style={({ pressed }) => ({
-                padding: 8,
-                marginLeft: -5,
-                marginRight: 15,
-                opacity: pressed ? 0.5 : 1,
-              })}
-            >
-              <Text style={{ fontSize: 20, color: colors.accent, lineHeight: 20 }}>Back</Text>
-            </Pressable>
-          ) : undefined,
+          headerLeft:
+            step !== "searching"
+              ? () => (
+                  <Pressable
+                    onPress={handleBack}
+                    style={({ pressed }) => ({
+                      padding: 8,
+                      marginLeft: -5,
+                      marginRight: 15,
+                      opacity: pressed ? 0.5 : 1,
+                    })}
+                  >
+                    <Text style={{ fontSize: 20, color: colors.accent, lineHeight: 20 }}>
+                      Back
+                    </Text>
+                  </Pressable>
+                )
+              : undefined,
           gestureEnabled: step !== "searching",
         }}
       />

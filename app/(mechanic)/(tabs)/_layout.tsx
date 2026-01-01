@@ -30,7 +30,8 @@ export default function MechanicTabsLayout() {
       const userId = userData.user?.id;
       if (!userId) return;
 
-      const { data, error } = await supabase.from("profiles").select("photo_url").eq("id", userId).single();
+      const { data, error } = await supabase.from("profiles").select("avatar_url").eq("auth_id", userId)
+.single();
       if (!error) setPhotoUrl(data?.photo_url ?? null);
     } catch {
       // silent fallback

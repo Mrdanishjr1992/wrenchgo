@@ -67,7 +67,8 @@ serve(async (req) => {
         id_rejected_reason: rejectionReason,
         id_verified_by: "auto-ai",
       })
-      .eq("id", userId);
+      .eq("auth_id", userId)
+;
 
     if (updateError) throw updateError;
 

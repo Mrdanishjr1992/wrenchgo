@@ -1,4 +1,4 @@
-{
+﻿{
   "symptom_mappings": [
     {
       "symptom_key": "trans_no_reverse",
@@ -10,7 +10,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "Loss of reverse can be caused by low fluid, a failed solenoid, or internal clutch damage. We'll need to inspect fluid level, scan for codes, and test hydraulic pressure.",
-      "mechanic_notes": "• Check fluid level and condition first\n• Scan for P0708-P0709 (range sensor) or solenoid codes\n• Test reverse clutch pressure if accessible\n• Manual: check linkage and synchro"
+      "mechanic_notes": "â€¢ Check fluid level and condition first\nâ€¢ Scan for P0708-P0709 (range sensor) or solenoid codes\nâ€¢ Test reverse clutch pressure if accessible\nâ€¢ Manual: check linkage and synchro"
     },
     {
       "symptom_key": "trans_no_drive",
@@ -22,7 +22,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "When the car won't move forward, it's often low fluid, a failed pump, or internal damage. Diagnosis includes fluid check, code scan, and pressure testing.",
-      "mechanic_notes": "• Verify park pawl isn't stuck\n• Check fluid level and pump operation\n• Scan for P0700 series codes\n• Listen for pump whine or grinding"
+      "mechanic_notes": "â€¢ Verify park pawl isn't stuck\nâ€¢ Check fluid level and pump operation\nâ€¢ Scan for P0700 series codes\nâ€¢ Listen for pump whine or grinding"
     },
     {
       "symptom_key": "trans_delayed_engagement",
@@ -34,7 +34,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "A delay when shifting into drive or reverse can indicate low fluid, worn clutches, or valve body issues. We'll check fluid condition and scan for transmission codes.",
-      "mechanic_notes": "• Note delay duration (1-2 sec vs 3+ sec)\n• Check fluid level and color\n• Scan for solenoid or pressure codes\n• May need fluid exchange or valve body service"
+      "mechanic_notes": "â€¢ Note delay duration (1-2 sec vs 3+ sec)\nâ€¢ Check fluid level and color\nâ€¢ Scan for solenoid or pressure codes\nâ€¢ May need fluid exchange or valve body service"
     },
     {
       "symptom_key": "trans_harsh_shift",
@@ -46,7 +46,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Harsh shifts can be caused by low fluid, a faulty solenoid, or software issues. Diagnosis includes fluid check, code scan, and test drive.",
-      "mechanic_notes": "• Note which shifts are harsh (1-2, 2-3, etc.)\n• Check for adaptive learning reset needs\n• Scan for shift solenoid codes\n• Verify throttle position sensor data"
+      "mechanic_notes": "â€¢ Note which shifts are harsh (1-2, 2-3, etc.)\nâ€¢ Check for adaptive learning reset needs\nâ€¢ Scan for shift solenoid codes\nâ€¢ Verify throttle position sensor data"
     },
     {
       "symptom_key": "trans_slipping",
@@ -58,7 +58,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "Slipping means the transmission isn't holding gear properly. This can be low fluid, worn clutches, or internal damage. We'll check fluid and scan for codes to assess severity.",
-      "mechanic_notes": "• Note which gear(s) slip\n• Check fluid level and burn smell\n• Scan for P0730-P0734 (gear ratio codes)\n• Slipping under load = internal wear"
+      "mechanic_notes": "â€¢ Note which gear(s) slip\nâ€¢ Check fluid level and burn smell\nâ€¢ Scan for P0730-P0734 (gear ratio codes)\nâ€¢ Slipping under load = internal wear"
     },
     {
       "symptom_key": "trans_limp_mode",
@@ -70,7 +70,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Limp mode locks the transmission in one gear to prevent damage. It's triggered by sensor faults, solenoid issues, or low fluid. We'll scan codes to find the root cause.",
-      "mechanic_notes": "• Scan for P0700, P0868 (pressure), solenoid codes\n• Check fluid level and condition\n• Verify wiring harness and connectors\n• May need solenoid replacement or TCM reflash"
+      "mechanic_notes": "â€¢ Scan for P0700, P0868 (pressure), solenoid codes\nâ€¢ Check fluid level and condition\nâ€¢ Verify wiring harness and connectors\nâ€¢ May need solenoid replacement or TCM reflash"
     },
     {
       "symptom_key": "trans_whining_noise",
@@ -82,7 +82,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "A whining noise can indicate low fluid, a failing pump, or bearing wear. We'll check fluid level and listen to pinpoint the source.",
-      "mechanic_notes": "• Note if whine changes with RPM or speed\n• Check fluid level first\n• Pump whine = low fluid or pump failure\n• Bearing whine = internal damage"
+      "mechanic_notes": "â€¢ Note if whine changes with RPM or speed\nâ€¢ Check fluid level first\nâ€¢ Pump whine = low fluid or pump failure\nâ€¢ Bearing whine = internal damage"
     },
     {
       "symptom_key": "trans_grinding_noise",
@@ -94,7 +94,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "Grinding or clunking suggests internal damage, worn gears, or a failing torque converter. We'll inspect and listen to determine if repair or replacement is needed.",
-      "mechanic_notes": "• Manual: check clutch and synchros\n• Auto: check torque converter and flex plate\n• Note when noise occurs (shifting, coasting, etc.)\n• May need transmission removal"
+      "mechanic_notes": "â€¢ Manual: check clutch and synchros\nâ€¢ Auto: check torque converter and flex plate\nâ€¢ Note when noise occurs (shifting, coasting, etc.)\nâ€¢ May need transmission removal"
     },
     {
       "symptom_key": "trans_fluid_leak",
@@ -106,7 +106,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "medium",
       "customer_explainer": "Transmission leaks can come from seals, gaskets, or cooler lines. We'll locate the leak source and provide a repair estimate.",
-      "mechanic_notes": "• Check pan gasket, axle seals, cooler lines\n• Use UV dye if leak is slow\n• Note fluid color and smell\n• Top off fluid after repair"
+      "mechanic_notes": "â€¢ Check pan gasket, axle seals, cooler lines\nâ€¢ Use UV dye if leak is slow\nâ€¢ Note fluid color and smell\nâ€¢ Top off fluid after repair"
     },
     {
       "symptom_key": "trans_overheating",
@@ -118,7 +118,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "high",
       "customer_explainer": "Overheating can damage the transmission quickly. Causes include low fluid, a clogged cooler, or excessive load. We'll check fluid, cooler flow, and scan for codes.",
-      "mechanic_notes": "• Scan for temp sensor codes\n• Check fluid level and condition\n• Inspect cooler lines and radiator trans cooler\n• Towing or heavy load history?"
+      "mechanic_notes": "â€¢ Scan for temp sensor codes\nâ€¢ Check fluid level and condition\nâ€¢ Inspect cooler lines and radiator trans cooler\nâ€¢ Towing or heavy load history?"
     },
     {
       "symptom_key": "trans_shudder_acceleration",
@@ -130,7 +130,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Shuddering during acceleration often points to torque converter lockup issues or worn clutches. We'll test drive and scan for codes to identify the cause.",
-      "mechanic_notes": "• Common in CVTs and torque converter lockup\n• Check for TSBs on shudder\n• Scan for P0741 (TCC stuck off)\n• Fluid exchange may help if caught early"
+      "mechanic_notes": "â€¢ Common in CVTs and torque converter lockup\nâ€¢ Check for TSBs on shudder\nâ€¢ Scan for P0741 (TCC stuck off)\nâ€¢ Fluid exchange may help if caught early"
     },
     {
       "symptom_key": "trans_wont_shift_out_park",
@@ -142,7 +142,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "low",
       "customer_explainer": "If the shifter is stuck in park, it's usually the brake light switch, shift interlock solenoid, or a fuse. We'll test the brake switch and interlock system.",
-      "mechanic_notes": "• Test brake light switch first\n• Check shift interlock solenoid\n• Verify brake lights work\n• Check fuses and wiring"
+      "mechanic_notes": "â€¢ Test brake light switch first\nâ€¢ Check shift interlock solenoid\nâ€¢ Verify brake lights work\nâ€¢ Check fuses and wiring"
     },
     {
       "symptom_key": "trans_stuck_in_gear",
@@ -154,7 +154,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Being stuck in one gear can be a sensor fault, solenoid failure, or mechanical issue. We'll scan for codes and test the shift system.",
-      "mechanic_notes": "• Scan for range sensor, solenoid codes\n• Check manual linkage if applicable\n• Verify TCM communication\n• May be limp mode or mechanical failure"
+      "mechanic_notes": "â€¢ Scan for range sensor, solenoid codes\nâ€¢ Check manual linkage if applicable\nâ€¢ Verify TCM communication\nâ€¢ May be limp mode or mechanical failure"
     },
     {
       "symptom_key": "trans_erratic_shifting",
@@ -166,7 +166,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Random or erratic shifts can be caused by sensor issues, solenoid faults, or software glitches. We'll scan codes and test drive to diagnose.",
-      "mechanic_notes": "• Scan for speed sensor, TPS, solenoid codes\n• Check for software updates or TSBs\n• Verify wiring and connectors\n• May need adaptive reset"
+      "mechanic_notes": "â€¢ Scan for speed sensor, TPS, solenoid codes\nâ€¢ Check for software updates or TSBs\nâ€¢ Verify wiring and connectors\nâ€¢ May need adaptive reset"
     },
     {
       "symptom_key": "trans_clunk_into_gear",
@@ -178,7 +178,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "A clunk when shifting can be worn motor mounts, U-joints, or internal transmission wear. We'll inspect mounts and drivetrain components.",
-      "mechanic_notes": "• Check engine and trans mounts first\n• Inspect U-joints and CV axles\n• Note if clunk is worse when cold\n• May be normal for some vehicles"
+      "mechanic_notes": "â€¢ Check engine and trans mounts first\nâ€¢ Inspect U-joints and CV axles\nâ€¢ Note if clunk is worse when cold\nâ€¢ May be normal for some vehicles"
     },
     {
       "symptom_key": "trans_burning_smell",
@@ -190,7 +190,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "A burning smell indicates overheated or contaminated fluid, or internal clutch damage. We'll check fluid condition and scan for overheating codes.",
-      "mechanic_notes": "• Check fluid color and smell immediately\n• Burnt fluid = internal damage likely\n• Scan for temp and pressure codes\n• May need fluid flush or rebuild"
+      "mechanic_notes": "â€¢ Check fluid color and smell immediately\nâ€¢ Burnt fluid = internal damage likely\nâ€¢ Scan for temp and pressure codes\nâ€¢ May need fluid flush or rebuild"
     },
     {
       "symptom_key": "trans_check_engine_light",
@@ -202,7 +202,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Transmission-related check engine lights can indicate sensor faults, solenoid issues, or gear ratio problems. We'll scan codes to identify the specific issue.",
-      "mechanic_notes": "• Scan for P0700-P0799 (transmission codes)\n• Note pending vs confirmed codes\n• Check freeze frame data\n• May need test drive to replicate"
+      "mechanic_notes": "â€¢ Scan for P0700-P0799 (transmission codes)\nâ€¢ Note pending vs confirmed codes\nâ€¢ Check freeze frame data\nâ€¢ May need test drive to replicate"
     },
     {
       "symptom_key": "trans_cvt_judder",
@@ -214,7 +214,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "CVT judder is common and can be caused by worn belts, contaminated fluid, or software issues. We'll check fluid and scan for CVT-specific codes.",
-      "mechanic_notes": "• Check for CVT fluid TSBs and updates\n• Scan for belt slip codes\n• CVT fluid is specific - don't mix types\n• May need fluid exchange or software update"
+      "mechanic_notes": "â€¢ Check for CVT fluid TSBs and updates\nâ€¢ Scan for belt slip codes\nâ€¢ CVT fluid is specific - don't mix types\nâ€¢ May need fluid exchange or software update"
     },
     {
       "symptom_key": "trans_manual_hard_shift",
@@ -226,7 +226,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Hard shifting in a manual can be clutch, linkage, or synchro issues. We'll test the clutch and inspect the linkage.",
-      "mechanic_notes": "• Check clutch pedal free play\n• Inspect shift linkage and bushings\n• Test clutch hydraulics if applicable\n• Note which gears are hard to engage"
+      "mechanic_notes": "â€¢ Check clutch pedal free play\nâ€¢ Inspect shift linkage and bushings\nâ€¢ Test clutch hydraulics if applicable\nâ€¢ Note which gears are hard to engage"
     },
     {
       "symptom_key": "trans_manual_grinding",
@@ -238,7 +238,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "Grinding during shifts indicates worn synchros, clutch issues, or damaged gears. We'll test the clutch and assess internal damage.",
-      "mechanic_notes": "• Note which gears grind\n• Check clutch adjustment and hydraulics\n• Grinding into reverse = synchro or clutch\n• May need transmission rebuild"
+      "mechanic_notes": "â€¢ Note which gears grind\nâ€¢ Check clutch adjustment and hydraulics\nâ€¢ Grinding into reverse = synchro or clutch\nâ€¢ May need transmission rebuild"
     },
     {
       "symptom_key": "trans_manual_clutch_slip",
@@ -250,7 +250,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "medium",
       "customer_explainer": "Clutch slipping means it's not fully engaging. This is usually a worn clutch disc or pressure plate. We'll test and provide a replacement estimate.",
-      "mechanic_notes": "• Test clutch engagement point\n• Check for oil contamination on disc\n• Inspect flywheel for hot spots\n• Replace clutch kit as assembly"
+      "mechanic_notes": "â€¢ Test clutch engagement point\nâ€¢ Check for oil contamination on disc\nâ€¢ Inspect flywheel for hot spots\nâ€¢ Replace clutch kit as assembly"
     },
     {
       "symptom_key": "trans_manual_clutch_chatter",
@@ -262,7 +262,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Clutch chatter can be caused by oil contamination, worn mounts, or a damaged pressure plate. We'll inspect the clutch and mounts.",
-      "mechanic_notes": "• Check engine and trans mounts\n• Inspect for oil leaks onto clutch\n• Test clutch engagement smoothness\n• May need clutch replacement or mount repair"
+      "mechanic_notes": "â€¢ Check engine and trans mounts\nâ€¢ Inspect for oil leaks onto clutch\nâ€¢ Test clutch engagement smoothness\nâ€¢ May need clutch replacement or mount repair"
     },
     {
       "symptom_key": "trans_torque_converter_shudder",
@@ -274,7 +274,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Torque converter shudder feels like driving over rumble strips at low speeds. It's often caused by worn lockup clutch or contaminated fluid. We'll test drive and check fluid.",
-      "mechanic_notes": "• Common at 30-45 mph light throttle\n• Check for TSBs on shudder fix\n• Scan for P0741 (TCC)\n• Fluid exchange may resolve if caught early"
+      "mechanic_notes": "â€¢ Common at 30-45 mph light throttle\nâ€¢ Check for TSBs on shudder fix\nâ€¢ Scan for P0741 (TCC)\nâ€¢ Fluid exchange may resolve if caught early"
     },
     {
       "symptom_key": "trans_no_kickdown",
@@ -286,7 +286,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "low",
       "customer_explainer": "If the transmission won't downshift for passing, it could be a throttle sensor, kickdown cable, or software issue. We'll scan codes and test the throttle system.",
-      "mechanic_notes": "• Check throttle position sensor data\n• Verify kickdown cable adjustment (older vehicles)\n• Scan for TPS or shift logic codes\n• May need adaptive reset or software update"
+      "mechanic_notes": "â€¢ Check throttle position sensor data\nâ€¢ Verify kickdown cable adjustment (older vehicles)\nâ€¢ Scan for TPS or shift logic codes\nâ€¢ May need adaptive reset or software update"
     },
     {
       "symptom_key": "trans_shift_flare",
@@ -298,7 +298,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Shift flare is when RPMs spike briefly between shifts. This indicates slipping clutches or low line pressure. We'll check fluid and scan for codes.",
-      "mechanic_notes": "• Note which shifts flare (1-2, 2-3, etc.)\n• Check fluid level and condition\n• Scan for pressure and solenoid codes\n• Early sign of internal wear"
+      "mechanic_notes": "â€¢ Note which shifts flare (1-2, 2-3, etc.)\nâ€¢ Check fluid level and condition\nâ€¢ Scan for pressure and solenoid codes\nâ€¢ Early sign of internal wear"
     },
     {
       "symptom_key": "trans_neutral_drop_out",
@@ -310,7 +310,7 @@
       "quote_strategy": "inspection_required",
       "risk_level": "high",
       "customer_explainer": "If the transmission randomly drops into neutral, it's a serious safety issue. Causes include sensor faults, solenoid failures, or internal damage. Immediate diagnosis required.",
-      "mechanic_notes": "• Scan for range sensor, solenoid codes\n• Check wiring harness and connectors\n• Verify TCM communication\n• Safety concern - prioritize diagnosis"
+      "mechanic_notes": "â€¢ Scan for range sensor, solenoid codes\nâ€¢ Check wiring harness and connectors\nâ€¢ Verify TCM communication\nâ€¢ Safety concern - prioritize diagnosis"
     },
     {
       "symptom_key": "trans_reverse_clunk",
@@ -322,7 +322,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "low",
       "customer_explainer": "A clunk into reverse can be normal for some vehicles, or indicate worn mounts or internal wear. We'll inspect mounts and test the transmission.",
-      "mechanic_notes": "• Check engine and trans mounts\n• Note if clunk is worse when cold\n• Some clunk is normal on certain models\n• Inspect U-joints and drivetrain"
+      "mechanic_notes": "â€¢ Check engine and trans mounts\nâ€¢ Note if clunk is worse when cold\nâ€¢ Some clunk is normal on certain models\nâ€¢ Inspect U-joints and drivetrain"
     },
     {
       "symptom_key": "trans_gear_hunting",
@@ -334,7 +334,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Gear hunting means the transmission can't decide which gear to use. This can be sensor issues, software problems, or torque converter faults. We'll scan codes and test drive.",
-      "mechanic_notes": "• Scan for speed sensor, TPS codes\n• Check for software updates\n• Verify torque converter lockup operation\n• May need adaptive reset"
+      "mechanic_notes": "â€¢ Scan for speed sensor, TPS codes\nâ€¢ Check for software updates\nâ€¢ Verify torque converter lockup operation\nâ€¢ May need adaptive reset"
     },
     {
       "symptom_key": "trans_cold_shift_issues",
@@ -346,7 +346,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "low",
       "customer_explainer": "Cold shift issues can be normal or indicate thick/contaminated fluid or worn components. We'll check fluid condition and test when cold.",
-      "mechanic_notes": "• Check fluid type and condition\n• Some cold shift delay is normal\n• Scan for temp sensor codes\n• May need fluid exchange"
+      "mechanic_notes": "â€¢ Check fluid type and condition\nâ€¢ Some cold shift delay is normal\nâ€¢ Scan for temp sensor codes\nâ€¢ May need fluid exchange"
     },
     {
       "symptom_key": "trans_hot_shift_issues",
@@ -358,7 +358,7 @@
       "quote_strategy": "diagnostic_only",
       "risk_level": "medium",
       "customer_explainer": "Problems that appear when hot suggest overheating, worn seals, or internal wear. We'll check fluid, cooling system, and scan for temp codes.",
-      "mechanic_notes": "• Check trans cooler and lines\n• Scan for temp sensor codes\n• Inspect fluid level and condition\n• Hot issues = internal wear likely"
+      "mechanic_notes": "â€¢ Check trans cooler and lines\nâ€¢ Scan for temp sensor codes\nâ€¢ Inspect fluid level and condition\nâ€¢ Hot issues = internal wear likely"
     },
     {
       "symptom_key": "elec_alternator_not_charging",
@@ -1295,7 +1295,7 @@
       "risk_level": "low",
       "customer_explainer": "A saturated or damaged charcoal canister causes EVAP codes and fuel smell. We'll diagnose and replace the canister.",
       "mechanic_notes": "Scan for EVAP codes. Check for fuel smell. Inspect canister for damage or saturation. Replace canister and check purge valve."
-    }
+    },
   ],
 
   "symptom_questions": [
@@ -3857,4 +3857,5 @@
     }
   ]
 }
+
 

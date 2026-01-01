@@ -25,7 +25,7 @@ BEGIN
   SELECT jsonb_build_object(
     'id', p.id,
     'display_name', COALESCE(p.display_name, p.full_name),
-    'photo_url', p.photo_url,
+    'photo_url', p.avatar_url,
     'city', p.city,
     'service_area', p.service_area,
     'bio', p.bio,
@@ -142,22 +142,18 @@ GRANT EXECUTE ON FUNCTION get_public_profile_card(uuid) TO authenticated;
 COMMENT ON FUNCTION get_public_profile_card(uuid) IS 
 'Returns public profile card data for display in quotes flow. Only safe, public fields are returned.';
 
--- Create index on profiles for faster lookups (without role column if it doesn't exist yet)
+-- Indexes for user_badges (safe: no NOW() in partial index predicate)
 DO $$
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema = 'public'
-      AND table_name = 'profiles'
-      AND column_name = 'role'
-  ) THEN
-    CREATE INDEX IF NOT EXISTS idx_profiles_public_card
-    ON profiles(id, role, deleted_at)
-    WHERE deleted_at IS NULL;
-  ELSE
-    CREATE INDEX IF NOT EXISTS idx_profiles_public_card
-    ON profiles(id, deleted_at)
-    WHERE deleted_at IS NULL;
+  IF to_regclass('public.user_badges') IS NOT NULL THEN
+    DROP INDEX IF EXISTS public.idx_user_badges_active;
+
+    CREATE INDEX IF NOT EXISTS idx_user_badges_active
+      ON public.user_badges(user_id, awarded_at)
+      WHERE expires_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_user_badges_expires_at
+      ON public.user_badges(user_id, expires_at);
   END IF;
 END $$;
 

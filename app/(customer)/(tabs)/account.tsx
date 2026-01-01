@@ -23,6 +23,7 @@ import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 import { uploadIDPhoto, deleteIDPhoto, getIDPhotoUrl } from "../../../src/lib/verification";
+import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 type ProfileRow = {
   id: string;
@@ -88,7 +89,8 @@ export default function Account() {
       const { data, error: pErr } = await supabase
         .from("profiles")
         .select("id,full_name,phone,photo_url,role,id_photo_path,id_status,id_rejected_reason,home_latitude,home_longitude")
-        .eq("id", userId)
+        .eq("auth_id", userId)
+
         .single();
 
       if (pErr) throw pErr;
@@ -161,8 +163,9 @@ export default function Account() {
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       await supabase
         .from("profiles")
-        .update({ photo_url: `${pub.publicUrl}?t=${Date.now()}` })
-        .eq("id", userId);
+        .update({ avatar_url:  `${pub.publicUrl}?t=${Date.now()}` })
+        .eq("auth_id", userId)
+;
 
       Alert.alert("Success", "Profile photo updated.");
       load();
@@ -203,7 +206,8 @@ export default function Account() {
           home_latitude: lat,
           home_longitude: lng,
         })
-        .eq("id", userId);
+        .eq("auth_id", userId)
+;
 
       Alert.alert("Saved", "Profile updated successfully.");
       setEditing(false);
@@ -231,7 +235,9 @@ const signOut = useCallback(async () => {
   } finally {
     setBusy(false);
     // Replace so user can't go "back" into authed screens
-    router.replace("/(auth)/sign-in");
+try { await GoogleSignin.signOut(); } catch {}
+router.replace("/(auth)/sign-in");
+
   }
 }, [router]);
 

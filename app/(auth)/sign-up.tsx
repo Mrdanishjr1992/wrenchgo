@@ -44,57 +44,45 @@ export default function SignUp() {
   }, [loading, nameClean, emailClean, password]);
 
   const handleSignUp = async () => {
-    try {
-      if (!nameClean || !emailClean || !password) {
-        Alert.alert("Missing info", "Fill out all fields.");
-        return;
-      }
-      if (!isEmail(emailClean)) {
-        Alert.alert("Invalid email", "Enter a valid email address.");
-        return;
-      }
-      if (password.length < 6) {
-        Alert.alert("Weak password", "Password must be at least 6 characters.");
-        return;
-      }
-
-      setLoading(true);
-
-      const { data, error } = await supabase.auth.signUp({
-        email: emailClean,
-        password,
-        options: {
-          data: {
-            full_name: nameClean,
-            role: role,
-          },
-        },
-      });
-      if (error) throw error;
-
-      const userId = data.user?.id;
-      if (!userId) throw new Error("User not created");
-
-      const { data: profile, error: rpcError } = await supabase.rpc("ensure_profile_consistency", {
-        role_hint: role,
-        full_name: nameClean,
-        phone: null,
-        photo_url: null,
-      });
-
-      if (rpcError) {
-        console.error("Profile consistency error:", rpcError);
-        throw new Error("Database error granting user");
-      }
-
-      Alert.alert("Account created", "You can now sign in.");
-      router.replace("/(auth)/sign-in");
-    } catch (e: any) {
-      Alert.alert("Sign up failed", e?.message ?? "Unknown error");
-    } finally {
-      setLoading(false);
+  try {
+    if (!nameClean || !emailClean || !password) {
+      Alert.alert("Missing info", "Fill out all fields.");
+      return;
     }
-  };
+    if (!isEmail(emailClean)) {
+      Alert.alert("Invalid email", "Enter a valid email address.");
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert("Weak password", "Password must be at least 6 characters.");
+      return;
+    }
+
+    setLoading(true);
+
+    const { data, error } = await supabase.auth.signUp({
+      email: emailClean,
+      password,
+      options: {
+        data: {
+          full_name: nameClean,
+          role: role,
+        },
+      },
+    });
+
+    if (error) throw error;
+
+    // In many setups user may need email confirmation; still send them to sign-in
+    Alert.alert("Account created", "You can now sign in.");
+    router.replace("/(auth)/sign-in");
+  } catch (e: any) {
+    Alert.alert("Sign up failed", e?.message ?? "Unknown error");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   const RolePill = ({ r }: { r: Role }) => {
     const active = role === r;
