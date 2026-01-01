@@ -255,11 +255,12 @@ export default function RequestService() {
     }
   }, [vehicles, step, selectedVehicleId]);
 
-  useEffect(() => {
-    if (step === "review" && !selectedVehicleId && vehicles.length !== 1) {
-      setShowVehicleDrawer(true);
-    }
-  }, [step, selectedVehicleId, vehicles.length]);
+useEffect(() => {
+  if (step === "review" && !loadingVehicles && !selectedVehicleId && vehicles.length !== 1) {
+    setShowVehicleDrawer(true);
+  }
+}, [step, loadingVehicles, selectedVehicleId, vehicles.length]);
+
 
   const handleChangeVehicle = () => setShowVehicleDrawer(true);
 
@@ -359,219 +360,185 @@ export default function RequestService() {
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-      setSubmitting(true);
+const handleSubmit = async () => {
+  try {
+    setSubmitting(true);
 
-      if (!symptomData || !symptomData.label) {
-        Alert.alert("Missing Information", "Please select a symptom to continue.");
-        setStep("education");
-        return;
-      }
+    // ----- Basic validation -----
+    if (!symptomData || !symptomData.label) {
+      Alert.alert("Missing Information", "Please select a symptom to continue.");
+      setStep("education");
+      return;
+    }
 
-      if (!canMove || !locationType) {
-        Alert.alert(
-          "Missing Information",
-          "Please provide context about your vehicle's condition and location."
-        );
-        setStep("context");
-        return;
-      }
-
-      const allSafetyChecked = Object.values(safetyChecks).every((v) => v === true);
-      if (!allSafetyChecked) {
-        Alert.alert(
-          "Safety Checklist",
-          "Please complete all safety checks before submitting."
-        );
-        setStep("safety_measures");
-        return;
-      }
-
-      if (!selectedVehicleId || !isValidUUID(selectedVehicleId)) {
-        Alert.alert(
-          "Vehicle Required",
-          "Please select a valid vehicle before submitting your request."
-        );
-        setShowVehicleDrawer(true);
-        setStep("review");
-        return;
-      }
-
-      if (!selectedVehicle) {
-        Alert.alert(
-          "Vehicle Required",
-          "Vehicle information is missing. Please select a vehicle."
-        );
-        setShowVehicleDrawer(true);
-        setStep("review");
-        return;
-      }
-
-      setStep("searching");
-
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
-      if (!userId) {
-        Alert.alert("Not signed in", "Please sign in again.");
-        router.replace("/(auth)/sign-in");
-        return;
-      }
-
-      // Check ID verification status
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("id_status")
-        .eq("auth_id", userId)
-        .single();
-
-      if (profileError) {
-        Alert.alert(
-          "Error",
-          "Failed to verify your account status. Please try again."
-        );
-        setStep("review");
-        return;
-      }
-
-      if (profileData.id_status !== "verified") {
-        Alert.alert(
-          "ID Verification Required",
-          "You need to verify your photo ID before requesting a mechanic. This helps ensure safety and trust for all users.",
-          [
-            {
-              text: "Verify Now",
-              onPress: () => {
-                router.push("/(auth)/photo-id");
-              },
-            },
-            {
-              text: "Cancel",
-              style: "cancel",
-              onPress: () => setStep("review"),
-            },
-          ]
-        );
-        return;
-      }
-
-      const { data: vehicleCheck, error: vehicleError } = await supabase
-        .from("vehicles")
-        .select("id, customer_id")
-        .eq("id", selectedVehicleId)
-        .single();
-
-      if (vehicleError || !vehicleCheck) {
-        Alert.alert(
-          "Vehicle Not Found",
-          "The selected vehicle no longer exists. Please select another vehicle.",
-          [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
-        );
-        setStep("review");
-        return;
-      }
-
-      if (vehicleCheck.customer_id !== userId) {
-        Alert.alert(
-          "Invalid Vehicle",
-          "This vehicle does not belong to your account. Please select a valid vehicle.",
-          [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
-        );
-        setStep("review");
-        return;
-      }
-
-      const perm = await Location.requestForegroundPermissionsAsync();
-      if (perm.status !== "granted") {
-        Alert.alert("Permission needed", "Location permission is needed.");
-        setStep("review");
-        return;
-      }
-
-      const pos = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const wkt = `POINT(${pos.coords.longitude} ${pos.coords.latitude})`;
-
-      console.log("🚗 Vehicle Debug:", {
-        selectedVehicleId,
-        selectedVehicle,
-        isValidUUID: isValidUUID(selectedVehicleId),
-        ownershipVerified: true,
-      });
-
-      const intake = {
-        symptom: { key: symptomKey, label: symptomData.label },
-        answers,
-        context: {
-          can_move: canMove,
-          location_type: locationType,
-          mileage: mileage || null,
-        },
-        vehicle: {
-          id: selectedVehicle.id,
-          year: selectedVehicle.year,
-          make: selectedVehicle.make,
-          model: selectedVehicle.model,
-          nickname: selectedVehicle.nickname || null,
-        },
-      };
-
-      const jobPayload = {
-        customer_id: userId,
-        title: symptomData.label,
-        description: JSON.stringify(intake),
-        status: "searching",
-        location: wkt,
-        vehicle_id: selectedVehicleId,
-      };
-
-      console.log("📝 Job Insert Payload:", jobPayload);
-
-      const { data: insertedJob, error } = await supabase
-        .from("jobs")
-        .insert(jobPayload)
-        .select("id, vehicle_id")
-        .single();
-
-      if (error) {
-        console.error("❌ Job Insert Error:", error);
-        throw error;
-      }
-
-      console.log("✅ Job Created:", insertedJob);
-
-      if (selectedVehicleId && !insertedJob.vehicle_id) {
-        console.warn("⚠️ WARNING: vehicle_id was provided but not saved!", {
-          providedVehicleId: selectedVehicleId,
-          savedVehicleId: insertedJob.vehicle_id,
-          jobId: insertedJob.id,
-        });
-
-        Alert.alert(
-          "Warning",
-          "Job created but vehicle information may not have been saved. Please contact support if needed.",
-          [{ text: "OK", onPress: () => router.replace("/(customer)/(tabs)/index" as any) }]
-        );
-        return;
-      }
-
-      setTimeout(() => {
-        Alert.alert("Request sent!", "We're notifying nearby mechanics.");
-        router.replace("/(customer)/(tabs)/jobs" as any);
-      }, 1200);
-    } catch (e: any) {
-      console.error("❌ Job Creation Failed:", e);
+    if (!canMove || !locationType) {
       Alert.alert(
-        "Error",
-        e?.message ?? "Failed to create request. Please try again."
+        "Missing Information",
+        "Please provide context about your vehicle's condition and location."
+      );
+      setStep("context");
+      return;
+    }
+
+    const allSafetyChecked = Object.values(safetyChecks).every((v) => v === true);
+    if (!allSafetyChecked) {
+      Alert.alert("Safety Checklist", "Please complete all safety checks before submitting.");
+      setStep("safety_measures");
+      return;
+    }
+
+    if (!selectedVehicleId || !isValidUUID(selectedVehicleId) || !selectedVehicle) {
+      Alert.alert("Vehicle Required", "Please select a valid vehicle before submitting your request.");
+      setShowVehicleDrawer(true);
+      setStep("review");
+      return;
+    }
+
+    // ----- Auth check -----
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      Alert.alert("Not signed in", "Please sign in again.");
+      router.replace("/(auth)/sign-in");
+      return;
+    }
+
+    // ----- ID verification check -----
+    const { data: profileData, error: profileError } = await supabase
+      .from("profiles")
+      .select("id_status")
+      .eq("auth_id", userId)
+      .single();
+
+    if (profileError) {
+      Alert.alert("Error", "Failed to verify your account status. Please try again.");
+      setStep("review");
+      return;
+    }
+
+    if (profileData?.id_status !== "verified") {
+      Alert.alert(
+        "ID Verification Required",
+        "You need to verify your photo ID before requesting a mechanic. This helps ensure safety and trust for all users.",
+        [
+          {
+            text: "Verify Now",
+            onPress: () => {
+              setStep("review"); // ✅ prevents being stuck
+              router.push("/(auth)/photo-id");
+            },
+          },
+          {
+            text: "Cancel",
+            style: "cancel",
+            onPress: () => setStep("review"), // ✅ prevents being stuck
+          },
+        ]
+      );
+      return;
+    }
+
+    // ----- Ownership verification -----
+    const { data: vehicleCheck, error: vehicleError } = await supabase
+      .from("vehicles")
+      .select("id, customer_id")
+      .eq("id", selectedVehicleId)
+      .single();
+
+    if (vehicleError || !vehicleCheck) {
+      Alert.alert(
+        "Vehicle Not Found",
+        "The selected vehicle no longer exists. Please select another vehicle.",
+        [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
       );
       setStep("review");
-    } finally {
-      setSubmitting(false);
+      return;
     }
-  };
+
+    if (vehicleCheck.customer_id !== userId) {
+      Alert.alert(
+        "Invalid Vehicle",
+        "This vehicle does not belong to your account. Please select a valid vehicle.",
+        [{ text: "OK", onPress: () => setShowVehicleDrawer(true) }]
+      );
+      setStep("review");
+      return;
+    }
+
+    // ✅ NOW we can show searching (after all early-returns are done)
+    setStep("searching");
+
+    // ----- Location permission + get coords -----
+    const perm = await Location.requestForegroundPermissionsAsync();
+    if (perm.status !== "granted") {
+      Alert.alert("Permission needed", "Location permission is needed.");
+      setStep("review");
+      return;
+    }
+
+    const pos = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Balanced,
+    });
+
+    // ✅ Safer WKT (commonly required for geometry/geography Point columns)
+    const wkt = `SRID=4326;POINT(${pos.coords.longitude} ${pos.coords.latitude})`;
+
+    const intake = {
+      symptom: { key: symptomKey, label: symptomData.label },
+      answers,
+      context: {
+        can_move: canMove,
+        location_type: locationType,
+        mileage: mileage || null,
+      },
+      vehicle: {
+        id: selectedVehicle.id,
+        year: selectedVehicle.year,
+        make: selectedVehicle.make,
+        model: selectedVehicle.model,
+        nickname: selectedVehicle.nickname || null,
+      },
+    };
+
+    const jobPayload = {
+      customer_id: userId,
+      title: symptomData.label,
+      description: JSON.stringify(intake),
+      status: "searching",
+      location: wkt,
+      vehicle_id: selectedVehicleId,
+    };
+
+    const { data: insertedJob, error } = await supabase
+      .from("jobs")
+      .insert(jobPayload)
+      .select("id, vehicle_id")
+      .single();
+
+    if (error) throw error;
+
+    if (selectedVehicleId && !insertedJob.vehicle_id) {
+      Alert.alert(
+        "Warning",
+        "Job created but vehicle information may not have been saved. Please contact support if needed.",
+        [{ text: "OK", onPress: () => router.replace("/(customer)/(tabs)/index" as any) }]
+      );
+      return;
+    }
+
+    setTimeout(() => {
+      Alert.alert("Request sent!", "We're notifying nearby mechanics.");
+      router.replace("/(customer)/(tabs)/jobs" as any);
+    }, 1200);
+  } catch (e: any) {
+    console.error("❌ Job Creation Failed:", e);
+    Alert.alert("Error", e?.message ?? "Failed to create request. Please try again.");
+    setStep("review");
+  } finally {
+    setSubmitting(false);
+  }
+};
+
 
   const renderEducation = () => {
     const safeText = (symptomData.education.is_it_safe || "").toLowerCase();
@@ -1548,6 +1515,9 @@ export default function RequestService() {
         return "";
     }
   };
+const onHeaderBackPress = () => {
+  handleBack(); // header doesn't use the boolean, hardware back does
+};
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg, gap: spacing.md }}>
@@ -1566,7 +1536,7 @@ export default function RequestService() {
             step !== "searching"
               ? () => (
                   <Pressable
-                    onPress={handleBack}
+                    onPress={onHeaderBackPress}
                     style={({ pressed }) => ({
                       padding: 8,
                       marginLeft: -5,

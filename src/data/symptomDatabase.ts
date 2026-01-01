@@ -1,15 +1,22 @@
+export type SymptomEducation = {
+  title: string;
+  summary: string;
+  is_it_safe: string;
+  what_we_check: string;
+  how_quotes_work: string;
+};
+
+
+
 export type SymptomData = {
   key: string;
   label: string;
   icon: string;
-  education: {
-    title: string;
-    summary: string;
-    is_it_safe: string;
-    what_we_check: string;
-    how_quotes_work: string;
-  };
-  questions: {
+  education: SymptomEducation;
+
+  // ✅ optional: keep this ONLY if you still use it somewhere else.
+  // If not used, delete it to avoid confusion.
+  questions?: {
     id: string;
     question: string;
     options: string[];

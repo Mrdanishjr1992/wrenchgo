@@ -3,7 +3,7 @@ export interface SymptomQuestion {
   question_key: string;
   question_label: string;
   question_type: "single_choice" | "multi_choice" | "yes_no" | "text_input";
-  options: string[];
+  options: string[]; // for yes_no you can leave [] and render Yes/No in UI
   helps_mechanic_with: string;
   affects_quote: boolean;
   affects_safety: boolean;
