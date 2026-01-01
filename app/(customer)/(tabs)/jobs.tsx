@@ -18,8 +18,8 @@ import { createCard, cardPressed } from "../../../src/ui/styles";
 
 type QuoteSummary = {
   quoteCount: number;
-  minQuote: number | null;
-  maxQuote: number | null;
+  minQuote: number | null; // cents
+  maxQuote: number | null; // cents
   newestQuoteAt: string | null;
   hasQuotes: boolean;
   acceptedQuoteId: string | null;
@@ -28,8 +28,8 @@ type QuoteSummary = {
 
 type Job = {
   id: string;
-  title: string;
-  status: string;
+  title: string | null;
+  status: string | null;
   preferred_time: string | null;
   created_at: string;
   accepted_mechanic_id: string | null;
@@ -43,32 +43,43 @@ type QuoteRequest = {
   id: string;
   job_id: string;
   mechanic_id: string;
+  customer_id: string;
   status: string;
-  proposed_price_cents: number | null;
+  price_cents: number;
   created_at: string;
-  mechanic?: {
-    full_name: string | null;
-  };
+  accepted_at: string | null;
 };
+
+type ProfileName = {
+  auth_id: string;
+  full_name: string | null;
+};
+
+function safeIso(iso?: string | null) {
+  return iso ?? new Date().toISOString();
+}
 
 export default function CustomerJobs() {
   const router = useRouter();
   const { colors, text, spacing, radius } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<JobWithQuoteSummary[]>([]);
 
-  const statusColor = useCallback((status: string) => {
-    const s = (status || "").toLowerCase();
-    if (s === "accepted") return colors.accent;
-    if (s === "work_in_progress") return colors.accent;
-    if (s === "completed") return "#10b981";
-    if (s === "searching") return colors.textMuted;
-    if (s === "canceled") return "#EF4444";
-    return colors.textMuted;
-  }, [colors]);
+  const statusColor = useCallback(
+    (status: string) => {
+      const s = (status || "").toLowerCase();
+      if (s === "accepted") return colors.accent;
+      if (s === "work_in_progress") return colors.accent;
+      if (s === "completed") return "#10b981";
+      if (s === "searching") return colors.textMuted;
+      if (s === "canceled") return "#EF4444";
+      return colors.textMuted;
+    },
+    [colors]
+  );
 
   const statusHint = (status: string) => {
     const s = (status || "").toLowerCase();
@@ -76,7 +87,7 @@ export default function CustomerJobs() {
     if (s === "accepted") return "Mechanic assigned. Next: start job.";
     if (s === "work_in_progress") return "Work in progress. You'll get updates here.";
     if (s === "completed") return "Job completed. Review details inside.";
-    if (s === "canceled") return "Job was canceled by customer.";
+    if (s === "canceled") return "Job was canceled.";
     return "Tap to view details.";
   };
 
@@ -89,6 +100,27 @@ export default function CustomerJobs() {
   const fmtShort = (iso: string) => {
     try {
       const d = new Date(iso);
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
+
+  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
+
+  const formatRelativeTime = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const diffMs = now.getTime() - d.getTime();
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMins / 60);
+      const diffDays = Math.floor(diffHours / 24);
+
+      if (diffMins < 1) return "Just now";
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
       return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
     } catch {
       return "";
@@ -109,22 +141,13 @@ export default function CustomerJobs() {
           borderColor: `${c}55`,
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: "900", color: c }}>
-          {statusLabel(status)}
-        </Text>
+        <Text style={{ fontSize: 11, fontWeight: "900", color: c }}>{statusLabel(status)}</Text>
       </View>
     );
   };
 
   const SectionHeader = ({ title, count }: { title: string; count: number }) => (
-    <View
-      style={{
-        marginTop: spacing.lg,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
+    <View style={{ marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text style={text.section}>{title}</Text>
       <View
         style={{
@@ -136,9 +159,7 @@ export default function CustomerJobs() {
           borderColor: colors.border,
         }}
       >
-        <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>
-          {count}
-        </Text>
+        <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>{count}</Text>
       </View>
     </View>
   );
@@ -146,6 +167,7 @@ export default function CustomerJobs() {
   const load = useCallback(async () => {
     try {
       setLoading(true);
+
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
 
@@ -155,57 +177,85 @@ export default function CustomerJobs() {
         return;
       }
 
-      const { data, error } = await supabase
+      // 1) Load jobs
+      const { data: jobRows, error: jobsErr } = await supabase
         .from("jobs")
         .select("id,title,status,preferred_time,created_at,accepted_mechanic_id")
         .eq("customer_id", userId)
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
-      const jobsData = (data as Job[]) ?? [];
+      if (jobsErr) throw jobsErr;
 
-      const { data: quotesData, error: quotesError } = await supabase
+      const jobsData = ((jobRows as Job[]) ?? []).map((j) => ({
+        ...j,
+        title: j.title ?? "Job",
+        status: j.status ?? "searching",
+      }));
+
+      if (jobsData.length === 0) {
+        setJobs([]);
+        return;
+      }
+
+      const jobIds = jobsData.map((j) => j.id);
+
+      // 2) Load quote_requests (schema uses price_cents)
+      const { data: quoteRows, error: quotesErr } = await supabase
         .from("quote_requests")
-        .select(
-          `
-          id,
-          job_id,
-          mechanic_id,
-          status,
-          proposed_price_cents,
-          created_at,
-          mechanic:profiles!quote_requests_mechanic_id_fkey(full_name)
-        `
-        )
-        .in(
-          "job_id",
-          jobsData.map((j) => j.id)
-        );
+        .select("id,job_id,mechanic_id,customer_id,status,price_cents,created_at,accepted_at")
+        .in("job_id", jobIds);
 
-      if (quotesError) throw quotesError;
-      const quotes = (quotesData as QuoteRequest[]) ?? [];
+      if (quotesErr) throw quotesErr;
 
+      const quotes = (quoteRows as QuoteRequest[]) ?? [];
+
+      // 3) Load mechanic names from profiles by auth_id
+      const mechanicIds = Array.from(new Set(quotes.map((q) => q.mechanic_id).filter(Boolean)));
+      const acceptedMechanicIds = Array.from(
+        new Set(jobsData.map((j) => j.accepted_mechanic_id).filter((x): x is string => !!x))
+      );
+
+      const allMechanicIds = Array.from(new Set([...mechanicIds, ...acceptedMechanicIds]));
+
+      let nameByAuthId = new Map<string, string>();
+      if (allMechanicIds.length > 0) {
+        const { data: profRows, error: profErr } = await supabase
+          .from("profiles")
+          .select("auth_id,full_name")
+          .in("auth_id", allMechanicIds);
+
+        if (profErr) throw profErr;
+
+        ((profRows as ProfileName[]) ?? []).forEach((p) => {
+          if (p.auth_id) nameByAuthId.set(p.auth_id, p.full_name?.trim() || "Mechanic");
+        });
+      }
+
+      // 4) Build summaries
       const jobsWithQuotes: JobWithQuoteSummary[] = jobsData.map((job) => {
-        const jobQuotes = quotes.filter((q) => q.job_id === job.id);
-        const acceptedQuote = jobQuotes.find((q) => q.status === "accepted");
-        const prices = jobQuotes
-          .map((q) => q.proposed_price_cents)
-          .filter((p): p is number => p !== null && p !== undefined);
+        const jobQuotes = quotes
+          .filter((q) => q.job_id === job.id)
+          .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
+
+        const acceptedQuote = jobQuotes.find((q) => (q.status || "").toLowerCase() === "accepted");
+        const prices = jobQuotes.map((q) => q.price_cents).filter((p) => typeof p === "number");
+
+        const acceptedMechanicName =
+          (job.accepted_mechanic_id && nameByAuthId.get(job.accepted_mechanic_id)) ||
+          (acceptedQuote?.mechanic_id && nameByAuthId.get(acceptedQuote.mechanic_id)) ||
+          null;
 
         const quoteSummary: QuoteSummary = {
           quoteCount: jobQuotes.length,
-          minQuote: prices.length > 0 ? Math.min(...prices) : null,
-          maxQuote: prices.length > 0 ? Math.max(...prices) : null,
-          newestQuoteAt: jobQuotes.length > 0 ? jobQuotes[0].created_at : null,
+          minQuote: prices.length ? Math.min(...prices) : null,
+          maxQuote: prices.length ? Math.max(...prices) : null,
+          newestQuoteAt: jobQuotes.length ? jobQuotes[0].created_at : null,
           hasQuotes: jobQuotes.length > 0,
           acceptedQuoteId: acceptedQuote?.id ?? null,
-          acceptedMechanicName: acceptedQuote?.mechanic?.full_name ?? null,
+          acceptedMechanicName,
         };
 
-        return {
-          ...job,
-          quoteSummary,
-        };
+        return { ...job, quoteSummary };
       });
 
       setJobs(jobsWithQuotes);
@@ -273,40 +323,15 @@ export default function CustomerJobs() {
   );
 
   const JobCard = ({ item }: { item: JobWithQuoteSummary }) => {
-    const c = statusColor(item.status);
-    const { quoteSummary } = item;
-
-    const formatPrice = (cents: number) => {
-      return `$${(cents / 100).toFixed(0)}`;
-    };
-
-    const formatRelativeTime = (iso: string) => {
-      try {
-        const d = new Date(iso);
-        const now = new Date();
-        const diffMs = now.getTime() - d.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMins / 60);
-        const diffDays = Math.floor(diffHours / 24);
-
-        if (diffMins < 1) return "Just now";
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-      } catch {
-        return "";
-      }
-    };
+    const c = statusColor(item.status || "searching");
+    const qs = item.quoteSummary;
 
     const showQuotesWaiting =
-      item.status.toLowerCase() === "searching" &&
-      quoteSummary.hasQuotes &&
-      !quoteSummary.acceptedQuoteId;
+      (item.status || "").toLowerCase() === "searching" && qs.hasQuotes && !qs.acceptedQuoteId;
 
     const showAcceptedTag =
-      (item.status.toLowerCase() === "accepted" || item.status.toLowerCase() === "work_in_progress") &&
-      quoteSummary.acceptedQuoteId;
+      (item.status || "").toLowerCase() === "accepted" ||
+      (item.status || "").toLowerCase() === "work_in_progress";
 
     return (
       <Pressable
@@ -330,12 +355,12 @@ export default function CustomerJobs() {
               {item.title || "Job"}
             </Text>
             <Text style={{ ...text.muted, marginTop: 4 }} numberOfLines={1}>
-              {statusHint(item.status)}
+              {statusHint(item.status || "searching")}
             </Text>
           </View>
           <View style={{ alignItems: "flex-end", gap: 8 }}>
             <Text style={text.muted}>{fmtShort(item.created_at)}</Text>
-            <StatusPill status={item.status} />
+            <StatusPill status={item.status || "searching"} />
           </View>
         </View>
 
@@ -357,7 +382,7 @@ export default function CustomerJobs() {
           </View>
         )}
 
-        {showAcceptedTag && quoteSummary.acceptedMechanicName && (
+        {showAcceptedTag && qs.acceptedMechanicName && (
           <View
             style={{
               backgroundColor: `${colors.accent}15`,
@@ -370,19 +395,12 @@ export default function CustomerJobs() {
             }}
           >
             <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
-              ✓ Accepted — {quoteSummary.acceptedMechanicName}
+              ✓ Assigned — {qs.acceptedMechanicName}
             </Text>
           </View>
         )}
 
-        <View
-          style={{
-            height: 1,
-            backgroundColor: colors.border,
-            opacity: 0.7,
-            marginTop: 2,
-          }}
-        />
+        <View style={{ height: 1, backgroundColor: colors.border, opacity: 0.7, marginTop: 2 }} />
 
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
           <View style={{ flex: 1, gap: 6 }}>
@@ -392,44 +410,40 @@ export default function CustomerJobs() {
                   paddingHorizontal: 8,
                   paddingVertical: 4,
                   borderRadius: 999,
-                  backgroundColor: quoteSummary.hasQuotes ? `${colors.accent}20` : colors.surface,
+                  backgroundColor: qs.hasQuotes ? `${colors.accent}20` : colors.surface,
                   borderWidth: 1,
-                  borderColor: quoteSummary.hasQuotes ? `${colors.accent}50` : colors.border,
+                  borderColor: qs.hasQuotes ? `${colors.accent}50` : colors.border,
                 }}
               >
                 <Text
                   style={{
                     fontSize: 11,
                     fontWeight: "900",
-                    color: quoteSummary.hasQuotes ? colors.accent : colors.textMuted,
+                    color: qs.hasQuotes ? colors.accent : colors.textMuted,
                   }}
                 >
-                  {quoteSummary.quoteCount === 0
-                    ? "No quotes yet"
-                    : quoteSummary.quoteCount === 1
-                    ? "1 Quote"
-                    : `${quoteSummary.quoteCount} Quotes`}
+                  {qs.quoteCount === 0 ? "No quotes yet" : qs.quoteCount === 1 ? "1 Quote" : `${qs.quoteCount} Quotes`}
                 </Text>
               </View>
 
-              {quoteSummary.hasQuotes && quoteSummary.minQuote !== null && (
+              {qs.hasQuotes && qs.minQuote !== null && (
                 <Text style={{ fontSize: 13, fontWeight: "800", color: colors.textPrimary }}>
-                  {quoteSummary.minQuote === quoteSummary.maxQuote
-                    ? formatPrice(quoteSummary.minQuote)
-                    : `${formatPrice(quoteSummary.minQuote)}–${formatPrice(quoteSummary.maxQuote!)}`}
+                  {qs.minQuote === qs.maxQuote
+                    ? formatPrice(qs.minQuote)
+                    : `${formatPrice(qs.minQuote)}–${formatPrice(qs.maxQuote!)}`}
                 </Text>
               )}
             </View>
 
-            {quoteSummary.hasQuotes && quoteSummary.newestQuoteAt && (
+            {qs.hasQuotes && qs.newestQuoteAt && (
               <Text style={{ fontSize: 11, fontWeight: "600", color: colors.textMuted }}>
-                Newest: {formatRelativeTime(quoteSummary.newestQuoteAt)}
+                Newest: {formatRelativeTime(qs.newestQuoteAt)}
               </Text>
             )}
           </View>
+
           <Text style={{ color: colors.accent, fontWeight: "900" }}>Open →</Text>
         </View>
-
       </Pressable>
     );
   };
@@ -524,11 +538,7 @@ export default function CustomerJobs() {
               {jobs.length === 0 ? (
                 <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
                   <View style={{ width: 90, height: 90, borderRadius: 22, alignItems: "center", justifyContent: "center" }}>
-                    <Image
-                      source={require("../../../assets/sleeping.png")}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode="contain"
-                    />
+                    <Image source={require("../../../assets/sleeping.png")} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
                   </View>
 
                   <Text style={text.section}>No jobs yet</Text>

@@ -13,7 +13,7 @@ import {
   Modal,
   FlatList,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../../../src/lib/supabase";
 import { isValidUUID } from "../../../src/lib/validation";
@@ -160,7 +160,7 @@ export default function VehicleDetail() {
     loading?: boolean;
   }) => (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+      <View style={{ flex: 1, backgroundColor: colors.accent ?? "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
         <View
           style={{
             backgroundColor: colors.surface,
@@ -225,13 +225,19 @@ export default function VehicleDetail() {
       setLoading(false);
       return;
     }
-
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      router.replace("/(auth)/sign-in");
+      return;
+    }
     try {
       setLoading(true);
-      const { data, error } = await supabase
+    const { data, error } = await supabase
         .from("vehicles")
         .select("*")
         .eq("id", id)
+        .eq("customer_id", userId)   // ✅ ownership gate
         .single();
 
       if (error) throw error;
@@ -245,19 +251,15 @@ export default function VehicleDetail() {
 
       await fetchMakes(String(data.year));
 
-      const makesResponse = await fetch(
-        `https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json`
-      );
-      const makesData = await makesResponse.json();
-      if (makesData.Results) {
-        const foundMake = makesData.Results.find(
-          (m: VehicleMake) => m.MakeName.toLowerCase() === data.make.toLowerCase()
-        );
-        if (foundMake) {
-          setMakeId(foundMake.MakeId);
-          await fetchModels(foundMake.MakeId, String(data.year));
-        }
-      }
+const foundMake = makes.find(
+  (m) => m.MakeName.toLowerCase() === data.make.toLowerCase()
+);
+
+if (foundMake) {
+  setMakeId(foundMake.MakeId);
+  await fetchModels(foundMake.MakeId, String(data.year));
+}
+
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load vehicle");
       router.back();
@@ -293,7 +295,12 @@ export default function VehicleDetail() {
       Alert.alert("Invalid Model", "Enter the vehicle model.");
       return;
     }
-
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      router.replace("/(auth)/sign-in");
+      return;
+    }
     try {
       setSaving(true);
       const { error } = await supabase
@@ -304,7 +311,8 @@ export default function VehicleDetail() {
           model: model.trim(),
           nickname: nickname.trim() || null,
         })
-        .eq("id", id);
+        .eq("id", id)
+        .eq("customer_id", userId)
 
       if (error) throw error;
 
@@ -366,6 +374,16 @@ export default function VehicleDetail() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+    <Stack.Screen
+          options={{
+            title: "Edit Vehicle",
+            headerStyle: { backgroundColor: colors.bg }, // match your tabs header
+            headerTintColor: colors.textPrimary,
+            headerShadowVisible: false,
+            headerBackTitleVisible: false,
+          }}
+        />
+
       <ScrollView
         contentContainerStyle={{
           padding: spacing.lg,

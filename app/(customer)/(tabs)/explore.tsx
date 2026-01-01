@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { View, Text, Pressable, ScrollView, Image, ActivityIndicator } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -20,53 +20,43 @@ type Vehicle = {
   nickname: string | null;
 };
 
-type CategoryGroup = {
-  category: string;
-  symptoms: {
-    symptom_key: string;
-    symptom_label: string;
-    customer_explainer: string;
-    risk_level: string;
-  }[];
-  highestRiskLevel: 'high' | 'medium' | 'low';
+type SymptomItem = {
+  symptom_key: string;
+  symptom_label: string;
+  customer_explainer: string;
+  risk_level: string; // assume string but guard in code anyway
 };
 
-/**
- * Determine which category should be expanded by default.
- * Strategy: Expand the first category OR the category with the highest risk symptoms.
- */
-function getDefaultExpandedCategory(categoryGroups: CategoryGroup[]): string | null {
-  if (categoryGroups.length === 0) return null;
+type CategoryGroup = {
+  category: string;
+  symptoms: SymptomItem[];
+  highestRiskLevel: "high" | "medium" | "low";
+};
 
-  // Find category with highest risk symptoms
-  const highRiskCategory = categoryGroups.find(
-    (group) => group.highestRiskLevel === 'high'
-  );
-
-  if (highRiskCategory) {
-    return highRiskCategory.category;
-  }
-
-  // Fallback to first category
-  return categoryGroups[0].category;
+function normalizeRiskLevel(risk: unknown): "high" | "medium" | "low" {
+  const v = String(risk ?? "").toLowerCase();
+  if (v === "high") return "high";
+  if (v === "medium") return "medium";
+  return "low";
 }
 
-/**
- * Calculate the highest risk level in a group of symptoms.
- */
-function getHighestRiskLevel(symptoms: { risk_level: string }[]): 'high' | 'medium' | 'low' {
-  const hasHigh = symptoms.some((s) => s.risk_level.toLowerCase() === 'high');
-  const hasMedium = symptoms.some((s) => s.risk_level.toLowerCase() === 'medium');
+function getHighestRiskLevel(symptoms: { risk_level: string }[]): "high" | "medium" | "low" {
+  const levels = symptoms.map((s) => normalizeRiskLevel(s.risk_level));
+  if (levels.includes("high")) return "high";
+  if (levels.includes("medium")) return "medium";
+  return "low";
+}
 
-  if (hasHigh) return 'high';
-  if (hasMedium) return 'medium';
-  return 'low';
+function getDefaultExpandedCategory(categoryGroups: CategoryGroup[]): string | null {
+  if (categoryGroups.length === 0) return null;
+  const high = categoryGroups.find((g) => g.highestRiskLevel === "high");
+  return high?.category ?? categoryGroups[0].category;
 }
 
 export default function Explore() {
   const router = useRouter();
   const { colors } = useTheme();
-  const card = createCard(colors);
+  const card = useMemo(() => createCard(colors), [colors]);
 
   const { symptoms, loading: loadingSymptoms, error: symptomsError, refetch } = useSymptoms();
 
@@ -76,19 +66,19 @@ export default function Explore() {
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [didSetDefaultExpanded, setDidSetDefaultExpanded] = useState(false);
 
-  // Group symptoms by category and calculate metadata
   const categoryGroups = useMemo<CategoryGroup[]>(() => {
     const grouped: Record<string, CategoryGroup> = {};
 
-    symptoms.forEach((symptom) => {
-      const category = symptom.category || 'Other';
+    (symptoms ?? []).forEach((symptom: any) => {
+      const category = symptom.category || "Other";
 
       if (!grouped[category]) {
         grouped[category] = {
           category,
           symptoms: [],
-          highestRiskLevel: 'low',
+          highestRiskLevel: "low",
         };
       }
 
@@ -96,33 +86,34 @@ export default function Explore() {
         symptom_key: symptom.symptom_key,
         symptom_label: symptom.symptom_label,
         customer_explainer: symptom.customer_explainer,
-        risk_level: symptom.risk_level,
+        risk_level: symptom.risk_level ?? "low",
       });
     });
 
-    // Calculate highest risk level for each category
     Object.values(grouped).forEach((group) => {
       group.highestRiskLevel = getHighestRiskLevel(group.symptoms);
     });
 
-    // Sort categories: high risk first, then alphabetically
+    const riskOrder = { high: 0, medium: 1, low: 2 } as const;
+
     return Object.values(grouped).sort((a, b) => {
-      const riskOrder = { high: 0, medium: 1, low: 2 };
-      const riskDiff = riskOrder[a.highestRiskLevel] - riskOrder[b.highestRiskLevel];
-      if (riskDiff !== 0) return riskDiff;
+      const diff = riskOrder[a.highestRiskLevel] - riskOrder[b.highestRiskLevel];
+      if (diff !== 0) return diff;
       return a.category.localeCompare(b.category);
     });
   }, [symptoms]);
 
-  // Set default expanded category when symptoms load
+  // Set default expanded category once after symptoms load
   useEffect(() => {
-    if (categoryGroups.length > 0 && expandedCategories.size === 0) {
-      const defaultCategory = getDefaultExpandedCategory(categoryGroups);
-      if (defaultCategory) {
-        setExpandedCategories(new Set([defaultCategory]));
-      }
+    if (didSetDefaultExpanded) return;
+    if (categoryGroups.length === 0) return;
+
+    const defaultCategory = getDefaultExpandedCategory(categoryGroups);
+    if (defaultCategory) {
+      setExpandedCategories(new Set([defaultCategory]));
     }
-  }, [categoryGroups, expandedCategories.size]);
+    setDidSetDefaultExpanded(true);
+  }, [categoryGroups, didSetDefaultExpanded]);
 
   const loadVehicles = useCallback(async () => {
     try {
@@ -131,7 +122,10 @@ export default function Explore() {
       if (uErr) throw uErr;
 
       const userId = userData.user?.id;
-      if (!userId) return;
+      if (!userId) {
+        setVehicles([]);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("vehicles")
@@ -140,13 +134,28 @@ export default function Explore() {
         .order("created_at", { ascending: true });
 
       if (error) throw error;
-      setVehicles((data as Vehicle[]) ?? []);
+
+      const list = (data as Vehicle[]) ?? [];
+      setVehicles(list);
+
+      // Auto-select if exactly one vehicle and none selected yet
+      if (list.length === 1 && !selectedVehicleId) {
+        setSelectedVehicleId(list[0].id);
+        setSelectedVehicle(list[0]);
+      }
+
+      // If previously selected vehicle no longer exists
+      if (selectedVehicleId && !list.some((v) => v.id === selectedVehicleId)) {
+        setSelectedVehicleId(null);
+        setSelectedVehicle(null);
+      }
     } catch (e: any) {
-      console.error("Failed to load vehicles:", e);
+      console.error("Failed to load vehicles:", e?.message ?? e);
+      setVehicles([]);
     } finally {
       setLoadingVehicles(false);
     }
-  }, []);
+  }, [selectedVehicleId]);
 
   useFocusEffect(
     useCallback(() => {
@@ -154,74 +163,53 @@ export default function Explore() {
     }, [loadVehicles])
   );
 
-  useEffect(() => {
-    if (vehicles.length === 1 && !selectedVehicleId) {
-      const vehicle = vehicles[0];
-      setSelectedVehicleId(vehicle.id);
-      setSelectedVehicle(vehicle);
-    }
-  }, [vehicles, selectedVehicleId]);
-
-  const handleSymptomSelect = (symptomKey: string) => {
-    if (!selectedVehicleId || !selectedVehicle) {
-      setShowVehicleDrawer(true);
-      return;
-    }
-
-    console.log("🚗 Explore: Symptom selected", {
-      symptom: symptomKey,
-      vehicleId: selectedVehicleId,
-      vehicle: selectedVehicle,
-    });
-
-    router.push({
-      pathname: "/(customer)/request-service" as any,
-      params: {
-        symptom: symptomKey,
-        vehicleId: selectedVehicleId,
-        vehicleYear: String(selectedVehicle.year),
-        vehicleMake: selectedVehicle.make,
-        vehicleModel: selectedVehicle.model,
-        vehicleNickname: selectedVehicle.nickname || "",
-      },
-    });
-  };
-
-  const handleSelectVehicle = (vehicle: Vehicle) => {
+  // If user selects vehicle from drawer, persist it
+  const handleSelectVehicle = useCallback((vehicle: Vehicle) => {
     setSelectedVehicleId(vehicle.id);
     setSelectedVehicle(vehicle);
     setShowVehicleDrawer(false);
-  };
+  }, []);
 
-  const handleChangeVehicle = () => {
+  const handleChangeVehicle = useCallback(() => {
     setShowVehicleDrawer(true);
-  };
+  }, []);
 
-  const handleAddNewVehicle = () => {
-    setShowVehicleDrawer(false);
-  };
-
-  const toggleCategory = (category: string) => {
+  const toggleCategory = useCallback((category: string) => {
     setExpandedCategories((prev) => {
       const next = new Set(prev);
-      if (next.has(category)) {
-        next.delete(category);
-      } else {
-        next.add(category);
-      }
+      if (next.has(category)) next.delete(category);
+      else next.add(category);
       return next;
     });
-  };
+  }, []);
 
-  const handleRetry = () => {
-    refetch();
-  };
+  const handleSymptomSelect = useCallback(
+    (symptomKey: string) => {
+      if (!selectedVehicleId || !selectedVehicle) {
+        setShowVehicleDrawer(true);
+        return;
+      }
+
+      router.push({
+        pathname: "/(customer)/request-service" as any,
+        params: {
+          symptom: symptomKey,
+          vehicleId: selectedVehicleId,
+          vehicleYear: String(selectedVehicle.year),
+          vehicleMake: selectedVehicle.make,
+          vehicleModel: selectedVehicle.model,
+          vehicleNickname: selectedVehicle.nickname || "",
+        },
+      });
+    },
+    [router, selectedVehicle, selectedVehicleId]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Screen
         options={{
-          title: "explorer",
+          title: "Explore",
           headerStyle: { backgroundColor: colors.surface },
           headerTintColor: colors.textPrimary,
           headerShadowVisible: false,
@@ -234,7 +222,7 @@ export default function Explore() {
         vehicles={vehicles}
         selectedVehicleId={selectedVehicleId}
         onSelect={handleSelectVehicle}
-        onAddNew={handleAddNewVehicle}
+        onAddNew={() => setShowVehicleDrawer(false)}
         loading={loadingVehicles}
         returnTo="explore"
       />
@@ -283,25 +271,17 @@ export default function Explore() {
               <Text style={{ fontSize: 32 }}>🚗</Text>
             </View>
             <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: 18,
-                  fontWeight: "800",
-                  color: colors.textPrimary,
-                  marginBottom: 2,
-                }}
-              >
+              <Text style={{ fontSize: 18, fontWeight: "800", color: colors.textPrimary, marginBottom: 2 }}>
                 Select Your Vehicle
               </Text>
-              <Text
-                style={{
-                  fontSize: 13,
-                  fontWeight: "600",
-                  color: colors.textMuted,
-                }}
-              >
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
                 Choose which car needs service
               </Text>
+              {vehicles.length === 0 && !loadingVehicles && (
+                <Text style={{ marginTop: 6, fontSize: 12, fontWeight: "700", color: colors.accent }}>
+                  No vehicles yet — tap to add one
+                </Text>
+              )}
             </View>
             <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
           </Pressable>
@@ -319,24 +299,10 @@ export default function Explore() {
             position: "relative",
           }}
         >
-          <Text
-            style={{
-              fontSize: 15,
-              fontWeight: "700",
-              color: colors.textPrimary,
-              marginBottom: spacing.xs,
-            }}
-          >
+          <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.xs }}>
             Hey there! I&apos;m Wrench, your car care buddy.
           </Text>
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: colors.textMuted,
-              lineHeight: 20,
-            }}
-          >
+          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, lineHeight: 20 }}>
             Tell me what&apos;s going on with your car, and I&apos;ll connect you with trusted mechanics nearby.
           </Text>
           <Image
@@ -353,7 +319,7 @@ export default function Explore() {
           />
         </View>
 
-        {/* Loading State */}
+        {/* Symptoms states */}
         {loadingSymptoms ? (
           <View style={{ padding: spacing.xl, alignItems: "center" }}>
             <ActivityIndicator size="large" color={colors.accent} />
@@ -362,17 +328,7 @@ export default function Explore() {
             </Text>
           </View>
         ) : symptomsError ? (
-          /* Error State */
-          <View
-            style={[
-              card,
-              {
-                padding: spacing.xl,
-                alignItems: "center",
-                backgroundColor: colors.surface,
-              },
-            ]}
-          >
+          <View style={[card, { padding: spacing.xl, alignItems: "center", backgroundColor: colors.surface }]}>
             <Text style={{ fontSize: 32, marginBottom: spacing.md }}>⚠️</Text>
             <Text
               style={{
@@ -394,10 +350,10 @@ export default function Explore() {
                 marginBottom: spacing.md,
               }}
             >
-              {symptomsError}
+              {String(symptomsError)}
             </Text>
             <Pressable
-              onPress={handleRetry}
+              onPress={refetch}
               style={({ pressed }) => [
                 {
                   backgroundColor: colors.accent,
@@ -408,29 +364,11 @@ export default function Explore() {
                 },
               ]}
             >
-              <Text
-                style={{
-                  color: "#fff",
-                  fontSize: 14,
-                  fontWeight: "800",
-                }}
-              >
-                Retry
-              </Text>
+              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "800" }}>Retry</Text>
             </Pressable>
           </View>
-        ) : symptoms.length === 0 ? (
-          /* Empty State */
-          <View
-            style={[
-              card,
-              {
-                padding: spacing.xl,
-                alignItems: "center",
-                backgroundColor: colors.surface,
-              },
-            ]}
-          >
+        ) : !symptoms || symptoms.length === 0 ? (
+          <View style={[card, { padding: spacing.xl, alignItems: "center", backgroundColor: colors.surface }]}>
             <Text style={{ fontSize: 32, marginBottom: spacing.md }}>❓</Text>
             <Text
               style={{
@@ -443,14 +381,7 @@ export default function Explore() {
             >
               No symptoms available
             </Text>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: colors.textMuted,
-                textAlign: "center",
-              }}
-            >
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, textAlign: "center" }}>
               Please contact support if this issue persists.
             </Text>
           </View>
@@ -463,51 +394,45 @@ export default function Explore() {
               isExpanded={expandedCategories.has(group.category)}
               onToggle={() => toggleCategory(group.category)}
             >
-              {group.symptoms.map((symptom) => (
-                <Pressable
-                  key={symptom.symptom_key}
-                  onPress={() => handleSymptomSelect(symptom.symptom_key)}
-                  style={({ pressed }) => [
-                    card,
-                    pressed && cardPressed,
-                    {
-                      padding: spacing.md,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: spacing.md,
-                      marginBottom: spacing.sm,
-                    },
-                  ]}
-                >
-                  <View style={{ flex: 1 }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
+              {group.symptoms.map((symptom) => {
+                const risk = normalizeRiskLevel(symptom.risk_level);
+
+                return (
+                  <Pressable
+                    key={symptom.symptom_key}
+                    onPress={() => handleSymptomSelect(symptom.symptom_key)}
+                    style={({ pressed }) => [
+                      card,
+                      pressed && cardPressed,
+                      {
+                        padding: spacing.md,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: spacing.md,
+                        marginBottom: spacing.sm,
+                      },
+                    ]}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
+                        <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>
+                          {symptom.symptom_label}
+                        </Text>
+                        {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}
+                      </View>
+
                       <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "800",
-                          color: colors.textPrimary,
-                        }}
+                        style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}
+                        numberOfLines={2}
                       >
-                        {symptom.symptom_label}
+                        {symptom.customer_explainer}
                       </Text>
-                      {(symptom.risk_level.toLowerCase() === 'high' || symptom.risk_level.toLowerCase() === 'medium') && (
-                        <RiskBadge riskLevel={symptom.risk_level.toLowerCase() as 'high' | 'medium' | 'low'} size="small" />
-                      )}
                     </View>
-                    <Text
-                      style={{
-                        fontSize: 13,
-                        fontWeight: "600",
-                        color: colors.textMuted,
-                      }}
-                      numberOfLines={2}
-                    >
-                      {symptom.customer_explainer}
-                    </Text>
-                  </View>
-                  <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
-                </Pressable>
-              ))}
+
+                    <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
+                  </Pressable>
+                );
+              })}
             </CollapsibleCategorySection>
           ))
         )}

@@ -1,12 +1,12 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { 
-  View, 
-  Text, 
-  FlatList, 
-  Pressable, 
-  ActivityIndicator, 
-  Alert, 
-  Image 
+import {
+  View,
+  Text,
+  FlatList,
+  Pressable,
+  ActivityIndicator,
+  Alert,
+  Image,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -21,17 +21,23 @@ type JobThread = {
   last_message: string | null;
 };
 
-type Job = {
+type JobRow = {
   id: string;
   title: string | null;
   updated_at: string | null;
   created_at: string | null;
-  accepted_mechanic_id: string | null;
 };
 
-type Message = {
+type QuoteRequestRow = {
   job_id: string;
-  body: string | null;
+  status: string | null;
+  accepted_at: string | null;
+  created_at: string | null;
+};
+
+type MessageRow = {
+  job_id: string;
+  content: string | null;
   created_at: string | null;
 };
 
@@ -47,11 +53,11 @@ function fmtTime(iso: string): string {
 function fmtTimeLong(iso: string): string {
   try {
     const d = new Date(iso);
-    return d.toLocaleString(undefined, { 
-      month: "short", 
-      day: "numeric", 
-      hour: "numeric", 
-      minute: "2-digit" 
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
     });
   } catch {
     return "";
@@ -78,60 +84,75 @@ export default function Messages() {
         return;
       }
 
-      const { data: jobs, error: jErr } = await supabase
-        .from("jobs")
-        .select("id,title,updated_at,created_at,accepted_mechanic_id")
+      // 1) Find jobs that have an ACCEPTED quote request (chat unlocked rule)
+      const { data: acceptedQuotes, error: qErr } = await supabase
+        .from("quote_requests")
+        .select("job_id,status,accepted_at,created_at")
         .eq("customer_id", userId)
-        .not("accepted_mechanic_id", "is", null)
-        .order("updated_at", { ascending: false });
+        .eq("status", "accepted")
+        .order("accepted_at", { ascending: false });
 
-      if (jErr) throw jErr;
+      if (qErr) throw qErr;
 
-      const jobList = (jobs as Job[] ?? []).map((j) => ({
-        id: j.id,
-        title: j.title ?? "Job",
-        updated_at: j.updated_at ?? j.created_at ?? new Date().toISOString(),
-      }));
+      const accepted = (acceptedQuotes as QuoteRequestRow[]) ?? [];
+      const jobIds = Array.from(new Set(accepted.map((q) => q.job_id))).filter(Boolean);
 
-      if (jobList.length === 0) {
+      if (jobIds.length === 0) {
         setJobThreads([]);
         return;
       }
 
-      const jobIds = jobList.map((j) => j.id);
+      // 2) Load jobs for titles + timestamps
+      const { data: jobs, error: jErr } = await supabase
+        .from("jobs")
+        .select("id,title,updated_at,created_at")
+        .in("id", jobIds);
 
+      if (jErr) throw jErr;
+
+      const jobMap = new Map<string, JobRow>();
+      ((jobs as JobRow[]) ?? []).forEach((j) => jobMap.set(j.id, j));
+
+      // 3) Load last message per job (messages.content)
       const { data: msgs, error: mErr } = await supabase
         .from("messages")
-        .select("job_id, body, created_at")
+        .select("job_id, content, created_at")
         .in("job_id", jobIds)
         .order("created_at", { ascending: false });
 
       if (mErr) throw mErr;
 
-      const lastByJob = new Map<string, { body: string | null; created_at: string }>();
-      for (const m of (msgs as Message[] ?? [])) {
+      const lastByJob = new Map<string, { content: string | null; created_at: string }>();
+      for (const m of ((msgs as MessageRow[]) ?? [])) {
         const jid = m.job_id;
+        if (!jid) continue;
         if (!lastByJob.has(jid)) {
           lastByJob.set(jid, {
-            body: m.body ?? null,
+            content: m.content ?? null,
             created_at: m.created_at ?? new Date().toISOString(),
           });
         }
       }
 
-      const merged: JobThread[] = jobList.map((j) => {
-        const last = lastByJob.get(j.id);
-        return {
-          job_id: j.id,
-          title: j.title,
-          last_message: last?.body ?? "Chat unlocked — say hi 👋",
-          updated_at: last?.created_at ?? j.updated_at,
-        };
-      });
+      // 4) Merge + sort by most recent activity
+      const merged: JobThread[] = jobIds
+        .map((jobId) => {
+          const job = jobMap.get(jobId);
+          const jobTitle = job?.title?.trim() ? job.title : "Job";
+          const jobTime = job?.updated_at ?? job?.created_at ?? new Date().toISOString();
 
-      merged.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+          const last = lastByJob.get(jobId);
+          return {
+            job_id: jobId,
+            title: jobTitle,
+            last_message: last?.content ?? "Chat unlocked — say hi 👋",
+            updated_at: last?.created_at ?? jobTime,
+          };
+        })
+        .sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at));
+
       setJobThreads(merged);
-    } catch (e) {
+    } catch (e: any) {
       const errorMessage = e instanceof Error ? e.message : "Failed to load.";
       Alert.alert("Messages error", errorMessage);
       setJobThreads([]);
@@ -146,10 +167,7 @@ export default function Messages() {
     }, [load])
   );
 
-  const empty = useMemo(
-    () => !loading && jobThreads.length === 0,
-    [loading, jobThreads.length]
-  );
+  const empty = useMemo(() => !loading && jobThreads.length === 0, [loading, jobThreads.length]);
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading your chats…";
@@ -159,18 +177,15 @@ export default function Messages() {
 
   const keyExtractor = useCallback((t: JobThread) => t.job_id, []);
 
-  const ItemSeparator = useCallback(
-    () => <View style={{ height: spacing.md }} />,
-    [spacing.md]
-  );
+  const ItemSeparator = useCallback(() => <View style={{ height: spacing.md }} />, [spacing.md]);
 
   const renderItem = useCallback(
     ({ item }: { item: JobThread }) => (
       <Pressable
         onPress={() => router.push(`/(customer)/messages/${item.job_id}` as any)}
         style={({ pressed }) => [
-          card, 
-          pressed && cardPressed, 
+          card,
+          pressed && cardPressed,
           {
             paddingVertical: 10,
             paddingHorizontal: 12,
@@ -178,15 +193,17 @@ export default function Messages() {
             backgroundColor: colors.surface,
             borderWidth: 1,
             borderColor: colors.border,
-          }
+          },
         ]}
       >
-        <View style={{ 
-          flexDirection: "row", 
-          justifyContent: "space-between", 
-          gap: 12, 
-          alignItems: "center" 
-        }}>
+        <View
+          style={{
+            flexDirection: "row",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+          }}
+        >
           <View style={{ flex: 1, gap: 6 }}>
             <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
               <View
@@ -207,16 +224,12 @@ export default function Messages() {
               {item.last_message ?? "—"}
             </Text>
 
-            <Text style={[text.muted, { fontSize: 12 }]}>
-              {fmtTimeLong(item.updated_at)}
-            </Text>
+            <Text style={[text.muted, { fontSize: 12 }]}>{fmtTimeLong(item.updated_at)}</Text>
           </View>
 
           <View style={{ alignItems: "flex-end" }}>
             <Text style={text.muted}>{fmtTime(item.updated_at)}</Text>
-            <Text style={{ marginTop: 6, color: colors.accent, fontWeight: "900" }}>
-              Open →
-            </Text>
+            <Text style={{ marginTop: 6, color: colors.accent, fontWeight: "900" }}>Open →</Text>
           </View>
         </View>
       </Pressable>
@@ -227,12 +240,7 @@ export default function Messages() {
   const ListHeaderComponent = useMemo(
     () => (
       <View style={{ paddingTop: 2 }}>
-        {loading ? (
-          <ActivityIndicator 
-            color={colors.accent} 
-            style={{ marginTop: spacing.md }} 
-          />
-        ) : null}
+        {loading ? <ActivityIndicator color={colors.accent} style={{ marginTop: spacing.md }} /> : null}
 
         {empty ? (
           <View style={[card, { padding: spacing.lg, gap: spacing.sm }]}>
@@ -241,11 +249,7 @@ export default function Messages() {
               Accept a quote on a job to unlock messaging, then you&apos;ll see it here.
             </Text>
 
-            <View style={{ 
-              flexDirection: "row", 
-              gap: spacing.sm, 
-              marginTop: spacing.sm 
-            }}>
+            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
               <Pressable
                 onPress={() => router.push("/(customer)/(tabs)/jobs" as any)}
                 style={({ pressed }) => [
@@ -277,9 +281,7 @@ export default function Messages() {
                   },
                 ]}
               >
-                <Text style={{ fontWeight: "900", color: colors.textPrimary }}>
-                  FIND MECHANICS
-                </Text>
+                <Text style={{ fontWeight: "900", color: colors.textPrimary }}>FIND MECHANICS</Text>
               </Pressable>
             </View>
           </View>
@@ -336,9 +338,7 @@ export default function Messages() {
               },
             ]}
           >
-            <Text style={{ fontWeight: "900", color: colors.textPrimary }}>
-              {loading ? "…" : "Refresh"}
-            </Text>
+            <Text style={{ fontWeight: "900", color: colors.textPrimary }}>{loading ? "…" : "Refresh"}</Text>
           </Pressable>
         </View>
       </View>

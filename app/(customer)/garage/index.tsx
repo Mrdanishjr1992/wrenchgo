@@ -110,14 +110,12 @@ export default function GarageIndex() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        <Stack.Screen
-          options={{
-            title: "My Garage",
-            headerStyle: { backgroundColor: colors.surface },
-            headerTintColor: colors.textPrimary,
-            headerShadowVisible: false,
-          }}
-        />
+<Stack.Screen
+  options={{
+    title: "My Garage",
+  }}
+/>
+
         <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
           <ActivityIndicator size="large" color={colors.accent} />
           <Text style={{ marginTop: 12, fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
@@ -128,16 +126,21 @@ export default function GarageIndex() {
     );
   }
 
+  const returnToNormalized = useMemo(() => {
+  if (!params.returnTo) return undefined;
+  return Array.isArray(params.returnTo) ? params.returnTo[0] : params.returnTo;
+}, [params.returnTo]);
+
+
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <Stack.Screen
-        options={{
-          title: "My Garage",
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.textPrimary,
-          headerShadowVisible: false,
-        }}
-      />
+<Stack.Screen
+  options={{
+    title: "My Garage",
+  }}
+/>
+
       <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
         <View
           style={{
@@ -272,7 +275,7 @@ export default function GarageIndex() {
                     </View>
                   </Pressable>
 
-                  {(params.returnTo === "request-service" || params.returnTo === "explore") && (
+                  {(returnToNormalized === "request-service" || returnToNormalized === "explore") && (
                     <Pressable
                       onPress={() => handleSelectVehicle(item)}
                       style={({ pressed }) => [

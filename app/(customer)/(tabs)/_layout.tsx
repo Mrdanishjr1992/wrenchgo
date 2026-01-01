@@ -1,7 +1,7 @@
-import { Ionicons } from "@expo/vector-icons";
+﻿import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter, usePathname } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, Image, View, ActivityIndicator, Text, Platform } from "react-native";
+import { Pressable, Image, View, ActivityIndicator, Text } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
@@ -10,11 +10,11 @@ import { useTheme } from "../../../src/ui/theme-context";
 export default function CustomerLayout() {
   const router = useRouter();
   const pathname = usePathname();
-  const { colors, text } = useTheme();
+  const { colors, mode } = useTheme(); // ✅ add mode
   const insets = useSafeAreaInsets();
 
   const [checking, setChecking] = useState(true);
-  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [unread, setUnread] = useState<number>(0);
 
   const mountedRef = useRef(true);
@@ -26,31 +26,40 @@ export default function CustomerLayout() {
   }, []);
 
   const avatarSource = useMemo(
-    () => (photoUrl ? { uri: photoUrl } : require("../../../assets/profile.png")),
-    [photoUrl]
+    () => (avatarUrl ? { uri: avatarUrl } : require("../../../assets/profile.png")),
+    [avatarUrl]
   );
+
+  const getUserId = useCallback(async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
+    return data.session?.user?.id ?? null;
+  }, []);
 
   const loadAvatar = useCallback(async () => {
     try {
-      const { data: userData, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
-
-      const userId = userData.user?.id;
+      const userId = await getUserId();
       if (!userId) return;
 
-      const { data, error } = await supabase.from("profiles").select("avatar_url").eq("auth_id", userId)
-.single();
-      if (!error && mountedRef.current) setPhotoUrl(data?.photo_url ?? null);
+      // ✅ use maybeSingle so no-row doesn't throw
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("avatar_url")
+        .eq("auth_id", userId)
+        .maybeSingle();
+
+      if (error) return;
+
+      // ✅ correct column name
+      if (mountedRef.current) setAvatarUrl(data?.avatar_url ?? null);
     } catch {
+      // ignore
     }
-  }, []);
+  }, [getUserId]);
 
   const loadUnread = useCallback(async () => {
     try {
-      const { data: userData, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
-
-      const userId = userData.user?.id;
+      const userId = await getUserId();
       if (!userId) return;
 
       const { count, error } = await supabase
@@ -59,15 +68,18 @@ export default function CustomerLayout() {
         .eq("user_id", userId)
         .eq("is_read", false);
 
-      if (!error && mountedRef.current) setUnread(count ?? 0);
+      if (error) return;
+      if (mountedRef.current) setUnread(count ?? 0);
     } catch {
+      // ignore
     }
-  }, []);
+  }, [getUserId]);
 
   const refreshHeaderStuff = useCallback(async () => {
     await Promise.all([loadAvatar(), loadUnread()]);
   }, [loadAvatar, loadUnread]);
 
+  // Refresh header when route changes (fine)
   useEffect(() => {
     refreshHeaderStuff();
   }, [pathname, refreshHeaderStuff]);
@@ -78,12 +90,12 @@ export default function CustomerLayout() {
     }, [refreshHeaderStuff])
   );
 
+  // Realtime badge update
   useEffect(() => {
     let channel: any;
 
     (async () => {
-      const { data: userData } = await supabase.auth.getUser();
-      const userId = userData.user?.id;
+      const userId = await getUserId();
       if (!userId) return;
 
       channel = supabase
@@ -99,30 +111,43 @@ export default function CustomerLayout() {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [loadUnread]);
+  }, [getUserId, loadUnread]);
 
+  // ✅ Auth guard: redirect ONLY when truly signed out
   useEffect(() => {
-    let active = true;
+    let alive = true;
 
-    const check = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        router.replace("/");
+    const init = async () => {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        if (alive && mountedRef.current) setChecking(false);
         return;
       }
-      if (active && mountedRef.current) setChecking(false);
+
+      if (!data.session) {
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
+      if (alive && mountedRef.current) setChecking(false);
       refreshHeaderStuff();
     };
 
-    check();
+    init();
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) router.replace("/");
-      else refreshHeaderStuff();
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      // ✅ only kick user out on explicit sign-out events
+      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
+      // session exists → refresh header
+      if (session) refreshHeaderStuff();
     });
 
     return () => {
-      active = false;
+      alive = false;
       sub.subscription.unsubscribe();
     };
   }, [router, refreshHeaderStuff]);
@@ -136,8 +161,8 @@ export default function CustomerLayout() {
   }
 
   return (
-    
     <Tabs
+      key={mode} // ✅ force header + tab bar to refresh when theme flips
       screenOptions={{
         tabBarHideOnKeyboard: true,
         headerStyle: { backgroundColor: colors.bg },

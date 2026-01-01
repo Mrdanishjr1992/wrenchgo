@@ -48,8 +48,9 @@ export default function JobChat() {
   const [focused, setFocused] = useState(false);
 
   const listRef = useRef<FlatList<Msg>>(null);
-  const { colors, text, spacing, radius } = useTheme();
+  const { colors, text, spacing } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
+
   const canSend = useMemo(
     () => input.trim().length > 0 && !sending && !!me && !!jobId,
     [input, sending, me, jobId]
@@ -61,6 +62,7 @@ export default function JobChat() {
 
       const { data: userData, error: uErr } = await supabase.auth.getUser();
       if (uErr) throw uErr;
+
       const uid = userData.user?.id ?? null;
       setMe(uid);
 
@@ -96,8 +98,13 @@ export default function JobChat() {
       .channel("job-chat-" + jobId)
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "messages", filter: `job_id=eq.${jobId}` },
-        (payload: { new: Msg; }) => {
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+          filter: `job_id=eq.${jobId}`,
+        },
+        (payload: { new: Msg }) => {
           const m = payload.new as Msg;
           setItems((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
         }
@@ -108,11 +115,6 @@ export default function JobChat() {
       supabase.removeChannel(channel);
     };
   }, [jobId]);
-
-  useEffect(() => {
-    if (items.length === 0) return;
-    requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
-  }, [items.length]);
 
   const send = useCallback(async () => {
     if (!jobId || !me) return;
@@ -133,19 +135,25 @@ export default function JobChat() {
     };
     setItems((prev) => [...prev, temp]);
 
-    const { error } = await supabase.from("messages").insert({
-      job_id: jobId,
-      sender_id: me,
-      body,
-    });
+    try {
+      const { error } = await supabase.from("messages").insert({
+        job_id: jobId,
+        sender_id: me,
+        body,
+      });
 
-    if (error) {
+      if (error) {
+        setItems((prev) => prev.filter((m) => m.id !== tempId));
+        setInput(body);
+        Alert.alert("Send failed", error.message ?? "You can't chat until a quote is accepted.");
+      }
+    } catch (e: any) {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
       setInput(body);
-      Alert.alert("Send failed", error.message ?? "You can't chat until a quote is accepted.");
+      Alert.alert("Send failed", e?.message ?? "Message failed to send.");
+    } finally {
+      setSending(false);
     }
-
-    setSending(false);
   }, [jobId, me, input]);
 
   const Bubble = ({ item }: { item: Msg }) => {
@@ -157,8 +165,6 @@ export default function JobChat() {
           alignSelf: mine ? "flex-end" : "flex-start",
           maxWidth: "86%",
           marginVertical: 4,
-          backgroundColor: mine ? colors.accent + "1A" : colors.surface,
-          
         }}
       >
         <View
@@ -167,16 +173,30 @@ export default function JobChat() {
             {
               paddingVertical: 12,
               paddingHorizontal: 12,
-              backgroundColor: colors.surface,
+              backgroundColor: mine ? colors.accent + "12" : colors.surface,
               borderColor: mine ? colors.accent + "55" : colors.border,
               borderRadius: 18,
             },
           ]}
         >
-          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>{item.body}</Text>
+          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>
+            {item.body}
+          </Text>
 
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
-            <Ionicons name={mine ? "checkmark-done" : "time-outline"} size={14} color={colors.textMuted} />
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "flex-end",
+              gap: 6,
+              marginTop: 8,
+            }}
+          >
+            <Ionicons
+              name={mine ? "checkmark-done" : "time-outline"}
+              size={14}
+              color={colors.textMuted}
+            />
             <Text style={{ ...text.muted, fontSize: 12 }}>{fmtTime(item.created_at)}</Text>
           </View>
         </View>
@@ -210,8 +230,28 @@ export default function JobChat() {
           borderBottomColor: "rgba(255,255,255,0.2)",
         }}
       >
-        <View style={{ position: "absolute", top: 20, right: 30, width: 80, height: 80, borderRadius: 40, backgroundColor: "rgba(255,255,255,0.1)" }} />
-        <View style={{ position: "absolute", top: 60, left: 40, width: 60, height: 60, borderRadius: 30, backgroundColor: "rgba(255,255,255,0.08)" }} />
+        <View
+          style={{
+            position: "absolute",
+            top: 20,
+            right: 30,
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: "rgba(255,255,255,0.1)",
+          }}
+        />
+        <View
+          style={{
+            position: "absolute",
+            top: 60,
+            left: 40,
+            width: 60,
+            height: 60,
+            borderRadius: 30,
+            backgroundColor: "rgba(255,255,255,0.08)",
+          }}
+        />
 
         <Pressable
           onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/inbox"))}
@@ -225,7 +265,9 @@ export default function JobChat() {
         <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ ...text.title, color: "#fff" }}>Chat</Text>
-            <Text style={{ ...text.muted, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>Fast updates with your mechanic.</Text>
+            <Text style={{ ...text.muted, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>
+              Fast updates with your mechanic.
+            </Text>
           </View>
 
           <View
@@ -253,8 +295,9 @@ export default function JobChat() {
         data={items}
         keyExtractor={(m) => m.id}
         renderItem={({ item }) => <Bubble item={item} />}
+        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
         ListEmptyComponent={
-          <View style={[card, {  padding: spacing.lg, marginTop: spacing.md, alignItems: "center", gap: 8 }]}>
+          <View style={[card, { padding: spacing.lg, marginTop: spacing.md, alignItems: "center", gap: 8 }]}>
             <View
               style={{
                 width: 54,
@@ -302,11 +345,9 @@ export default function JobChat() {
               onChangeText={setInput}
               placeholder="Message…"
               placeholderTextColor={colors.textMuted}
-              style={{
-                color: colors.textPrimary,
-                minHeight: 22,
-              }}
+              style={{ color: colors.textPrimary, minHeight: 22 }}
               multiline
+              blurOnSubmit={false}
               onFocus={() => setFocused(true)}
               onBlur={() => setFocused(false)}
               returnKeyType="send"
@@ -330,11 +371,7 @@ export default function JobChat() {
               transform: [{ scale: pressed ? 0.98 : 1 }],
             })}
           >
-            {sending ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Ionicons name="send" size={18} color="#fff" />
-            )}
+            {sending ? <ActivityIndicator color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
           </Pressable>
         </View>
       </View>

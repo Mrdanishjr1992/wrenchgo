@@ -19,16 +19,15 @@ import { notifyUser } from "../../../src/lib/notify";
 import { CancelQuoteModal } from "../../../src/components/CancelQuoteModal";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 type JobIntake = {
-  symptom?: {
-    key: string;
-    label: string;
-  };
+  symptom?: { key: string; label: string };
   answers?: Record<string, string>;
   context?: {
     can_move?: string;
@@ -48,7 +47,13 @@ type Quote = {
   id: string;
   job_id: string;
   mechanic_id: string;
-  status: "pending" | "quoted" | "accepted" | "rejected" | "canceled_by_customer" | "canceled_by_mechanic";
+  status:
+    | "pending"
+    | "quoted"
+    | "accepted"
+    | "rejected"
+    | "canceled_by_customer"
+    | "canceled_by_mechanic";
   proposed_price_cents: number | null;
   proposed_time_text: string | null;
   note: string | null;
@@ -80,15 +85,13 @@ type Job = {
 const parseJobIntake = (description: string | null): JobIntake | null => {
   if (!description) return null;
   try {
-    const parsed = JSON.parse(description);
-    return parsed as JobIntake;
+    return JSON.parse(description) as JobIntake;
   } catch {
     return null;
   }
 };
 
 const money = (cents: number | null) => (cents == null ? "—" : `$${(cents / 100).toFixed(0)}`);
-const moneyDetailed = (cents: number | null) => (cents == null ? "—" : `$${(cents / 100).toFixed(2)}`);
 
 const fmtDT = (iso: string) => {
   try {
@@ -117,20 +120,44 @@ const fmtRelative = (iso: string) => {
   }
 };
 
+const normalizeCanMove = (raw?: string) => {
+  const s = (raw || "").trim();
+  const l = s.toLowerCase();
+  if (!s) return "Not sure";
+  if (l === "yes") return "Yes";
+  if (l === "no") return "No";
+  if (l === "not sure" || l === "unsure") return "Not sure";
+  // supports your current stored values: "Yes" | "No" | "Not sure"
+  return s;
+};
+
+const normalizeLocation = (raw?: string) => {
+  const s = (raw || "").trim();
+  const l = s.toLowerCase();
+  if (!s) return "Not specified";
+  if (l === "driveway") return "Driveway";
+  if (l === "parking_lot" || l === "parking lot") return "Parking lot";
+  if (l === "roadside") return "Roadside";
+  // supports your current stored values: "Driveway" | "Parking lot" | "Roadside"
+  return s;
+};
+
 export default function CustomerJobDetails() {
   const router = useRouter();
   const { id: jobId } = useLocalSearchParams<{ id: string }>();
+
+  const { colors, text, spacing } = useTheme();
+  const card = useMemo(() => createCard(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
   const [job, setJob] = useState<Job | null>(null);
   const [quotes, setQuotes] = useState<Quote[]>([]);
-  const { colors, text, spacing, radius } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedMechanicId, setSelectedMechanicId] = useState<string | null>(null);
+  const insets = useSafeAreaInsets();
 
   const statusColor = (status: string) => {
     const s = (status || "").toLowerCase();
@@ -235,7 +262,7 @@ export default function CustomerJobDetails() {
         .from("jobs")
         .select(
           `
-          id,title,description,preferred_time,status,created_at,accepted_mechanic_id,vehicle_id,
+          id,title,description,preferred_time,status,created_at,accepted_mechanic_id,vehicle_id,canceled_at,canceled_by,
           accepted_mechanic:profiles!jobs_accepted_mechanic_id_fkey(full_name, phone),
           vehicle:vehicles(year, make, model)
         `
@@ -340,13 +367,20 @@ export default function CustomerJobDetails() {
                   .single();
                 if (qGetErr) throw qGetErr;
 
-                if (quote.customer_id !== customerId) return Alert.alert("Not allowed", "This quote is not yours.");
-                if (quote.job_id !== jobId) return Alert.alert("Mismatch", "This quote is not for this job.");
+                if (quote.customer_id !== customerId) {
+                  Alert.alert("Not allowed", "This quote is not yours.");
+                  return;
+                }
+                if (quote.job_id !== jobId) {
+                  Alert.alert("Mismatch", "This quote is not for this job.");
+                  return;
+                }
                 if (quote.status !== "quoted" || quote.proposed_price_cents == null) {
-                  return Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
+                  Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
+                  return;
                 }
 
-                const { data: acceptedQuote, error: qAccErr } = await supabase
+                const { data: accepted, error: qAccErr } = await supabase
                   .from("quote_requests")
                   .update({ status: "accepted", updated_at: new Date().toISOString() })
                   .eq("id", quoteId)
@@ -355,7 +389,7 @@ export default function CustomerJobDetails() {
                 if (qAccErr) throw qAccErr;
 
                 await notifyUser({
-                  userId: acceptedQuote.mechanic_id,
+                  userId: accepted.mechanic_id,
                   title: "Quote accepted 🎉",
                   body: "Your quote was accepted. Waiting for customer payment.",
                   type: "quote_accepted",
@@ -372,15 +406,14 @@ export default function CustomerJobDetails() {
                 const { error: jErr } = await supabase
                   .from("jobs")
                   .update({
-                    accepted_mechanic_id: acceptedQuote.mechanic_id,
+                    accepted_mechanic_id: accepted.mechanic_id,
                     status: "accepted",
                     updated_at: new Date().toISOString(),
                   })
                   .eq("id", jobId);
                 if (jErr) throw jErr;
 
-                // Navigate to payment screen
-                router.push(`/(customer)/payment/${jobId}?quoteId=${quoteId}`);
+                router.push(`/(customer)/payment/${jobId}?quoteId=${quoteId}` as any);
               } catch (e: any) {
                 Alert.alert("Accept error", e?.message ?? "Failed to accept quote.");
               } finally {
@@ -420,38 +453,59 @@ export default function CustomerJobDetails() {
       : "🔎 Searching — quotes will appear here as mechanics respond.";
 
   return (
+
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md, paddingBottom: spacing.md }}>
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-          <Pressable
-            onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/jobs"))}
-            hitSlop={12}
-            style={({ pressed }) => [{ paddingVertical: 8, paddingRight: 10 }, pressed && { opacity: 0.6 }]}
-          >
-            <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 18, marginLeft: 10, marginTop: 10 }}>Back</Text> 
-          </Pressable>
+      <ScrollView
+          contentContainerStyle={{
+            paddingHorizontal: spacing.md,
+            paddingBottom: spacing.md,
+            gap: spacing.md,
+          }}
+        >
+{/* Top row (Safe Area) */}
+<View
+  style={{
+    paddingTop: insets.top,
+    paddingBottom: 8,
+    backgroundColor: colors.bg,
+  }}
+>
+  <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+    <Pressable
+      onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/jobs" as any))}
+      hitSlop={12}
+      style={({ pressed }) => [{ paddingVertical: 8, paddingRight: 10 }, pressed && { opacity: 0.6 }]}
+    >
+      <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 18 }}>
+        Back
+      </Text>
+    </Pressable>
 
-          {job.accepted_mechanic_id ? (
-            <Pressable
-              onPress={openChat}
-              hitSlop={12}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.accent,
-                  paddingVertical: 10,
-                  paddingHorizontal: 14,
-                  borderRadius: 999,
-                },
-                pressed && { opacity: 0.8 },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: "#fff" }}>Open Chat</Text>
-            </Pressable>
-          ) : null}
-        </View>
+    {job.accepted_mechanic_id ? (
+      <Pressable
+        onPress={openChat}
+        hitSlop={12}
+        style={({ pressed }) => [
+          {
+            backgroundColor: colors.accent,
+            paddingVertical: 10,
+            paddingHorizontal: 14,
+            borderRadius: 999,
+          },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <Text style={{ fontWeight: "900", color: "#fff" }}>Open Chat</Text>
+      </Pressable>
+    ) : null}
+  </View>
+</View>
 
+
+        {/* Summary card */}
         <View style={[card, { padding: spacing.lg, gap: 10 }]}>
           <Text style={text.title}>{job.title}</Text>
+
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <StatusPill status={job.status} />
             <Text style={text.muted}>Created {fmtDT(job.created_at)}</Text>
@@ -469,8 +523,9 @@ export default function CustomerJobDetails() {
           >
             <Text style={{ ...text.body, color: colors.textPrimary, fontWeight: "800" }}>{headerHint}</Text>
           </View>
-        
+        </View>
 
+        {/* Job details */}
         <SectionCard title="Job Details" icon="document-text-outline">
           {(() => {
             const intake = parseJobIntake(job.description);
@@ -486,12 +541,14 @@ export default function CustomerJobDetails() {
                       </Text>
                     </View>
                   ) : null}
+
                   {job.preferred_time ? (
                     <View style={{ marginBottom: spacing.sm }}>
                       <Text style={{ ...text.muted, fontSize: 13 }}>Preferred Time</Text>
                       <Text style={{ ...text.body, fontWeight: "900", marginTop: 2 }}>{job.preferred_time}</Text>
                     </View>
                   ) : null}
+
                   {job.description ? (
                     <View>
                       <Text style={{ ...text.muted, fontSize: 13 }}>Description</Text>
@@ -509,16 +566,8 @@ export default function CustomerJobDetails() {
             const answers = intake.answers || {};
             const context = intake.context || {};
 
-            const canMoveText =
-              context.can_move === "yes" ? "Yes" : context.can_move === "no" ? "No" : "Not sure";
-            const locationText =
-              context.location_type === "driveway"
-                ? "Driveway"
-                : context.location_type === "parking_lot"
-                ? "Parking lot"
-                : context.location_type === "roadside"
-                ? "Roadside"
-                : context.location_type || "Not specified";
+            const canMoveText = normalizeCanMove(context.can_move);
+            const locationText = normalizeLocation(context.location_type);
 
             return (
               <View style={{ gap: spacing.md }}>
@@ -539,9 +588,11 @@ export default function CustomerJobDetails() {
                     <Text style={{ ...text.body, fontWeight: "900", fontSize: 16 }}>
                       {vehicleData.year} {vehicleData.make} {vehicleData.model}
                     </Text>
-                    {intake.vehicle?.nickname && (
-                      <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>"{intake.vehicle.nickname}"</Text>
-                    )}
+                    {intake.vehicle?.nickname ? (
+                      <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>
+                        "{intake.vehicle.nickname}"
+                      </Text>
+                    ) : null}
                   </View>
                 )}
 
@@ -575,6 +626,7 @@ export default function CustomerJobDetails() {
                       <Ionicons name="chatbox-ellipses-outline" size={16} color={colors.accent} />
                       <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>CUSTOMER ANSWERS</Text>
                     </View>
+
                     <View style={{ gap: spacing.sm }}>
                       {Object.entries(answers).map(([key, value], idx) => {
                         const questionLabels: Record<string, string> = {
@@ -608,25 +660,28 @@ export default function CustomerJobDetails() {
                     <Ionicons name="information-circle-outline" size={16} color={colors.accent} />
                     <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>CONTEXT</Text>
                   </View>
+
                   <View style={{ gap: spacing.sm }}>
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...text.muted, fontSize: 13 }}>Can move</Text>
                       <Text style={{ ...text.body, fontWeight: "900" }}>{canMoveText}</Text>
                     </View>
+
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <Text style={{ ...text.muted, fontSize: 13 }}>Location</Text>
                       <Text style={{ ...text.body, fontWeight: "900" }}>{locationText}</Text>
                     </View>
-                    {context.mileage && (
+
+                    {context.mileage ? (
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                         <Text style={{ ...text.muted, fontSize: 13 }}>Mileage</Text>
                         <Text style={{ ...text.body, fontWeight: "900" }}>{context.mileage}</Text>
                       </View>
-                    )}
+                    ) : null}
                   </View>
                 </View>
 
-                {job.preferred_time && (
+                {job.preferred_time ? (
                   <View
                     style={{
                       backgroundColor: colors.surface,
@@ -642,13 +697,14 @@ export default function CustomerJobDetails() {
                     </View>
                     <Text style={{ ...text.body, fontWeight: "900" }}>{job.preferred_time}</Text>
                   </View>
-                )}
+                ) : null}
               </View>
             );
           })()}
         </SectionCard>
-        </View>
-        {job.status === "canceled" && job.canceled_by === "customer" && acceptedQuote && (
+
+        {/* Cancellation (if canceled) */}
+        {job.status === "canceled" && job.canceled_by === "customer" && acceptedQuote ? (
           <SectionCard title="Cancellation" icon="close-circle-outline">
             <View
               style={{
@@ -660,43 +716,43 @@ export default function CustomerJobDetails() {
                 marginBottom: spacing.sm,
               }}
             >
-              <Text style={{ fontSize: 13, fontWeight: "900", color: "#991B1B" }}>
-                ❌ JOB CANCELED
-              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "900", color: "#991B1B" }}>❌ JOB CANCELED</Text>
             </View>
 
             <Text style={text.body}>
               Canceled on: <Text style={{ fontWeight: "900" }}>{fmtDT(job.canceled_at || "")}</Text>
             </Text>
 
-            {acceptedQuote.cancel_reason && (
+            {acceptedQuote.cancel_reason ? (
               <View style={{ marginTop: spacing.sm }}>
                 <Text style={{ ...text.muted, fontSize: 13 }}>Reason</Text>
                 <Text style={{ ...text.body, marginTop: 2 }}>
                   {acceptedQuote.cancel_reason.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
                 </Text>
               </View>
-            )}
+            ) : null}
 
-            {acceptedQuote.cancel_note && (
+            {acceptedQuote.cancel_note ? (
               <View style={{ marginTop: spacing.sm }}>
                 <Text style={{ ...text.muted, fontSize: 13 }}>Note</Text>
                 <Text style={{ ...text.body, marginTop: 2 }}>{acceptedQuote.cancel_note}</Text>
               </View>
-            )}
+            ) : null}
 
-            {acceptedQuote.cancellation_fee_cents && acceptedQuote.cancellation_fee_cents > 0 && (
+            {acceptedQuote.cancellation_fee_cents && acceptedQuote.cancellation_fee_cents > 0 ? (
               <View style={{ marginTop: spacing.sm }}>
                 <Text style={{ ...text.muted, fontSize: 13 }}>Cancellation Fee</Text>
                 <Text style={{ ...text.title, fontSize: 20, color: "#EF4444", marginTop: 2 }}>
                   ${(acceptedQuote.cancellation_fee_cents / 100).toFixed(2)}
                 </Text>
               </View>
-            )}
+            ) : null}
           </SectionCard>
-        )}
+        ) : null}
+
+        {/* Quotes */}
         <SectionCard title="Quotes" icon="pricetag-outline">
-          {quoteCount > 0 && (
+          {quoteCount > 0 ? (
             <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", marginBottom: spacing.sm }}>
               <View
                 style={{
@@ -713,7 +769,7 @@ export default function CustomerJobDetails() {
                 <Text style={{ ...text.title, fontSize: 20, marginTop: 4 }}>{quoteCount}</Text>
               </View>
 
-              {minQuote !== null && (
+              {minQuote !== null ? (
                 <View
                   style={{
                     flex: 1,
@@ -730,9 +786,9 @@ export default function CustomerJobDetails() {
                     {money(minQuote)}
                   </Text>
                 </View>
-              )}
+              ) : null}
 
-              {minQuote !== null && maxQuote !== null && minQuote !== maxQuote && (
+              {minQuote !== null && maxQuote !== null && minQuote !== maxQuote ? (
                 <View
                   style={{
                     flex: 1,
@@ -749,9 +805,9 @@ export default function CustomerJobDetails() {
                     {money(minQuote)} – {money(maxQuote)}
                   </Text>
                 </View>
-              )}
+              ) : null}
             </View>
-          )}
+          ) : null}
 
           {quotes.length === 0 ? (
             <View
@@ -782,18 +838,20 @@ export default function CustomerJobDetails() {
                   <Pressable
                     key={q.id}
                     onPress={() => toggleExpand(q.id)}
+                    disabled={busy}
                     style={({ pressed }) => [
                       card,
-                      pressed && cardPressed,
+                      pressed && !busy && cardPressed,
                       {
                         padding: spacing.md,
                         gap: spacing.sm,
                         borderColor: isAccepted ? colors.accent : colors.border,
                         borderWidth: isAccepted ? 2 : 1,
+                        opacity: busy ? 0.9 : 1,
                       },
                     ]}
                   >
-                    {isAccepted && (
+                    {isAccepted ? (
                       <View
                         style={{
                           backgroundColor: `${colors.accent}15`,
@@ -807,7 +865,7 @@ export default function CustomerJobDetails() {
                       >
                         <Text style={{ fontSize: 11, fontWeight: "900", color: colors.accent }}>✓ ACCEPTED</Text>
                       </View>
-                    )}
+                    ) : null}
 
                     <View style={{ marginBottom: spacing.sm }}>
                       <UserProfileCard
@@ -841,7 +899,7 @@ export default function CustomerJobDetails() {
                         </Text>
                       </View>
 
-                      {q.proposed_time_text && (
+                      {q.proposed_time_text ? (
                         <View
                           style={{
                             flex: 1,
@@ -858,12 +916,12 @@ export default function CustomerJobDetails() {
                             {q.proposed_time_text}
                           </Text>
                         </View>
-                      )}
+                      ) : null}
                     </View>
 
-                    {isOpen && (
+                    {isOpen ? (
                       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-                        {q.note && (
+                        {q.note ? (
                           <View
                             style={{
                               backgroundColor: colors.surface,
@@ -876,16 +934,16 @@ export default function CustomerJobDetails() {
                             <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>Mechanic Note</Text>
                             <Text style={{ ...text.body, marginTop: 4 }}>{q.note}</Text>
                           </View>
-                        )}
+                        ) : null}
 
-                        {q.mechanic?.phone && (
+                        {q.mechanic?.phone ? (
                           <View>
                             <Text style={{ ...text.muted, fontSize: 12 }}>Contact</Text>
                             <Text style={{ ...text.body, marginTop: 2 }}>{q.mechanic.phone}</Text>
                           </View>
-                        )}
+                        ) : null}
 
-                        {canAccept && (
+                        {canAccept ? (
                           <Pressable
                             onPress={() => acceptQuote(q.id)}
                             disabled={busy}
@@ -905,9 +963,9 @@ export default function CustomerJobDetails() {
                               {busy ? "ACCEPTING…" : "ACCEPT QUOTE"}
                             </Text>
                           </Pressable>
-                        )}
+                        ) : null}
                       </View>
-                    )}
+                    ) : null}
 
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
                       <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
@@ -921,22 +979,9 @@ export default function CustomerJobDetails() {
             </View>
           )}
         </SectionCard>
-      {acceptedQuote && job && (
-        <CancelQuoteModal
-          visible={showCancelModal}
-          onClose={() => setShowCancelModal(false)}
-          onSuccess={() => {
-            setShowCancelModal(false);
-            load();
-            router.replace("/(customer)/(tabs)/jobs");
-          }}
-          quoteId={acceptedQuote.id}
-          jobId={job.id}
-          acceptedAt={acceptedQuote.accepted_at}
-          jobStatus={job.status}
-        />
-      )}
-      {job.accepted_mechanic_id && acceptedQuote ? (
+
+        {/* Assigned mechanic */}
+        {job.accepted_mechanic_id && acceptedQuote ? (
           <SectionCard title="Assigned Mechanic" icon="person-outline">
             <View
               style={{
@@ -957,9 +1002,8 @@ export default function CustomerJobDetails() {
                 {job.accepted_mechanic?.full_name ?? "Mechanic"}
               </Text>
             </Text>
-            {job.accepted_mechanic?.phone ? (
-              <Text style={text.body}>Phone: {job.accepted_mechanic.phone}</Text>
-            ) : null}
+
+            {job.accepted_mechanic?.phone ? <Text style={text.body}>Phone: {job.accepted_mechanic.phone}</Text> : null}
 
             <Text style={{ ...text.muted, marginTop: spacing.sm }}>This job is assigned — chat is unlocked.</Text>
 
@@ -979,7 +1023,7 @@ export default function CustomerJobDetails() {
               <Text style={{ fontWeight: "900", color: "#fff" }}>Message Mechanic</Text>
             </Pressable>
 
-            {job.status !== "completed" && job.status !== "canceled" && (
+            {job.status !== "completed" && job.status !== "canceled" ? (
               <Pressable
                 onPress={() => setShowCancelModal(true)}
                 style={({ pressed }) => [
@@ -997,12 +1041,30 @@ export default function CustomerJobDetails() {
               >
                 <Text style={{ fontWeight: "900", color: "#EF4444" }}>Cancel Job</Text>
               </Pressable>
-            )}
+            ) : null}
           </SectionCard>
         ) : null}
-        </ScrollView>
+      </ScrollView>
 
-      {selectedMechanicId && (
+      {/* Cancel modal */}
+      {acceptedQuote && job ? (
+        <CancelQuoteModal
+          visible={showCancelModal}
+          onClose={() => setShowCancelModal(false)}
+          onSuccess={() => {
+            setShowCancelModal(false);
+            load();
+            router.replace("/(customer)/(tabs)/jobs" as any);
+          }}
+          quoteId={acceptedQuote.id}
+          jobId={job.id}
+          acceptedAt={acceptedQuote.accepted_at}
+          jobStatus={job.status}
+        />
+      ) : null}
+
+      {/* Profile modal */}
+      {selectedMechanicId ? (
         <ProfileCardModal
           visible={!!selectedMechanicId}
           userId={selectedMechanicId}
@@ -1010,7 +1072,7 @@ export default function CustomerJobDetails() {
           title="Mechanic Profile"
           showReviewsButton={true}
         />
-      )}
+      ) : null}
     </View>
   );
 }

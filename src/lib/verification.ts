@@ -10,32 +10,36 @@ export interface IDVerificationInfo {
   photoPath: string | null;
 }
 
+/**
+ * Reads ID verification fields from profiles.
+ * - If userId is omitted, it uses the currently authenticated user.
+ * - IMPORTANT: profiles lookup uses auth_id = user.id
+ */
 export const checkIDVerification = async (userId?: string): Promise<IDVerificationInfo | null> => {
   try {
     let targetUserId = userId;
 
     if (!targetUserId) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) return null;
-      targetUserId = user.id;
+      const { data, error: authErr } = await supabase.auth.getUser();
+      if (authErr) throw authErr;
+      if (!data?.user) return null;
+      targetUserId = data.user.id;
     }
 
-    const { data, error } = await supabase
+    const { data: profile, error } = await supabase
       .from("profiles")
       .select("id_status, id_uploaded_at, id_verified_at, id_rejected_reason, id_photo_path")
-      .eq("id", targetUserId)
+      .eq("auth_id", targetUserId)
       .single();
 
     if (error) throw error;
 
     return {
-      status: (data.id_status as IDVerificationStatus) || "none",
-      uploadedAt: data.id_uploaded_at,
-      verifiedAt: data.id_verified_at,
-      rejectedReason: data.id_rejected_reason,
-      photoPath: data.id_photo_path,
+      status: (profile?.id_status as IDVerificationStatus) || "none",
+      uploadedAt: profile?.id_uploaded_at ?? null,
+      verifiedAt: profile?.id_verified_at ?? null,
+      rejectedReason: profile?.id_rejected_reason ?? null,
+      photoPath: profile?.id_photo_path ?? null,
     };
   } catch (error) {
     console.error("[ID VERIFICATION] Check error:", error);
@@ -48,90 +52,103 @@ export const isIDVerified = async (userId?: string): Promise<boolean> => {
   return info?.status === "verified";
 };
 
+function uriToBytes(uri: string): Promise<{ bytes: Uint8Array; contentType: string; ext: string }> {
+  return new Promise(async (resolve, reject) => {
+    try {
+      const ext = uri.split(".").pop()?.toLowerCase() || "jpg";
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
+      const base64 = await new Promise<string>((res, rej) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          const base64Data = base64String.includes(",") ? base64String.split(",")[1] : base64String;
+          res(base64Data);
+        };
+        reader.onerror = rej;
+        reader.readAsDataURL(blob);
+      });
+
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
+
+      const contentType = `image/${ext === "jpg" ? "jpeg" : ext}`;
+      resolve({ bytes, contentType, ext });
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
+/**
+ * Uploads the user's ID photo to storage bucket: identity-docs
+ * Path: {userId}/photo-id.{ext}
+ *
+ * NOTE:
+ * - If you still see: "new row violates row-level security policy"
+ *   that's a Storage RLS/policy problem (bucket policies), not this code.
+ */
 export const uploadIDPhoto = async (
   uri: string,
   userId: string
 ): Promise<{ success: boolean; path?: string; error?: string }> => {
   try {
-    const ext = uri.split(".").pop()?.toLowerCase() || "jpg";
+    // (Optional) quick auth sanity log
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    console.log("[ID VERIFICATION] auth", authData?.user?.id, authErr);
+
+    const { bytes, contentType, ext } = await uriToBytes(uri);
+
     const fileName = `photo-id.${ext}`;
     const filePath = `${userId}/${fileName}`;
 
-    // React Native compatible approach - fetch as blob and convert to base64
-    const response = await fetch(uri);
-    const blob = await response.blob();
+    // Delete existing files first (best-effort)
+    const { data: existingFiles, error: listErr } = await supabase.storage.from("identity-docs").list(userId);
+    if (listErr) throw listErr;
 
-    // Convert blob to base64 using FileReader (React Native compatible)
-    const base64 = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        // Remove data URL prefix (e.g., "data:image/jpeg;base64,")
-        const base64Data = base64String.split(',')[1];
-        resolve(base64Data);
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
-
-    // Convert base64 to Uint8Array for upload
-    const binaryString = atob(base64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
-    }
-
-    // Delete existing files first
-    const { data: existingFiles } = await supabase.storage
-      .from("identity-docs")
-      .list(userId);
-
-    if (existingFiles && existingFiles.length > 0) {
-      for (const file of existingFiles) {
-        await supabase.storage.from("identity-docs").remove([`${userId}/${file.name}`]);
-      }
+    if (existingFiles?.length) {
+      const toRemove = existingFiles.map((f) => `${userId}/${f.name}`);
+      const { error: rmErr } = await supabase.storage.from("identity-docs").remove(toRemove);
+      if (rmErr) throw rmErr;
     }
 
     // Upload the file
-    const { data, error } = await supabase.storage
+    const { data: uploadData, error: uploadErr } = await supabase.storage
       .from("identity-docs")
-      .upload(filePath, bytes, {
-        contentType: `image/${ext === "jpg" ? "jpeg" : ext}`,
-        upsert: true,
-      });
+      .upload(filePath, bytes, { contentType, upsert: true });
 
-    if (error) throw error;
+    if (uploadErr) throw uploadErr;
+    if (!uploadData?.path) throw new Error("Upload succeeded but no path was returned.");
+
+    console.log("[ID VERIFICATION] uploaded:", uploadData.path);
 
     // Update profile with new ID status
-    const { error: updateError } = await supabase
+    const { error: updateErr } = await supabase
       .from("profiles")
       .update({
-        id_photo_path: data.path,
+        id_photo_path: uploadData.path,
         id_status: "pending",
         id_uploaded_at: new Date().toISOString(),
         id_verified_at: null,
         id_rejected_reason: null,
       })
-      .eq("auth_id", userId)
-;
+      .eq("auth_id", userId);
 
-    if (updateError) throw updateError;
+    if (updateErr) throw updateErr;
 
-    // Note: The database trigger will automatically call the Edge Function
-    // No need to call it manually here to avoid infinite loops
-    console.log("[ID VERIFICATION] Upload complete, database trigger will handle verification");
+    // If you use a DB trigger to invoke the Edge Function, do NOT call it here.
+    console.log("[ID VERIFICATION] Upload complete. Trigger (if configured) will handle verification.");
 
-    return { success: true, path: data.path };
+    return { success: true, path: uploadData.path };
   } catch (error: any) {
     console.error("[ID VERIFICATION] Upload error:", error);
-    return { success: false, error: error.message || "Failed to upload ID photo" };
+    return { success: false, error: error?.message || "Failed to upload ID photo" };
   }
 };
 
-export const triggerAutoVerification = async (
-  userId: string,
-  filePath: string
-): Promise<void> => {
+export const triggerAutoVerification = async (userId: string, filePath: string): Promise<void> => {
   console.log("[ID VERIFICATION] Triggering auto-verification for:", { userId, filePath });
 
   const { data, error } = await supabase.functions.invoke("clever-responder", {
@@ -143,18 +160,8 @@ export const triggerAutoVerification = async (
       message: error.message,
       status: error.status,
       statusText: error.statusText,
-      context: error.context,
+      context: (error as any).context,
     });
-
-    // Try to read the response body for more details
-    if (error.context && error.context._bodyInit) {
-      try {
-        const errorBody = await error.context.text();
-        console.error("[ID VERIFICATION] Error response body:", errorBody);
-      } catch (e) {
-        console.error("[ID VERIFICATION] Could not read error body:", e);
-      }
-    }
 
     throw error;
   }
@@ -162,14 +169,9 @@ export const triggerAutoVerification = async (
   console.log("[ID VERIFICATION] Auto-verification result:", data);
 };
 
-export const getIDPhotoUrl = async (
-  path: string
-): Promise<string | null> => {
+export const getIDPhotoUrl = async (path: string): Promise<string | null> => {
   try {
-    const { data, error } = await supabase.storage
-      .from("identity-docs")
-      .createSignedUrl(path, 3600);
-
+    const { data, error } = await supabase.storage.from("identity-docs").createSignedUrl(path, 3600);
     if (error) throw error;
     return data.signedUrl;
   } catch (error: any) {
@@ -178,42 +180,36 @@ export const getIDPhotoUrl = async (
   }
 };
 
-export const deleteIDPhoto = async (
-  userId: string
-): Promise<{ success: boolean; error?: string }> => {
+export const deleteIDPhoto = async (userId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    const { data: existingFiles } = await supabase.storage
-      .from("identity-docs")
-      .list(userId);
+    // Delete files (best-effort)
+    const { data: existingFiles, error: listErr } = await supabase.storage.from("identity-docs").list(userId);
+    if (listErr) throw listErr;
 
-    if (existingFiles && existingFiles.length > 0) {
-      const filePaths = existingFiles.map(file => `${userId}/${file.name}`);
-      const { error: deleteError } = await supabase.storage
-        .from("identity-docs")
-        .remove(filePaths);
-
-      if (deleteError) throw deleteError;
+    if (existingFiles?.length) {
+      const paths = existingFiles.map((f) => `${userId}/${f.name}`);
+      const { error: rmErr } = await supabase.storage.from("identity-docs").remove(paths);
+      if (rmErr) throw rmErr;
     }
 
-    const { error: updateError } = await supabase
+    // Clear profile fields
+    const { error: updateErr } = await supabase
       .from("profiles")
       .update({
         id_photo_path: null,
-        id_status: null,
+        id_status: "none",
         id_uploaded_at: null,
         id_verified_at: null,
         id_rejected_reason: null,
         id_verified_by: null,
       })
-      .eq("auth_id", userId)
-;
+      .eq("auth_id", userId);
 
-    if (updateError) throw updateError;
+    if (updateErr) throw updateErr;
 
     return { success: true };
   } catch (error: any) {
     console.error("[ID VERIFICATION] Delete error:", error);
-    return { success: false, error: error.message || "Failed to delete ID photo" };
+    return { success: false, error: error?.message || "Failed to delete ID photo" };
   }
 };
-

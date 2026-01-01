@@ -1,10 +1,16 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, TextInput, Image, Alert } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { Audio } from 'expo-av';
-import { useTheme } from '../ui/theme-context';
-import { createCard, cardPressed } from '../ui/styles';
-import type { SymptomQuestion } from '../hooks/use-symptom-questions';
+import React, { useMemo, useState } from "react";
+import { View, Text, Pressable, TextInput, Image, Alert } from "react-native";
+import * as ImagePicker from "expo-image-picker";
+import { Audio } from "expo-av";
+import { useTheme } from "../ui/theme-context";
+import { createCard, cardPressed } from "../ui/styles";
+
+export type SymptomQuestion = {
+  question_key: string;
+  question_label: string;
+  question_type: string;
+  options: string[];
+};
 
 export interface QuestionRendererProps {
   question: SymptomQuestion;
@@ -14,122 +20,111 @@ export interface QuestionRendererProps {
 
 export default function QuestionRenderer({ question, value, onAnswer }: QuestionRendererProps) {
   const { colors, spacing } = useTheme();
-  const card = createCard(colors);
+  const card = useMemo(() => createCard(colors), [colors]);
+
+  const type = (question.question_type || "").toLowerCase().trim();
 
   const renderYesNo = () => (
-    <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-      {['Yes', 'No'].map((option) => (
-        <Pressable
-          key={option}
-          onPress={() => {
-            onChange(option);
-            setTimeout(onNext, 300);
-          }}
-          style={[
-            card,
-            {
-              flex: 1,
-              padding: spacing.lg,
-              backgroundColor: colors.bg,
-              borderWidth: 2,
-              borderColor: value === option ? colors.accent : colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: 16,
-              fontWeight: value === option ? '900' : '600',
-              color: value === option ? colors.accent : colors.textPrimary,
-              textAlign: 'center',
-            }}
+    <View style={{ flexDirection: "row", gap: spacing.sm }}>
+      {["Yes", "No"].map((opt) => {
+        const selected = value === opt;
+        return (
+          <Pressable
+            key={opt}
+            onPress={() => onAnswer(opt)}
+            style={[
+              card,
+              {
+                flex: 1,
+                padding: spacing.lg,
+                backgroundColor: colors.bg,
+                borderWidth: 2,
+                borderColor: selected ? colors.accent : colors.border,
+              },
+            ]}
           >
-            {option}
-          </Text>
-        </Pressable>
-      ))}
+            <Text
+              style={{
+                fontSize: 16,
+                fontWeight: selected ? "900" : "600",
+                color: selected ? colors.accent : colors.textPrimary,
+                textAlign: "center",
+              }}
+            >
+              {opt}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 
   const renderSingleChoice = () => (
     <View style={{ gap: spacing.sm }}>
-      {question.options.map((option) => (
-        <Pressable
-          key={option}
-          onPress={() => {
-            onChange(option);
-            setTimeout(onNext, 300);
-          }}
-          style={({ pressed }) => [
-            card,
-            pressed && cardPressed,
-            {
-              padding: spacing.md,
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: value === option ? colors.accent + '15' : colors.bg,
-              borderWidth: 2,
-              borderColor: value === option ? colors.accent : colors.border,
-            },
-          ]}
-        >
-          <Text
-            style={{
-              fontSize: 15,
-              fontWeight: value === option ? '800' : '600',
-              color: value === option ? colors.accent : colors.textPrimary,
-            }}
+      {(question.options || []).map((opt) => {
+        const selected = value === opt;
+        return (
+          <Pressable
+            key={opt}
+            onPress={() => onAnswer(opt)}
+            style={({ pressed }) => [
+              card,
+              pressed && cardPressed,
+              {
+                padding: spacing.md,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: selected ? colors.accent + "15" : colors.bg,
+                borderWidth: 2,
+                borderColor: selected ? colors.accent : colors.border,
+              },
+            ]}
           >
-            {option}
-          </Text>
-          {value === option && <Text style={{ fontSize: 18, color: colors.accent }}>✓</Text>}
-        </Pressable>
-      ))}
+            <Text style={{ fontSize: 15, fontWeight: selected ? "800" : "600", color: selected ? colors.accent : colors.textPrimary }}>
+              {opt}
+            </Text>
+            {selected && <Text style={{ fontSize: 18, color: colors.accent }}>✓</Text>}
+          </Pressable>
+        );
+      })}
     </View>
   );
 
   const renderMultiChoice = () => {
-    const selectedValues = Array.isArray(value) ? value : [];
-
-    const toggleOption = (option: string) => {
-      if (selectedValues.includes(option)) {
-        onChange(selectedValues.filter((v) => v !== option));
-      } else {
-        onChange([...selectedValues, option]);
-      }
+    const selected = Array.isArray(value) ? value : [];
+    const toggle = (opt: string) => {
+      const next = selected.includes(opt) ? selected.filter((x) => x !== opt) : [...selected, opt];
+      // DO NOT auto-advance on toggle; user confirms with Continue
+      setLocalSelected(next);
     };
+
+    const [localSelected, setLocalSelected] = useState<string[]>(selected);
 
     return (
       <View style={{ gap: spacing.sm }}>
-        {question.options.map((option) => {
-          const isSelected = selectedValues.includes(option);
+        {(question.options || []).map((opt) => {
+          const isSelected = localSelected.includes(opt);
           return (
             <Pressable
-              key={option}
-              onPress={() => toggleOption(option)}
+              key={opt}
+              onPress={() => toggle(opt)}
               style={({ pressed }) => [
                 card,
                 pressed && cardPressed,
                 {
                   padding: spacing.md,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  backgroundColor: isSelected ? colors.accent + '15' : colors.bg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: isSelected ? colors.accent + "15" : colors.bg,
                   borderWidth: 2,
                   borderColor: isSelected ? colors.accent : colors.border,
                 },
               ]}
             >
-              <Text
-                style={{
-                  fontSize: 15,
-                  fontWeight: isSelected ? '800' : '600',
-                  color: isSelected ? colors.accent : colors.textPrimary,
-                }}
-              >
-                {option}
+              <Text style={{ fontSize: 15, fontWeight: isSelected ? "800" : "600", color: isSelected ? colors.accent : colors.textPrimary }}>
+                {opt}
               </Text>
               <View
                 style={{
@@ -138,86 +133,87 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
                   borderRadius: 6,
                   borderWidth: 2,
                   borderColor: isSelected ? colors.accent : colors.border,
-                  backgroundColor: isSelected ? colors.accent : 'transparent',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  backgroundColor: isSelected ? colors.accent : "transparent",
+                  alignItems: "center",
+                  justifyContent: "center",
                 }}
               >
-                {isSelected && <Text style={{ fontSize: 14, color: '#fff' }}>✓</Text>}
+                {isSelected && <Text style={{ fontSize: 14, color: "#fff" }}>✓</Text>}
               </View>
             </Pressable>
           );
         })}
-        {selectedValues.length > 0 && (
-          <Pressable
-            onPress={onNext}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                backgroundColor: colors.accent,
-                alignItems: 'center',
-                marginTop: spacing.sm,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>
-              Continue ({selectedValues.length} selected)
-            </Text>
-          </Pressable>
-        )}
+
+        <Pressable
+          onPress={() => onAnswer(localSelected)}
+          disabled={localSelected.length === 0}
+          style={({ pressed }) => [
+            card,
+            {
+              padding: spacing.md,
+              backgroundColor: localSelected.length === 0 ? colors.border : colors.accent,
+              alignItems: "center",
+              marginTop: spacing.sm,
+              opacity: pressed ? 0.85 : 1,
+            },
+          ]}
+        >
+          <Text style={{ fontSize: 15, fontWeight: "900", color: localSelected.length === 0 ? colors.textMuted : "#fff" }}>
+            Continue ({localSelected.length} selected)
+          </Text>
+        </Pressable>
       </View>
     );
   };
 
-  const renderNumeric = () => (
-    <View>
-      <TextInput
-        value={value || ''}
-        onChangeText={onChange}
-        keyboardType="numeric"
-        placeholder="Enter a number"
-        placeholderTextColor={colors.textMuted}
-        style={[
-          card,
-          {
-            padding: spacing.md,
-            fontSize: 16,
-            fontWeight: '600',
-            color: colors.textPrimary,
-            backgroundColor: colors.bg,
-            borderWidth: 2,
-            borderColor: colors.border,
-          },
-        ]}
-      />
-      {value && (
-        <Pressable
-          onPress={onNext}
+  const renderNumeric = () => {
+    const str = typeof value === "string" ? value : "";
+    return (
+      <View style={{ gap: spacing.sm }}>
+        <TextInput
+          value={str}
+          onChangeText={(t) => onAnswer(t)}
+          keyboardType="numeric"
+          placeholder="Enter a number"
+          placeholderTextColor={colors.textMuted}
           style={[
             card,
             {
               padding: spacing.md,
-              backgroundColor: colors.accent,
-              alignItems: 'center',
-              marginTop: spacing.sm,
+              fontSize: 16,
+              fontWeight: "600",
+              color: colors.textPrimary,
+              backgroundColor: colors.bg,
+              borderWidth: 2,
+              borderColor: colors.border,
+            },
+          ]}
+        />
+
+        <Pressable
+          onPress={() => onAnswer(str)}
+          disabled={!str}
+          style={[
+            card,
+            {
+              padding: spacing.md,
+              backgroundColor: str ? colors.accent : colors.border,
+              alignItems: "center",
             },
           ]}
         >
-          <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>Continue</Text>
+          <Text style={{ fontSize: 15, fontWeight: "900", color: str ? "#fff" : colors.textMuted }}>Continue</Text>
         </Pressable>
-      )}
-    </View>
-  );
+      </View>
+    );
+  };
 
   const renderPhoto = () => {
-    const pickImage = async () => {
-      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const uri = typeof value === "string" ? value : "";
 
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your photo library.');
-        return;
-      }
+    const pickImage = async () => {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return Alert.alert("Permission Required", "Please allow access to your photo library.");
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -225,220 +221,127 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
         quality: 0.8,
       });
 
-      if (!result.canceled && result.assets[0]) {
-        onChange(result.assets[0].uri);
-      }
+      if (!result.canceled && result.assets?.[0]?.uri) onAnswer(result.assets[0].uri);
     };
 
     const takePhoto = async () => {
-      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) return Alert.alert("Permission Required", "Please allow access to your camera.");
 
-      if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Please allow access to your camera.');
-        return;
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        quality: 0.8,
-      });
-
-      if (!result.canceled && result.assets[0]) {
-        onChange(result.assets[0].uri);
-      }
+      const result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.8 });
+      if (!result.canceled && result.assets?.[0]?.uri) onAnswer(result.assets[0].uri);
     };
 
     return (
       <View style={{ gap: spacing.sm }}>
-        {value && (
-          <View
-            style={[
-              card,
-              {
-                padding: spacing.sm,
-                backgroundColor: colors.bg,
-                borderWidth: 2,
-                borderColor: colors.accent,
-              },
-            ]}
-          >
-            <Image
-              source={{ uri: value }}
-              style={{ width: '100%', height: 200, borderRadius: 12 }}
-              resizeMode="cover"
-            />
+        {!!uri && (
+          <View style={[card, { padding: spacing.sm, backgroundColor: colors.bg, borderWidth: 2, borderColor: colors.accent }]}>
+            <Image source={{ uri }} style={{ width: "100%", height: 200, borderRadius: 12 }} resizeMode="cover" />
           </View>
         )}
-        <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <Pressable
             onPress={takePhoto}
             style={({ pressed }) => [
               card,
               pressed && cardPressed,
-              {
-                flex: 1,
-                padding: spacing.md,
-                backgroundColor: colors.accent,
-                alignItems: 'center',
-              },
+              { flex: 1, padding: spacing.md, backgroundColor: colors.accent, alignItems: "center" },
             ]}
           >
-            <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>📷 Take Photo</Text>
+            <Text style={{ fontSize: 15, fontWeight: "900", color: "#fff" }}>📷 Take Photo</Text>
           </Pressable>
+
           <Pressable
             onPress={pickImage}
             style={({ pressed }) => [
               card,
               pressed && cardPressed,
-              {
-                flex: 1,
-                padding: spacing.md,
-                backgroundColor: colors.surface,
-                borderWidth: 2,
-                borderColor: colors.border,
-                alignItems: 'center',
-              },
+              { flex: 1, padding: spacing.md, backgroundColor: colors.surface, borderWidth: 2, borderColor: colors.border, alignItems: "center" },
             ]}
           >
-            <Text style={{ fontSize: 15, fontWeight: '900', color: colors.textPrimary }}>
-              🖼️ Choose
-            </Text>
+            <Text style={{ fontSize: 15, fontWeight: "900", color: colors.textPrimary }}>🖼️ Choose</Text>
           </Pressable>
         </View>
-        {value && (
-          <Pressable
-            onPress={onNext}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                backgroundColor: colors.accent,
-                alignItems: 'center',
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>Continue</Text>
-          </Pressable>
-        )}
+
+        <Pressable
+          onPress={() => onAnswer(uri)}
+          disabled={!uri}
+          style={[card, { padding: spacing.md, backgroundColor: uri ? colors.accent : colors.border, alignItems: "center" }]}
+        >
+          <Text style={{ fontSize: 15, fontWeight: "900", color: uri ? "#fff" : colors.textMuted }}>Continue</Text>
+        </Pressable>
       </View>
     );
   };
 
   const renderAudio = () => {
+    const uri = typeof value === "string" ? value : "";
     const [recording, setRecording] = useState<Audio.Recording | null>(null);
     const [isRecording, setIsRecording] = useState(false);
 
     const startRecording = async () => {
-      try {
-        const permission = await Audio.requestPermissionsAsync();
-        if (!permission.granted) {
-          Alert.alert('Permission Required', 'Please allow access to your microphone.');
-          return;
-        }
+      const perm = await Audio.requestPermissionsAsync();
+      if (!perm.granted) return Alert.alert("Permission Required", "Please allow access to your microphone.");
 
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: true,
-          playsInSilentModeIOS: true,
-        });
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
 
-        const { recording: newRecording } = await Audio.Recording.createAsync(
-          Audio.RecordingOptionsPresets.HIGH_QUALITY
-        );
-
-        setRecording(newRecording);
-        setIsRecording(true);
-      } catch (err) {
-        console.error('Failed to start recording', err);
-        Alert.alert('Error', 'Failed to start recording');
-      }
+      const { recording: rec } = await Audio.Recording.createAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
+      setRecording(rec);
+      setIsRecording(true);
     };
 
     const stopRecording = async () => {
       if (!recording) return;
-
-      try {
-        setIsRecording(false);
-        await recording.stopAndUnloadAsync();
-        const uri = recording.getURI();
-        onChange(uri);
-        setRecording(null);
-      } catch (err) {
-        console.error('Failed to stop recording', err);
-      }
+      setIsRecording(false);
+      await recording.stopAndUnloadAsync();
+      const out = recording.getURI();
+      setRecording(null);
+      if (out) onAnswer(out);
     };
 
     return (
       <View style={{ gap: spacing.sm }}>
-        {value && (
-          <View
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                backgroundColor: colors.accent + '15',
-                borderWidth: 2,
-                borderColor: colors.accent,
-                alignItems: 'center',
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '800', color: colors.accent }}>
-              ✓ Audio recorded
-            </Text>
+        {!!uri && (
+          <View style={[card, { padding: spacing.md, backgroundColor: colors.accent + "15", borderWidth: 2, borderColor: colors.accent, alignItems: "center" }]}>
+            <Text style={{ fontSize: 15, fontWeight: "800", color: colors.accent }}>✓ Audio recorded</Text>
           </View>
         )}
+
         <Pressable
           onPress={isRecording ? stopRecording : startRecording}
-          style={[
-            card,
-            {
-              padding: spacing.lg,
-              backgroundColor: isRecording ? '#ef4444' : colors.accent,
-              alignItems: 'center',
-            },
-          ]}
+          style={[card, { padding: spacing.lg, backgroundColor: isRecording ? "#ef4444" : colors.accent, alignItems: "center" }]}
         >
-          <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>
-            {isRecording ? '⏹️ Stop Recording' : '🎤 Start Recording'}
+          <Text style={{ fontSize: 15, fontWeight: "900", color: "#fff" }}>
+            {isRecording ? "⏹️ Stop Recording" : "🎤 Start Recording"}
           </Text>
         </Pressable>
-        {value && !isRecording && (
-          <Pressable
-            onPress={onNext}
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                backgroundColor: colors.accent,
-                alignItems: 'center',
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 15, fontWeight: '900', color: '#000' }}>Continue</Text>
-          </Pressable>
-        )}
+
+        <Pressable
+          onPress={() => onAnswer(uri)}
+          disabled={!uri || isRecording}
+          style={[card, { padding: spacing.md, backgroundColor: uri && !isRecording ? colors.accent : colors.border, alignItems: "center" }]}
+        >
+          <Text style={{ fontSize: 15, fontWeight: "900", color: uri && !isRecording ? "#fff" : colors.textMuted }}>Continue</Text>
+        </Pressable>
       </View>
     );
   };
 
-  switch (question.question_type) {
-    case 'yes_no':
+  switch (type) {
+    case "yes_no":
       return renderYesNo();
-    case 'single_choice':
+    case "single_choice":
       return renderSingleChoice();
-    case 'multi_choice':
+    case "multi_choice":
       return renderMultiChoice();
-    case 'numeric':
+    case "numeric":
       return renderNumeric();
-    case 'photo':
+    case "photo":
       return renderPhoto();
-    case 'audio':
+    case "audio":
       return renderAudio();
     default:
-      return (
-        <Text style={{ color: colors.textMuted }}>
-          Unsupported question type: {question.question_type}
-        </Text>
-      );
+      return <Text style={{ color: colors.textMuted }}>Unsupported question type: {question.question_type}</Text>;
   }
 }

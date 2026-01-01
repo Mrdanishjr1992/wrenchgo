@@ -1,13 +1,11 @@
 import { View, Text, ScrollView, Pressable, Alert, ActivityIndicator } from "react-native";
 import { Stack } from "expo-router";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
-import { spacing, normalize } from "../../src/ui/theme";
+import { normalize } from "../../src/ui/theme";
 import { createCard } from "../../src/ui/styles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import React from "react";
-
 
 type EducationCard = {
   id: string;
@@ -53,15 +51,19 @@ export default function EducationPage() {
   const [symptoms, setSymptoms] = useState<SymptomMapping[]>([]);
   const [activeTab, setActiveTab] = useState<"symptoms" | "guides">("symptoms");
 
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
+      setLoading(true);
+
       const [eduCardsRes, symptomsRes] = await Promise.all([
-        supabase.from("education_cards").select("id,symptom_key,card_key,title,summary,is_it_safe,order_index").order("order_index"),
-        supabase.from("symptom_mappings").select("id,symptom_key,symptom_label,category,risk_level,customer_explainer").order("symptom_label"),
+        supabase
+          .from("education_cards")
+          .select("id,symptom_key,card_key,title,summary,is_it_safe,order_index")
+          .order("order_index"),
+        supabase
+          .from("symptom_mappings")
+          .select("id,symptom_key,symptom_label,category,risk_level,customer_explainer")
+          .order("symptom_label"),
       ]);
 
       if (eduCardsRes.error) throw eduCardsRes.error;
@@ -74,7 +76,42 @@ export default function EducationPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  const TabButton = ({
+    label,
+    active,
+    onPress,
+  }: {
+    label: string;
+    active: boolean;
+    onPress: () => void;
+  }) => (
+    <Pressable
+      onPress={onPress}
+      style={{
+        flex: 1,
+        paddingVertical: spacing.sm,
+        borderRadius: normalize(12),
+        backgroundColor: active ? colors.accent : "transparent",
+      }}
+    >
+      <Text
+        style={{
+          textAlign: "center",
+          fontWeight: "900",
+          fontSize: normalize(14),
+          color: active ? "#fff" : colors.textMuted,
+        }}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -98,46 +135,8 @@ export default function EducationPage() {
           borderBottomColor: colors.border,
         }}
       >
-        <Pressable
-          onPress={() => setActiveTab("symptoms")}
-          style={{
-            flex: 1,
-            paddingVertical: spacing.sm,
-            borderRadius: normalize(12),
-            backgroundColor: activeTab === "symptoms" ? colors.accent : "transparent",
-          }}
-        >
-          <Text
-            style={{
-              textAlign: "center",
-              fontWeight: "900",
-              fontSize: normalize(14),
-              color: activeTab === "symptoms" ? "#fff" : colors.textMuted,
-            }}
-          >
-            Symptoms
-          </Text>
-        </Pressable>
-        <Pressable
-          onPress={() => setActiveTab("guides")}
-          style={{
-            flex: 1,
-            paddingVertical: spacing.sm,
-            borderRadius: normalize(12),
-            backgroundColor: activeTab === "guides" ? colors.accent : "transparent",
-          }}
-        >
-          <Text
-            style={{
-              textAlign: "center",
-              fontWeight: "900",
-              fontSize: normalize(14),
-              color: activeTab === "guides" ? "#fff" : colors.textMuted,
-            }}
-          >
-            Guides
-          </Text>
-        </Pressable>
+        <TabButton label="Symptoms" active={activeTab === "symptoms"} onPress={() => setActiveTab("symptoms")} />
+        <TabButton label="Guides" active={activeTab === "guides"} onPress={() => setActiveTab("guides")} />
       </View>
 
       {loading ? (
@@ -154,9 +153,8 @@ export default function EducationPage() {
         >
           {activeTab === "symptoms" ? (
             <>
-              <Text style={textStyles.muted}>
-                Learn about common car issues and what they mean
-              </Text>
+              <Text style={textStyles.muted}>Learn about common car issues and what they mean</Text>
+
               {symptoms.map((symptom) => {
                 const riskColor =
                   symptom.risk_level === "high"
@@ -164,16 +162,9 @@ export default function EducationPage() {
                     : symptom.risk_level === "medium"
                     ? "#f59e0b"
                     : "#10b981";
+
                 return (
-                  <View
-                    key={symptom.id}
-                    style={[
-                      card,
-                      {
-                        padding: spacing.md,
-                      },
-                    ]}
-                  >
+                  <View key={symptom.id} style={[card, { padding: spacing.md }]}>
                     <View
                       style={{
                         flexDirection: "row",
@@ -182,30 +173,29 @@ export default function EducationPage() {
                         marginBottom: spacing.sm,
                       }}
                     >
-                      <Text style={{ ...textStyles.section, flex: 1 }} numberOfLines={1}>{symptom.symptom_label}</Text>
+                      <Text style={{ ...textStyles.section, flex: 1 }} numberOfLines={1}>
+                        {symptom.symptom_label}
+                      </Text>
+
                       <View
                         style={{
                           paddingHorizontal: normalize(8),
                           paddingVertical: normalize(4),
                           borderRadius: normalize(8),
                           backgroundColor: riskColor + "22",
-                          marginLeft: spacing.xs,
+                          marginLeft: normalize(6),
                         }}
                       >
-                        <Text
-                          style={{
-                            fontSize: normalize(10),
-                            fontWeight: "900",
-                            color: riskColor,
-                          }}
-                        >
+                        <Text style={{ fontSize: normalize(10), fontWeight: "900", color: riskColor }}>
                           {symptom.risk_level.toUpperCase()}
                         </Text>
                       </View>
                     </View>
+
                     <Text style={{ ...textStyles.muted, fontSize: normalize(13), lineHeight: normalize(18) }}>
                       {symptom.customer_explainer}
                     </Text>
+
                     <View
                       style={{
                         marginTop: spacing.sm,
@@ -224,25 +214,18 @@ export default function EducationPage() {
             </>
           ) : (
             <>
-              <Text style={textStyles.muted}>
-                Educational guides to help you understand your car better
-              </Text>
+              <Text style={textStyles.muted}>Educational guides to help you understand your car better</Text>
+
               {educationCards.map((eduCard) => {
-                const safetyColor = eduCard.is_it_safe.toLowerCase().includes("safe")
+                const lower = eduCard.is_it_safe?.toLowerCase?.() ?? "";
+                const safetyColor = lower.includes("safe")
                   ? "#10b981"
-                  : eduCard.is_it_safe.toLowerCase().includes("not")
+                  : lower.includes("not")
                   ? "#ef4444"
                   : "#f59e0b";
+
                 return (
-                  <View
-                    key={eduCard.id}
-                    style={[
-                      card,
-                      {
-                        padding: spacing.md,
-                      },
-                    ]}
-                  >
+                  <View key={eduCard.id} style={[card, { padding: spacing.md }]}>
                     <View
                       style={{
                         flexDirection: "row",
@@ -255,6 +238,7 @@ export default function EducationPage() {
                       <Text style={{ ...textStyles.section, flex: 1, flexShrink: 1 }} numberOfLines={2}>
                         {eduCard.title}
                       </Text>
+
                       <View
                         style={{
                           width: normalize(10),
@@ -265,22 +249,86 @@ export default function EducationPage() {
                         }}
                       />
                     </View>
-                    <Text style={{ ...textStyles.muted, fontSize: normalize(13), lineHeight: normalize(18), marginBottom: spacing.sm }} numberOfLines={3}>
+
+                    <Text
+                      style={{
+                        ...textStyles.muted,
+                        fontSize: normalize(13),
+                        lineHeight: normalize(18),
+                        marginBottom: spacing.sm,
+                      }}
+                      numberOfLines={3}
+                    >
                       {eduCard.summary}
                     </Text>
 
-                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.xs, marginBottom: spacing.sm }}>
-                      <View style={{ paddingHorizontal: normalize(8), paddingVertical: normalize(4), borderRadius: normalize(8), backgroundColor: colors.accent + "15", flexDirection: "row", alignItems: "center", gap: normalize(4), flexShrink: 1 }}>
-                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.accent }} numberOfLines={1}>✅ What we&apos;ll check</Text>
+                    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: normalize(6), marginBottom: spacing.sm }}>
+                      <View
+                        style={{
+                          paddingHorizontal: normalize(8),
+                          paddingVertical: normalize(4),
+                          borderRadius: normalize(8),
+                          backgroundColor: colors.accent + "15",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: normalize(4),
+                          flexShrink: 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.accent }} numberOfLines={1}>
+                          ✅ What we'll check
+                        </Text>
                       </View>
-                      <View style={{ paddingHorizontal: normalize(8), paddingVertical: normalize(4), borderRadius: normalize(8), backgroundColor: safetyColor + "15", flexDirection: "row", alignItems: "center", gap: normalize(4), flexShrink: 1 }}>
-                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: safetyColor }} numberOfLines={1}>🛟 Is it safe?</Text>
+
+                      <View
+                        style={{
+                          paddingHorizontal: normalize(8),
+                          paddingVertical: normalize(4),
+                          borderRadius: normalize(8),
+                          backgroundColor: safetyColor + "15",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: normalize(4),
+                          flexShrink: 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: safetyColor }} numberOfLines={1}>
+                          🛟 Is it safe?
+                        </Text>
                       </View>
-                      <View style={{ paddingHorizontal: normalize(8), paddingVertical: normalize(4), borderRadius: normalize(8), backgroundColor: colors.textMuted + "15", flexDirection: "row", alignItems: "center", gap: normalize(4), flexShrink: 1 }}>
-                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.textMuted }} numberOfLines={1}>💵 How quotes work</Text>
+
+                      <View
+                        style={{
+                          paddingHorizontal: normalize(8),
+                          paddingVertical: normalize(4),
+                          borderRadius: normalize(8),
+                          backgroundColor: colors.textMuted + "15",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: normalize(4),
+                          flexShrink: 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.textMuted }} numberOfLines={1}>
+                          💵 How quotes work
+                        </Text>
                       </View>
-                      <View style={{ paddingHorizontal: normalize(8), paddingVertical: normalize(4), borderRadius: normalize(8), backgroundColor: colors.textMuted + "15", flexDirection: "row", alignItems: "center", gap: normalize(4), flexShrink: 1 }}>
-                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.textMuted }} numberOfLines={1}>📸 What to prepare</Text>
+
+                      <View
+                        style={{
+                          paddingHorizontal: normalize(8),
+                          paddingVertical: normalize(4),
+                          borderRadius: normalize(8),
+                          backgroundColor: colors.textMuted + "15",
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: normalize(4),
+                          flexShrink: 1,
+                        }}
+                      >
+                        <Text style={{ fontSize: normalize(11), fontWeight: "700", color: colors.textMuted }} numberOfLines={1}>
+                          📸 What to prepare
+                        </Text>
                       </View>
                     </View>
 
@@ -294,9 +342,13 @@ export default function EducationPage() {
                         alignItems: "center",
                       }}
                     >
-                      <Text style={{ ...textStyles.muted, fontSize: normalize(11), flex: 1, flexShrink: 1, marginRight: spacing.xs }} numberOfLines={2}>
+                      <Text
+                        style={{ ...textStyles.muted, fontSize: normalize(11), flex: 1, flexShrink: 1, marginRight: normalize(6) }}
+                        numberOfLines={2}
+                      >
                         {eduCard.is_it_safe}
                       </Text>
+
                       <View
                         style={{
                           paddingHorizontal: normalize(8),
@@ -306,14 +358,7 @@ export default function EducationPage() {
                           flexShrink: 0,
                         }}
                       >
-                        <Text
-                          style={{
-                            fontSize: normalize(10),
-                            fontWeight: "900",
-                            color: colors.accent,
-                          }}
-                          numberOfLines={1}
-                        >
+                        <Text style={{ fontSize: normalize(10), fontWeight: "900", color: colors.accent }} numberOfLines={1}>
                           {eduCard.symptom_key.toUpperCase()}
                         </Text>
                       </View>

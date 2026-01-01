@@ -13,7 +13,7 @@ import {
   FlatList,
   Image,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import { supabase } from "../../../src/lib/supabase";
 import { spacing } from "../../../src/ui/theme";
 import { useTheme } from "../../../src/ui/theme-context";
@@ -280,6 +280,12 @@ export default function AddVehicle() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
+    <Stack.Screen
+          options={{
+            title: "Add Vehicle",
+          }}
+        />
+
       <ScrollView
         contentContainerStyle={{
           padding: spacing.lg,
