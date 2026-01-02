@@ -20,12 +20,6 @@ expo-env.d.ts
 .kotlin/
 *.orig.*
 *.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-supabase/.env
-t Testing*
 
 # Metro
 .metro-health-check*
@@ -58,12 +52,20 @@ app-example
 # SECRETS - NEVER COMMIT
 .env
 .env.local
+.env.production
+.env.development
 credentials.json
 google-services.json
 GoogleService-Info.plist
+supabase/.env
+*.key
+*.pem
+*.p12
+*.p8
 
 # BACKUPS - KEEP LOCAL ONLY
 backups/
+backup_*.sql
 *.sql.backup
 *.dump
 *.bak
@@ -73,6 +75,7 @@ backups/
 *.temp
 .cache/
 cleanup_script.ps1
+t Testing*
 
 # IDE
 .vscode/
