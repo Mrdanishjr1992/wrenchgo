@@ -85,40 +85,13 @@ export default function ChooseRole() {
         return;
       }
 
-      const fullName =
-        (user.user_metadata?.full_name as string | undefined) ||
-        (user.user_metadata?.name as string | undefined) ||
-        (user.email ? user.email.split("@")[0] : "User");
+      const { data, error } = await supabase.rpc("set_user_role", {
+        new_role: role,
+      });
 
-      const payload = {
-        role,
-        full_name: fullName,
-        email: user.email ?? null,
-        updated_at: new Date().toISOString(),
-      };
+      if (error) throw error;
 
-      // 1) UPDATE first
-      const { data: updatedRows, error: upErr } = await supabase
-        .from("profiles")
-        .update(payload)
-        .eq("auth_id", user.id)
-        .select("auth_id");
-
-      console.log("choose-role update:", { role, user: user.id, upErr, updatedRows });
-
-      if (upErr) throw upErr;
-
-      // If update affected 0 rows, profile row doesn't exist yet -> INSERT fallback
-      if (!updatedRows || updatedRows.length === 0) {
-        const { error: insErr } = await supabase.from("profiles").insert({
-          auth_id: user.id,
-          ...payload,
-        });
-
-        console.log("choose-role insert fallback:", { insErr });
-
-        if (insErr) throw insErr;
-      }
+      console.log("choose-role: role set successfully", { role, userId: user.id });
 
       router.replace("/");
     } catch (e: any) {

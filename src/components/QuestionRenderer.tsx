@@ -24,6 +24,15 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
 
   const type = (question.question_type || "").toLowerCase().trim();
 
+  // Multi-choice state at component level
+  const [localSelected, setLocalSelected] = useState<string[]>(
+    Array.isArray(value) ? value : []
+  );
+
+  // Audio state at component level
+  const [recording, setRecording] = useState<Audio.Recording | null>(null);
+  const [isRecording, setIsRecording] = useState(false);
+
   const renderYesNo = () => (
     <View style={{ flexDirection: "row", gap: spacing.sm }}>
       {["Yes", "No"].map((opt) => {
@@ -92,14 +101,10 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
   );
 
   const renderMultiChoice = () => {
-    const selected = Array.isArray(value) ? value : [];
     const toggle = (opt: string) => {
-      const next = selected.includes(opt) ? selected.filter((x) => x !== opt) : [...selected, opt];
-      // DO NOT auto-advance on toggle; user confirms with Continue
+      const next = localSelected.includes(opt) ? localSelected.filter((x) => x !== opt) : [...localSelected, opt];
       setLocalSelected(next);
     };
-
-    const [localSelected, setLocalSelected] = useState<string[]>(selected);
 
     return (
       <View style={{ gap: spacing.sm }}>
@@ -277,8 +282,6 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
 
   const renderAudio = () => {
     const uri = typeof value === "string" ? value : "";
-    const [recording, setRecording] = useState<Audio.Recording | null>(null);
-    const [isRecording, setIsRecording] = useState(false);
 
     const startRecording = async () => {
       const perm = await Audio.requestPermissionsAsync();
@@ -331,8 +334,10 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
   switch (type) {
     case "yes_no":
       return renderYesNo();
+    case "single":
     case "single_choice":
       return renderSingleChoice();
+    case "multi":
     case "multi_choice":
       return renderMultiChoice();
     case "numeric":

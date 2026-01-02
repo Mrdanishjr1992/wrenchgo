@@ -50,3 +50,34 @@ app-example
 # generated native folders
 /ios
 /android
+
+# ============================================
+# WRENCHGO CLEANUP - SECURITY & ORGANIZATION
+# ============================================
+
+# SECRETS - NEVER COMMIT
+.env
+.env.local
+credentials.json
+google-services.json
+GoogleService-Info.plist
+
+# BACKUPS - KEEP LOCAL ONLY
+backups/
+*.sql.backup
+*.dump
+*.bak
+
+# TEMPORARY FILES
+*.tmp
+*.temp
+.cache/
+cleanup_script.ps1
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db

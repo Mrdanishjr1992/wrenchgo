@@ -19,6 +19,7 @@ import {
   uploadIDPhoto,
   getIDPhotoUrl,
   IDVerificationInfo,
+  manualVerifyID,
 } from "../../src/lib/verification";
 
 export default function PhotoID() {
@@ -139,6 +140,39 @@ export default function PhotoID() {
       { text: "Choose from Library", onPress: pickImage },
       { text: "Cancel", style: "cancel" },
     ]);
+  };
+
+  const handleManualVerify = async () => {
+    if (!userId) return;
+
+    Alert.alert(
+      "Manual Verification",
+      "This is a TESTING feature. In production, verification should be done by admins. Proceed?",
+      [
+        {
+          text: "Verify Now",
+          onPress: async () => {
+            try {
+              setLoading(true);
+              const result = await manualVerifyID(userId);
+              if (result.success) {
+                Alert.alert("Success", "ID manually verified!", [
+                  { text: "OK", onPress: () => loadVerificationStatus() },
+                ]);
+              } else {
+                Alert.alert("Error", result.error || "Failed to verify");
+              }
+            } catch (error) {
+              console.error("[PHOTO ID] Manual verify error:", error);
+              Alert.alert("Error", "Failed to verify ID");
+            } finally {
+              setLoading(false);
+            }
+          },
+        },
+        { text: "Cancel", style: "cancel" },
+      ]
+    );
   };
 
   const getStatusColor = (status: string) => {
@@ -327,6 +361,26 @@ export default function PhotoID() {
         </Pressable>
       )}
 
+      {verification?.status === "pending" && (
+        <Pressable
+          onPress={handleManualVerify}
+          style={{
+            backgroundColor: "#f59e0b",
+            paddingVertical: spacing.md,
+            borderRadius: radius.lg,
+            alignItems: "center",
+            marginBottom: spacing.lg,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+            <Ionicons name="shield-checkmark" size={20} color={colors.black} />
+            <Text style={{ fontWeight: "900", color: colors.black, fontSize: 16 }}>
+              MANUAL VERIFY (TESTING)
+            </Text>
+          </View>
+        </Pressable>
+      )}
+
       <View
         style={{
           backgroundColor: colors.surface,
@@ -340,7 +394,7 @@ export default function PhotoID() {
           <View style={{ flex: 1 }}>
             <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.xs }}>Why We Need This</Text>
             <Text style={{ ...text.muted, fontSize: 14 }}>
-              Photo ID verification helps ensure safety and trust for all WrenchGo users. It's required before you can
+              Photo ID verification helps ensure safety and trust for all WrenchGo users. It&apos;s required before you can
               request services or accept jobs.
             </Text>
           </View>
@@ -362,7 +416,7 @@ export default function PhotoID() {
           <View style={{ flex: 1 }}>
             <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.xs }}>Acceptable IDs</Text>
             <Text style={{ ...text.muted, fontSize: 14 }}>
-              • Driver's License{"\n"}• State ID{"\n"}• Passport{"\n"}• Government-issued ID
+              • Driver&apos;s License{"\n"}• State ID{"\n"}• Passport{"\n"}• Government-issued ID
             </Text>
           </View>
         </View>

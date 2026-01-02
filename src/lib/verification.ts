@@ -95,36 +95,66 @@ export const uploadIDPhoto = async (
   userId: string
 ): Promise<{ success: boolean; path?: string; error?: string }> => {
   try {
-    // (Optional) quick auth sanity log
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     console.log("[ID VERIFICATION] auth", authData?.user?.id, authErr);
 
+    if (authErr || !authData?.user) {
+      return { success: false, error: "Authentication failed. Please sign in again." };
+    }
+
+    console.log("[ID VERIFICATION] Converting image to bytes...");
     const { bytes, contentType, ext } = await uriToBytes(uri);
+    console.log("[ID VERIFICATION] Image converted:", { contentType, ext, size: bytes.length });
 
     const fileName = `photo-id.${ext}`;
     const filePath = `${userId}/${fileName}`;
 
-    // Delete existing files first (best-effort)
+    console.log("[ID VERIFICATION] Checking for existing files...");
     const { data: existingFiles, error: listErr } = await supabase.storage.from("identity-docs").list(userId);
-    if (listErr) throw listErr;
-
-    if (existingFiles?.length) {
-      const toRemove = existingFiles.map((f) => `${userId}/${f.name}`);
-      const { error: rmErr } = await supabase.storage.from("identity-docs").remove(toRemove);
-      if (rmErr) throw rmErr;
+    
+    if (listErr) {
+      console.error("[ID VERIFICATION] List error:", listErr);
+      return { success: false, error: `Storage access error: ${listErr.message}. Check if 'identity-docs' bucket exists.` };
     }
 
-    // Upload the file
+    if (existingFiles?.length) {
+      console.log("[ID VERIFICATION] Removing existing files:", existingFiles.length);
+      const toRemove = existingFiles.map((f) => `${userId}/${f.name}`);
+      const { error: rmErr } = await supabase.storage.from("identity-docs").remove(toRemove);
+      if (rmErr) {
+        console.error("[ID VERIFICATION] Remove error:", rmErr);
+      }
+    }
+
+    console.log("[ID VERIFICATION] Uploading to:", filePath);
     const { data: uploadData, error: uploadErr } = await supabase.storage
       .from("identity-docs")
       .upload(filePath, bytes, { contentType, upsert: true });
 
-    if (uploadErr) throw uploadErr;
-    if (!uploadData?.path) throw new Error("Upload succeeded but no path was returned.");
+    if (uploadErr) {
+      console.error("[ID VERIFICATION] Upload error:", uploadErr);
+      return { success: false, error: `Upload failed: ${uploadErr.message}. Check storage bucket RLS policies.` };
+    }
+    
+    if (!uploadData?.path) {
+      return { success: false, error: "Upload succeeded but no path was returned." };
+    }
 
     console.log("[ID VERIFICATION] uploaded:", uploadData.path);
 
-    // Update profile with new ID status
+    console.log("[ID VERIFICATION] Checking profile exists...");
+    const { data: profileCheck, error: profileCheckErr } = await supabase
+      .from("profiles")
+      .select("auth_id")
+      .eq("auth_id", userId)
+      .single();
+
+    if (profileCheckErr || !profileCheck) {
+      console.error("[ID VERIFICATION] Profile not found:", profileCheckErr);
+      return { success: false, error: "Profile not found. Please contact support." };
+    }
+
+    console.log("[ID VERIFICATION] Updating profile...");
     const { error: updateErr } = await supabase
       .from("profiles")
       .update({
@@ -136,9 +166,11 @@ export const uploadIDPhoto = async (
       })
       .eq("auth_id", userId);
 
-    if (updateErr) throw updateErr;
+    if (updateErr) {
+      console.error("[ID VERIFICATION] Profile update error:", updateErr);
+      return { success: false, error: `Failed to update profile: ${updateErr.message}` };
+    }
 
-    // If you use a DB trigger to invoke the Edge Function, do NOT call it here.
     console.log("[ID VERIFICATION] Upload complete. Trigger (if configured) will handle verification.");
 
     return { success: true, path: uploadData.path };
@@ -182,7 +214,6 @@ export const getIDPhotoUrl = async (path: string): Promise<string | null> => {
 
 export const deleteIDPhoto = async (userId: string): Promise<{ success: boolean; error?: string }> => {
   try {
-    // Delete files (best-effort)
     const { data: existingFiles, error: listErr } = await supabase.storage.from("identity-docs").list(userId);
     if (listErr) throw listErr;
 
@@ -192,7 +223,6 @@ export const deleteIDPhoto = async (userId: string): Promise<{ success: boolean;
       if (rmErr) throw rmErr;
     }
 
-    // Clear profile fields
     const { error: updateErr } = await supabase
       .from("profiles")
       .update({
@@ -211,5 +241,35 @@ export const deleteIDPhoto = async (userId: string): Promise<{ success: boolean;
   } catch (error: any) {
     console.error("[ID VERIFICATION] Delete error:", error);
     return { success: false, error: error?.message || "Failed to delete ID photo" };
+  }
+};
+
+/**
+ * TEMPORARY: Manual verification for testing/development
+ * In production, this should be admin-only or removed
+ */
+export const manualVerifyID = async (userId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    console.log("[ID VERIFICATION] Manually verifying user:", userId);
+    
+    const { error: updateErr } = await supabase
+      .from("profiles")
+      .update({
+        id_status: "verified",
+        id_verified_at: new Date().toISOString(),
+        id_rejected_reason: null,
+      })
+      .eq("auth_id", userId);
+
+    if (updateErr) {
+      console.error("[ID VERIFICATION] Manual verify error:", updateErr);
+      return { success: false, error: updateErr.message };
+    }
+
+    console.log("[ID VERIFICATION] Manual verification complete");
+    return { success: true };
+  } catch (error: any) {
+    console.error("[ID VERIFICATION] Manual verify error:", error);
+    return { success: false, error: error?.message || "Failed to verify ID" };
   }
 };

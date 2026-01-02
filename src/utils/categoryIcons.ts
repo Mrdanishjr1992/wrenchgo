@@ -204,7 +204,8 @@ const DEFAULT_ICON: CategoryIcon = {
 };
 
 export function getCategoryIcon(category: string): CategoryIcon {
-  const normalizedCategory = category.trim();
+  const normalizedCategory = category.replace(/\s+/g, " ").trim();
+
   
   if (categoryIconMap[normalizedCategory]) {
     return categoryIconMap[normalizedCategory];

@@ -16,8 +16,6 @@ import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { LinearGradient } from "expo-linear-gradient";
 
-type Role = "customer" | "mechanic";
-
 function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 }
@@ -25,7 +23,6 @@ function isEmail(v: string) {
 export default function SignUp() {
   const router = useRouter();
   const { colors, text, spacing } = useTheme();
-  const [role, setRole] = useState<Role>("customer");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -66,7 +63,6 @@ export default function SignUp() {
       options: {
         data: {
           full_name: nameClean,
-          role: role,
         },
       },
     });
@@ -82,34 +78,6 @@ export default function SignUp() {
     setLoading(false);
   }
 };
-
-
-  const RolePill = ({ r }: { r: Role }) => {
-    const active = role === r;
-    return (
-      <Pressable
-        onPress={() => setRole(r)}
-        style={({ pressed }) => ({
-          flex: 1,
-          paddingVertical: 14,
-          borderRadius: 16,
-          borderWidth: 1,
-          borderColor: active ? colors.accent : colors.border,
-          backgroundColor: active ? colors.accent + "22" : colors.surface,
-          alignItems: "center",
-          transform: [{ scale: pressed ? 0.98 : 1 }],
-          opacity: pressed ? 0.92 : 1,
-        })}
-      >
-        <Text style={{ fontWeight: "900", color: colors.textPrimary }}>
-          {r === "customer" ? "CUSTOMER" : "MECHANIC"}
-        </Text>
-        <Text style={{ marginTop: 4, ...text.muted }}>
-          {r === "customer" ? "Request service" : "Offer service"}
-        </Text>
-      </Pressable>
-    );
-  };
 
   return (
     <KeyboardAvoidingView
@@ -154,14 +122,6 @@ export default function SignUp() {
           </Text>
         </View>
       </LinearGradient>
-        {/* Role */}
-        <View style={{ padding: spacing.lg, gap: spacing.sm }}>
-          <Text style={text.section}>I am a…</Text>
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <RolePill r="customer" />
-            <RolePill r="mechanic" />
-          </View>
-        </View>
       <View style={{ padding: spacing.lg, gap: spacing.md, flex: 1, justifyContent: "flex-start" }}>
         {/* Form card */}
         <View
