@@ -42,6 +42,9 @@ yarn-error.*
 app-example
 
 # generated native folders
+# Gradle caches (do not upload/commit)
+android/.gradle/
+**/.gradle/
 
 
 # ============================================
