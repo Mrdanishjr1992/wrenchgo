@@ -11,7 +11,8 @@
     "lint": "expo lint",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage"
+    "test:coverage": "jest --coverage",
+    "upload-videos": "tsx scripts/uploadVideos.ts"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

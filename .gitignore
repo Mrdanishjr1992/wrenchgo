@@ -86,3 +86,7 @@ t Testing*
 *.swo
 *~
 Thumbs.db
+
+# MEDIA ASSETS - NOW HOSTED ON SUPABASE STORAGE
+# MP4 files are stored remotely and should not be bundled in the app
+assets/*.mp4

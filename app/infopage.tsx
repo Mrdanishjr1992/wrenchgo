@@ -3,15 +3,29 @@ import { useRouter } from "expo-router";
 import { VideoView, useVideoPlayer } from "expo-video";
 import { AppButton } from "../src/ui/components/AppButton";
 import { useTheme } from "../src/ui/theme-context";
-import React from "react";
+import React, { useEffect, useState } from "react";
+import { getMediaUrl, initializeMediaAssets, MEDIA_KEYS } from "../src/lib/mediaAssets";
 
 export default function InfoPage() {
   const router = useRouter();
   const { width } = Dimensions.get("window");
   const { colors, text, spacing, radius } = useTheme();
+  const [logoVideoUrl, setLogoVideoUrl] = useState<string | null>(null);
+  const [adVideoUrl, setAdVideoUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadVideos = async () => {
+      await initializeMediaAssets();
+      const logoUrl = await getMediaUrl(MEDIA_KEYS.LOGO_VIDEO);
+      const adUrl = await getMediaUrl(MEDIA_KEYS.WRENCHGO_AD_1);
+      setLogoVideoUrl(logoUrl);
+      setAdVideoUrl(adUrl);
+    };
+    loadVideos();
+  }, []);
 
   const playerMuted = useVideoPlayer(
-    require("../assets/logovideo.mp4"),
+    logoVideoUrl || "",
     (player) => {
       player.muted = true;
       player.loop = false;
@@ -20,13 +34,21 @@ export default function InfoPage() {
   );
 
   const playerSound = useVideoPlayer(
-    require("../assets/wrenchGoAd.mp4"),
+    adVideoUrl || "",
     (player) => {
       player.muted = true;
       player.loop = false;
       player.play();
     }
   );
+
+  if (!logoVideoUrl || !adVideoUrl) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, justifyContent: "center", alignItems: "center" }}>
+        <Text style={text.body}>Loading videos...</Text>
+      </View>
+    );
+  }
 
   return (
     <FlatList
