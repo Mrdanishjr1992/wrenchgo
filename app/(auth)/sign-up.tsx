@@ -87,8 +87,24 @@ export default function SignUp() {
         return;
       }
 
-      Alert.alert("Account created", "You can now sign in.");
-      router.replace("/(auth)/sign-in");
+      const user = data.user;
+      const session = data.session;
+
+      if (!user) {
+        setErr("Account created but no user returned. Please try signing in.");
+        return;
+      }
+
+      if (!session) {
+        Alert.alert(
+          "Check your email",
+          "We sent you a confirmation link. Please verify your email before signing in."
+        );
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
+      router.replace("/(auth)/choose-role");
     } catch (e: any) {
       console.error("Sign-up error:", e);
       setErr(e?.message ?? "Failed to create account");

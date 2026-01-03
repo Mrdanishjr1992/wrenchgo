@@ -27,10 +27,15 @@ export default function Index() {
           .from("profiles")
           .select("role")
           .eq("auth_id", userId)
-
           .maybeSingle();
 
-        const role = p?.role ?? "customer";
+        const role = p?.role;
+
+        if (!role) {
+          router.replace("/(auth)/choose-role");
+          return;
+        }
+
         router.replace(role === "mechanic" ? "/(mechanic)/(tabs)/leads" : "/(customer)/(tabs)");
       } catch (error) {
         router.replace("/(auth)/sign-in");

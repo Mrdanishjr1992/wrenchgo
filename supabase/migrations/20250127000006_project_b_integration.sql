@@ -18,6 +18,7 @@ CREATE OR REPLACE FUNCTION call_project_b(
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
+SET search_path = public
 AS $$
 DECLARE
   v_result JSONB;

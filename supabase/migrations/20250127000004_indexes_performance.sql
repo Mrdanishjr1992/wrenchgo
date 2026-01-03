@@ -79,7 +79,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS symptom_mappings_symptom_key_unique ON public.
 -- removed: symptom_mappings_id_unique (no id column)
 DROP INDEX IF EXISTS public.symptom_mappings_id_unique;
 
-CREATE UNIQUE INDEX IF NOT EXISTS symptoms_key_unique ON public.symptoms(key);
+CREATE UNIQUE INDEX IF NOT EXISTS symptoms_key_unique ON public.symptoms("key");
 CREATE UNIQUE INDEX IF NOT EXISTS symptom_questions_unique_key ON public.symptom_questions(symptom_key, question_key);
 CREATE UNIQUE INDEX IF NOT EXISTS education_cards_symptom_card_unique ON public.education_cards(symptom_key, card_key);
 

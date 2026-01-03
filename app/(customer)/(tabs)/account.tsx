@@ -112,7 +112,7 @@ export default function Account() {
         {
           auth_id: userId,
           email: email ?? null,
-          role: "customer",
+          role: null,
           id_status: "none",
         },
       ])

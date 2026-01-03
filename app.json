@@ -6,8 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "wrenchgo",
-    "userInterfaceStyle": "automatic",
-    "newArchEnabled": false,
+    "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wrenchgo.app",
@@ -27,6 +26,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
       "predictiveBackGestureEnabled": false,
       "package": "com.wrenchgo.app",
       "softwareKeyboardLayoutMode": "pan",
@@ -41,6 +41,7 @@
     },
     "plugins": [
       "expo-router",
+      ["@react-native-google-signin/google-signin"],
       [
         "expo-splash-screen",
         {

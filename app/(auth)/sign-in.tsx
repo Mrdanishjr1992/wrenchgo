@@ -179,7 +179,7 @@ export default function SignIn() {
 
       if (__DEV__) {
         try {
-          const payload = JSON.parse(atob(idToken.split('.')[1]));
+          const payload = JSON.parse(atob(idToken.split(".")[1]));
           console.log("🔍 ID Token Audience (aud):", payload.aud);
           console.log("🔍 ID Token Issuer (iss):", payload.iss);
           console.log("🔍 ID Token Email:", payload.email);
@@ -193,17 +193,41 @@ export default function SignIn() {
         token: idToken,
       });
 
+      console.log("🔎 signInWithIdToken result:", {
+        hasSession: !!data?.session,
+        hasUser: !!data?.user,
+        error: error?.message
+      });
+
       if (error) {
-        console.error("❌ Supabase signInWithIdToken error:", error);
+        console.error("❌ Supabase signInWithIdToken error:", {
+          message: error.message,
+          status: error.status,
+          name: error.name
+        });
         setErr(error.message);
         return;
       }
 
+      const session = data.session;
       const user = data.user;
-      if (!user) {
-        setErr("Signed in, but no user returned.");
+
+      if (!session || !user) {
+        const debugInfo = {
+          hasSession: !!session,
+          hasUser: !!user,
+          userId: user?.id,
+          userEmail: user?.email
+        };
+        console.error("❌ Google sign-in missing session/user:", debugInfo);
+        setErr("Google sign-in did not create a session. Check Supabase + Google config.");
         return;
       }
+
+      console.log("✅ Google sign-in successful:", {
+        userId: user.id,
+        email: user.email
+      });
 
       // remember email (no password in Google flow)
       if (rememberMe) {
@@ -214,7 +238,13 @@ export default function SignIn() {
 
       await ensureProfileAndRoute(user);
     } catch (e: any) {
-      console.error("Google sign-in error:", e);
+      console.error("❌ Google Sign-In error:", {
+        message: e?.message,
+        code: e?.code,
+        name: e?.name,
+        stack: e?.stack?.split('\n').slice(0, 3).join('\n')
+      });
+
       Alert.alert("Google sign in failed", e?.message ?? "Try again.");
       setErr(e?.message ?? "Failed to sign in with Google");
     }
@@ -228,18 +258,26 @@ export default function SignIn() {
       const { idToken, error } = await signInWithGoogle();
 
       if (error) {
+        console.error("❌ Google SDK error:", error);
         setErr(error);
         return;
       }
 
       if (!idToken) {
+        console.error("❌ No ID token returned from Google");
         setErr("Failed to get ID token from Google");
         return;
       }
 
+      console.log("✅ Got Google ID token, length:", idToken.length);
       await handleGoogleSignIn(idToken);
     } catch (e: any) {
-      console.error("Google sign-in error:", e);
+      console.error("❌ Google Sign-In exception:", {
+        message: e?.message,
+        code: e?.code,
+        statusCode: e?.statusCode
+      });
+
       setErr(e?.message ?? "Failed to sign in with Google");
     } finally {
       setLoading(false);

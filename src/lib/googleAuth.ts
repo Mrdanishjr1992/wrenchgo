@@ -4,88 +4,79 @@ import { Platform } from "react-native";
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
 
-interface GoogleSignInConfig {
-  webClientId: string;
-  offlineAccess: boolean;
-  scopes: string[];
-  forceCodeForRefreshToken: boolean;
-  iosClientId?: string;
-}
-
 export const configureGoogleSignIn = () => {
   if (!GOOGLE_WEB_CLIENT_ID) {
     throw new Error("Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in environment variables");
   }
 
-  const config: GoogleSignInConfig = {
+  GoogleSignin.configure({
     webClientId: GOOGLE_WEB_CLIENT_ID,
     offlineAccess: false,
-    scopes: ["profile", "email"],
     forceCodeForRefreshToken: false,
-  };
+    scopes: ["profile", "email"],
+    ...(Platform.OS === "ios" && GOOGLE_IOS_CLIENT_ID ? { iosClientId: GOOGLE_IOS_CLIENT_ID } : {}),
+  });
 
-  if (Platform.OS === "ios" && GOOGLE_IOS_CLIENT_ID) {
-    config.iosClientId = GOOGLE_IOS_CLIENT_ID;
+  if (__DEV__) {
+    console.log("✅ Google Sign-In configured with WEB client ID:", GOOGLE_WEB_CLIENT_ID);
   }
-
-  GoogleSignin.configure(config);
 };
 
-interface GoogleSignInResult {
-  data?: { idToken?: string };
-  idToken?: string;
-}
-
-export const signInWithGoogle = async (): Promise<{ idToken: string | null; error?: string }> => {
+export const signInWithGoogle = async (): Promise<{
+  idToken: string | null;
+  accessToken?: string;
+  error?: string;
+}> => {
   try {
     if (Platform.OS === "android") {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     }
 
-    try {
-      await GoogleSignin.signOut();
-    } catch (signOutErr) {
-      console.warn("Failed to sign out before new sign-in:", signOutErr);
+    if (__DEV__) {
+      console.log("🔐 Starting Google Sign-In...");
     }
 
-    const result = await GoogleSignin.signIn();
+    const userInfo = await GoogleSignin.signIn();
 
-    const typedResult = result as GoogleSignInResult;
-    const idToken = typedResult?.data?.idToken ?? typedResult?.idToken ?? null;
+    if (__DEV__) {
+      console.log("✅ Google Sign-In completed, extracting tokens...");
+    }
+
+    const idToken =
+      (userInfo as any)?.idToken ??
+      (userInfo as any)?.data?.idToken ??
+      null;
 
     if (!idToken) {
-      console.error("Google signIn() result:", JSON.stringify(result, null, 2));
-      return { idToken: null, error: "No ID token received from Google. Check your OAuth client configuration." };
+      console.error("❌ No ID token in userInfo:", Object.keys(userInfo || {}));
+      return { idToken: null, error: "Missing Google ID token" };
     }
 
-    console.log("Google Sign-In successful, idToken received");
-    return { idToken };
-  } catch (error: any) {
-    console.error("Google Sign-In error:", error);
+    if (__DEV__) {
+      console.log("✅ Got ID token, length:", idToken.length);
+    }
 
-    if (error?.code === statusCodes.SIGN_IN_CANCELLED) return { idToken: null, error: "Sign-in cancelled" };
-    if (error?.code === statusCodes.IN_PROGRESS) return { idToken: null, error: "Sign-in already in progress" };
-    if (error?.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return { idToken: null, error: "Google Play Services not available" };
+    const tokens = await GoogleSignin.getTokens();
+    const accessToken = tokens?.accessToken;
 
-    return { idToken: null, error: error?.message || "Unknown error" };
+    return { idToken, accessToken };
+  } catch (e: any) {
+    if (__DEV__) {
+      console.error("❌ Google Sign-In error:", {
+        message: e?.message,
+        code: e?.code,
+        statusCode: e?.statusCode,
+      });
+    }
+
+    if (e.code === statusCodes.SIGN_IN_CANCELLED) {
+      return { idToken: null, error: "Sign-in cancelled" };
+    } else if (e.code === statusCodes.IN_PROGRESS) {
+      return { idToken: null, error: "Sign-in already in progress" };
+    } else if (e.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      return { idToken: null, error: "Play Services not available" };
+    }
+
+    return { idToken: null, error: e?.message || "Google sign-in failed" };
   }
 };
-
-export const signOutFromGoogle = async () => {
-  try {
-    await GoogleSignin.signOut();
-  } catch (error) {
-    console.error("Google Sign-Out error:", error);
-  }
-};
-
-export const disconnectGoogle = async () => {
-  try {
-    await GoogleSignin.revokeAccess();
-    await GoogleSignin.signOut();
-  } catch (error) {
-    console.error("Google disconnect error:", error);
-  }
-};
-
-

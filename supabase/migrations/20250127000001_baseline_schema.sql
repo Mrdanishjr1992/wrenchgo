@@ -107,10 +107,10 @@ CREATE TABLE IF NOT EXISTS public.vehicles (
 
 -- symptoms (no dependencies)
 CREATE TABLE IF NOT EXISTS public.symptoms (
-  key text NOT NULL UNIQUE,
+  "key" text NOT NULL UNIQUE,
   label text NOT NULL,
   icon text NOT NULL,
-  CONSTRAINT symptoms_pkey PRIMARY KEY (key)
+  CONSTRAINT symptoms_pkey PRIMARY KEY ("key")
 );
 
 -- symptom_mappings (depends on symptoms)
@@ -220,29 +220,29 @@ CREATE TABLE IF NOT EXISTS public.education_cards (
 
 -- skills (no dependencies)
 CREATE TABLE IF NOT EXISTS public.skills (
-  key text NOT NULL,
+  "key" text NOT NULL,
   label text NOT NULL,
   category text,
   is_mobile_safe boolean DEFAULT false,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT skills_pkey PRIMARY KEY (key)
+  CONSTRAINT skills_pkey PRIMARY KEY ("key")
 );
 
 -- tools (no dependencies)
 CREATE TABLE IF NOT EXISTS public.tools (
-  key text NOT NULL,
+  "key" text NOT NULL,
   label text NOT NULL,
   category text,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT tools_pkey PRIMARY KEY (key)
+  CONSTRAINT tools_pkey PRIMARY KEY ("key")
 );
 
 -- safety_measures (no dependencies)
 CREATE TABLE IF NOT EXISTS public.safety_measures (
-  key text NOT NULL,
+  "key" text NOT NULL,
   label text NOT NULL,
   created_at timestamptz DEFAULT now(),
-  CONSTRAINT safety_measures_pkey PRIMARY KEY (key)
+  CONSTRAINT safety_measures_pkey PRIMARY KEY ("key")
 );
 
 -- jobs (depends on auth.users, vehicles)
@@ -313,6 +313,7 @@ CREATE TABLE IF NOT EXISTS public.messages (
   recipient_id uuid,
   content text NOT NULL,
   read_at timestamptz,
+  deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT messages_pkey PRIMARY KEY (id)
@@ -342,7 +343,7 @@ ALTER TABLE public.vehicles
 
 ALTER TABLE public.symptom_mappings
   DROP CONSTRAINT IF EXISTS symptom_mappings_symptom_key_fkey,
-  ADD CONSTRAINT symptom_mappings_symptom_key_fkey FOREIGN KEY (symptom_key) REFERENCES public.symptoms(key);
+  ADD CONSTRAINT symptom_mappings_symptom_key_fkey FOREIGN KEY (symptom_key) REFERENCES public.symptoms("key");
 
 ALTER TABLE public.symptom_questions
   DROP CONSTRAINT IF EXISTS symptom_questions_symptom_key_fkey,
@@ -354,7 +355,7 @@ ALTER TABLE public.symptom_question_options
 
 ALTER TABLE public.symptom_education
   DROP CONSTRAINT IF EXISTS symptom_education_symptom_key_fkey,
-  ADD CONSTRAINT symptom_education_symptom_key_fkey FOREIGN KEY (symptom_key) REFERENCES public.symptoms(key);
+  ADD CONSTRAINT symptom_education_symptom_key_fkey FOREIGN KEY (symptom_key) REFERENCES public.symptoms("key");
 
 ALTER TABLE public.jobs
   DROP CONSTRAINT IF EXISTS jobs_customer_id_fkey,
