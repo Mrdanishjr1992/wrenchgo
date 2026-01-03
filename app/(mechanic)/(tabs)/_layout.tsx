@@ -108,7 +108,7 @@ export default function MechanicTabsLayout() {
         headerLeft: () => (
           <View style={{ paddingLeft: 14 }}>
             <Image
-              source={require("../../../assets/WrenchGo.png")}
+              source={require("../../../assets/wrenchgo.png")}
               style={{ width: 120, height: 60 }}
               resizeMode="contain"
             />

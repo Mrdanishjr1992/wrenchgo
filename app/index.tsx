@@ -109,7 +109,7 @@ export default function Index() {
               }}
             >
               <Image
-                source={require("../assets/WrenchGo.png")}
+                source={require("../assets/wrencho.png")}
                 style={{ width: "100%", height: "100%" }}
                 resizeMode="contain"
               />
