@@ -42,8 +42,7 @@ yarn-error.*
 app-example
 
 # generated native folders
-/ios
-/android
+
 
 # ============================================
 # WRENCHGO CLEANUP - SECURITY & ORGANIZATION
