@@ -28,6 +28,7 @@ export default function SignUp() {
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   const emailClean = useMemo(() => email.trim(), [email]);
   const nameClean = useMemo(() => fullName.trim(), [fullName]);
@@ -40,44 +41,61 @@ export default function SignUp() {
     );
   }, [loading, nameClean, emailClean, password]);
 
+  const inputStyle = useMemo(
+    () => ({
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      padding: 14,
+      color: colors.textPrimary,
+      backgroundColor: colors.bg,
+    }),
+    [colors]
+  );
+
   const handleSignUp = async () => {
-  try {
-    if (!nameClean || !emailClean || !password) {
-      Alert.alert("Missing info", "Fill out all fields.");
-      return;
-    }
-    if (!isEmail(emailClean)) {
-      Alert.alert("Invalid email", "Enter a valid email address.");
-      return;
-    }
-    if (password.length < 6) {
-      Alert.alert("Weak password", "Password must be at least 6 characters.");
-      return;
-    }
+    try {
+      setErr(null);
 
-    setLoading(true);
+      if (!nameClean || !emailClean || !password) {
+        setErr("Fill out all fields.");
+        return;
+      }
+      if (!isEmail(emailClean)) {
+        setErr("Enter a valid email address.");
+        return;
+      }
+      if (password.length < 6) {
+        setErr("Password must be at least 6 characters.");
+        return;
+      }
 
-    const { data, error } = await supabase.auth.signUp({
-      email: emailClean,
-      password,
-      options: {
-        data: {
-          full_name: nameClean,
+      setLoading(true);
+
+      const { data, error } = await supabase.auth.signUp({
+        email: emailClean,
+        password,
+        options: {
+          data: {
+            full_name: nameClean,
+          },
         },
-      },
-    });
+      });
 
-    if (error) throw error;
+      if (error) {
+        setErr(error.message);
+        return;
+      }
 
-    // In many setups user may need email confirmation; still send them to sign-in
-    Alert.alert("Account created", "You can now sign in.");
-    router.replace("/(auth)/sign-in");
-  } catch (e: any) {
-    Alert.alert("Sign up failed", e?.message ?? "Unknown error");
-  } finally {
-    setLoading(false);
-  }
-};
+      Alert.alert("Account created", "You can now sign in.");
+      router.replace("/(auth)/sign-in");
+    } catch (e: any) {
+      console.error("Sign-up error:", e);
+      setErr(e?.message ?? "Failed to create account");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <KeyboardAvoidingView
@@ -88,16 +106,16 @@ export default function SignUp() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ flexGrow: 1, backgroundColor: colors.bg }}
       >
-              <LinearGradient
-              colors={["rgba(13,148,136,0.22)", "rgba(13,148,136,0.00)"]}
-              style={{
-                paddingTop: spacing.xl,
-                paddingBottom: spacing.lg,
-                paddingHorizontal: spacing.lg,
-              }}
-            >
-        {/* Hero */}
-         <View style={{ alignItems: "center" }}>
+        <LinearGradient
+          colors={["rgba(13,148,136,0.22)", "rgba(13,148,136,0.00)"]}
+          style={{
+            paddingTop: spacing.xl,
+            paddingBottom: spacing.lg,
+            paddingHorizontal: spacing.lg,
+          }}
+        >
+          {/* Hero */}
+          <View style={{ alignItems: "center" }}>
             <View
               style={{
                 width: 220,
@@ -108,41 +126,54 @@ export default function SignUp() {
                 overflow: "hidden",
               }}
             >
+              <Image
+                source={require("../../assets/checklist.png")}
+                style={{ width: "100%", height: "100%" }}
+                resizeMode="contain"
+              />
+            </View>
 
-            <Image
-              source={require("../../assets/checklist.png")}
-              style={{ width: "100%", height: "100%" }}
-              resizeMode="contain"
-            />
-          </View>
-
-          <Text style={{ ...text.title, fontSize: 26 }}>Join WrenchGo</Text>
-          <Text style={{ ...text.muted, textAlign: "center", paddingHorizontal: spacing.md }}>
-            Create your account and start getting help fast.
-          </Text>
-        </View>
-      </LinearGradient>
-      <View style={{ padding: spacing.lg, gap: spacing.md, flex: 1, justifyContent: "flex-start" }}>
-        {/* Form card */}
-        <View
-          style={{
-            marginTop: spacing.lg,
-            backgroundColor: colors.surface,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.md,
-            gap: spacing.md,
-          }}
-        >
-          <View style={{ gap: 8 }}>
-            <Text style={text.section}>Account details</Text>
-            <Text style={text.muted}>
-              Use a real email so you can recover your account later.
+            <Text style={{ ...text.title, fontSize: 26 }}>Join WrenchGo</Text>
+            <Text style={{ ...text.muted, textAlign: "center", paddingHorizontal: spacing.md }}>
+              Create your account and start getting help fast.
             </Text>
           </View>
+        </LinearGradient>
+        <View style={{ padding: spacing.lg, gap: spacing.md, flex: 1, justifyContent: "flex-start" }}>
+          {/* Form card */}
+          <View
+            style={{
+              marginTop: spacing.lg,
+              backgroundColor: colors.surface,
+              borderRadius: 18,
+              borderWidth: 1,
+              borderColor: colors.border,
+              padding: spacing.md,
+              gap: spacing.md,
+            }}
+          >
+            <View style={{ gap: 8 }}>
+              <Text style={text.section}>Account details</Text>
+              <Text style={text.muted}>
+                Use a real email so you can recover your account later.
+              </Text>
+            </View>
 
-          <View style={{ gap: 10 }}>
+            {err && (
+              <View
+                style={{
+                  padding: spacing.md,
+                  borderRadius: 16,
+                  borderWidth: 1,
+                  borderColor: "rgba(239,68,68,0.45)",
+                  backgroundColor: "rgba(239,68,68,0.10)",
+                }}
+              >
+                <Text style={{ color: "#ef4444", fontWeight: "900" }}>{err}</Text>
+              </View>
+            )}
+
+            <View style={{ gap: 10 }}>
             <TextInput
               placeholder="Full name"
               placeholderTextColor={colors.textMuted}
@@ -150,14 +181,7 @@ export default function SignUp() {
               onChangeText={setFullName}
               autoCapitalize="words"
               returnKeyType="next"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 14,
-                padding: 14,
-                color: colors.textPrimary,
-                backgroundColor: colors.bg,
-              }}
+              style={inputStyle}
             />
 
             <TextInput
@@ -168,14 +192,7 @@ export default function SignUp() {
               value={email}
               onChangeText={setEmail}
               returnKeyType="next"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 14,
-                padding: 14,
-                color: colors.textPrimary,
-                backgroundColor: colors.bg,
-              }}
+              style={inputStyle}
             />
 
             <TextInput
@@ -185,14 +202,7 @@ export default function SignUp() {
               value={password}
               onChangeText={setPassword}
               returnKeyType="done"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 14,
-                padding: 14,
-                color: colors.textPrimary,
-                backgroundColor: colors.bg,
-              }}
+              style={inputStyle}
             />
           </View>
 

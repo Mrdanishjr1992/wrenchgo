@@ -56,9 +56,6 @@ export default function SignIn() {
     try {
       const savedEmail = await AsyncStorage.getItem("@saved_email");
       if (savedEmail) setEmail(savedEmail);
-      // NOTE: I'd avoid restoring passwords (security). Keeping your behavior:
-      const savedPw = await AsyncStorage.getItem("@saved_password");
-      if (savedPw) setPassword(savedPw);
     } catch {
       // ignore
     }
@@ -124,8 +121,8 @@ export default function SignIn() {
     try {
       configureGoogleSignIn();
       setIsGoogleAvailable(true);
-    } catch {
-      console.log("Google Sign-In not available (likely running in Expo Go)");
+    } catch (error) {
+      console.log("Google Sign-In not available (likely running in Expo Go):", error);
       setIsGoogleAvailable(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,10 +159,8 @@ export default function SignIn() {
 
       if (rememberMe) {
         await AsyncStorage.setItem("@saved_email", emailClean);
-        await AsyncStorage.setItem("@saved_password", password);
       } else {
         await AsyncStorage.removeItem("@saved_email");
-        await AsyncStorage.removeItem("@saved_password");
       }
 
       await ensureProfileAndRoute(user);
@@ -182,12 +177,24 @@ export default function SignIn() {
     try {
       setErr(null);
 
+      if (__DEV__) {
+        try {
+          const payload = JSON.parse(atob(idToken.split('.')[1]));
+          console.log("🔍 ID Token Audience (aud):", payload.aud);
+          console.log("🔍 ID Token Issuer (iss):", payload.iss);
+          console.log("🔍 ID Token Email:", payload.email);
+        } catch (decodeErr) {
+          console.warn("Could not decode token for debugging:", decodeErr);
+        }
+      }
+
       const { data, error } = await supabase.auth.signInWithIdToken({
         provider: "google",
         token: idToken,
       });
 
       if (error) {
+        console.error("❌ Supabase signInWithIdToken error:", error);
         setErr(error.message);
         return;
       }
@@ -403,7 +410,7 @@ export default function SignIn() {
 
           <View style={{ alignItems: "center", marginTop: 6 }}>
             <Text style={text.muted}>
-              Don&#39;t have an account?{" "}
+              Don't have an account?{" "}
               <Text
                 onPress={() => router.replace("/(auth)/sign-up")}
                 style={{ color: colors.accent, fontWeight: "900" }}

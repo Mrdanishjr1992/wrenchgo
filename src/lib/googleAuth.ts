@@ -1,36 +1,64 @@
 import { GoogleSignin, statusCodes } from "@react-native-google-signin/google-signin";
+import { Platform } from "react-native";
 
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? "";
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? "";
+
+interface GoogleSignInConfig {
+  webClientId: string;
+  offlineAccess: boolean;
+  scopes: string[];
+  forceCodeForRefreshToken: boolean;
+  iosClientId?: string;
+}
 
 export const configureGoogleSignIn = () => {
   if (!GOOGLE_WEB_CLIENT_ID) {
-    console.warn("Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID");
+    throw new Error("Missing EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID in environment variables");
   }
 
-  GoogleSignin.configure({
-    webClientId: GOOGLE_WEB_CLIENT_ID, // must be WEB client id for idToken
+  const config: GoogleSignInConfig = {
+    webClientId: GOOGLE_WEB_CLIENT_ID,
     offlineAccess: false,
-    scopes: ["openid", "profile", "email"],
+    scopes: ["profile", "email"],
     forceCodeForRefreshToken: false,
-  });
+  };
+
+  if (Platform.OS === "ios" && GOOGLE_IOS_CLIENT_ID) {
+    config.iosClientId = GOOGLE_IOS_CLIENT_ID;
+  }
+
+  GoogleSignin.configure(config);
 };
+
+interface GoogleSignInResult {
+  data?: { idToken?: string };
+  idToken?: string;
+}
 
 export const signInWithGoogle = async (): Promise<{ idToken: string | null; error?: string }> => {
   try {
-    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    if (Platform.OS === "android") {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    }
 
-    // Force account picker
-    try { await GoogleSignin.signOut(); } catch {}
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutErr) {
+      console.warn("Failed to sign out before new sign-in:", signOutErr);
+    }
 
     const result = await GoogleSignin.signIn();
 
-    const idToken = (result as any)?.idToken ?? (result as any)?.data?.idToken ?? null;
+    const typedResult = result as GoogleSignInResult;
+    const idToken = typedResult?.data?.idToken ?? typedResult?.idToken ?? null;
 
     if (!idToken) {
-      console.log("Google signIn() result:", JSON.stringify(result, null, 2));
-      return { idToken: null, error: "No ID token received from Google" };
+      console.error("Google signIn() result:", JSON.stringify(result, null, 2));
+      return { idToken: null, error: "No ID token received from Google. Check your OAuth client configuration." };
     }
 
+    console.log("Google Sign-In successful, idToken received");
     return { idToken };
   } catch (error: any) {
     console.error("Google Sign-In error:", error);
@@ -52,7 +80,6 @@ export const signOutFromGoogle = async () => {
 };
 
 export const disconnectGoogle = async () => {
-  // Use this only if you want to fully disconnect the account from the app
   try {
     await GoogleSignin.revokeAccess();
     await GoogleSignin.signOut();
@@ -61,6 +88,4 @@ export const disconnectGoogle = async () => {
   }
 };
 
-export const isGoogleSignedIn = async (): Promise<boolean> => {
-  return GoogleSignin.isSignedIn();
-};
+
