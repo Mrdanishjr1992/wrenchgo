@@ -127,7 +127,7 @@ export default function SignUp() {
               }}
             >
               <Image
-                source={require("../assets/checklist.png")}
+                source={require("../../assets/checklist.png")}
                 style={{ width: "100%", height: "100%" }}
                 resizeMode="contain"
               />
