@@ -17,10 +17,6 @@
           "merchant.com.wrenchgo.app",
           "merchant.com.wrenchgo.app"
         ]
-      },
-      "extra": {
-        "EXPO_PUBLIC_SUPABASE_URL": "https://komsqqxqirvfgforixxq.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtvbXNxcXhxaXJ2Zmdmb3JpeHhxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjcyOTc0NDMsImV4cCI6MjA4Mjg3MzQ0M30.V9XbSCp5UNj_rHdyQ0-tYuwaRjmnz7x6y_QzORFKVJs"
       }
     },
     "android": {
@@ -75,7 +71,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "e715376b-d0be-4467-b6f1-8f6a707a261e"
+        "projectId": "b446e487-4c68-4d2e-bb39-aa63a4f9b799"
       }
     },
     "runtimeVersion": {
@@ -84,6 +80,6 @@
     "updates": {
       "url": "https://u.expo.dev/b446e487-4c68-4d2e-bb39-aa63a4f9b799"
     },
-    "owner": "wrenchgo"
+    "owner": "mrdanishjr1992"
   }
 }
