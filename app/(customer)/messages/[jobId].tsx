@@ -1,112 +1,95 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  FlatList,
-  TextInput,
-  Pressable,
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import React, { useCallback, useState, useRef, useEffect } from "react";
+import { View, Text, ScrollView, TextInput, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../src/lib/supabase";
-import { createCard } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
+import { createCard } from "../../../src/ui/styles";
+import { AppButton } from "../../../src/ui/components/AppButton";
 
-type Msg = {
+type Message = {
   id: string;
   job_id: string;
   sender_id: string;
-  body: string;
+  recipient_id: string;
+  content: string;
   created_at: string;
 };
 
-const fmtTime = (iso: string) => {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-  } catch {
-    return "";
-  }
-};
-
-export default function JobChat() {
+export default function JobMessages() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const router = useRouter();
-  const params = useLocalSearchParams<{ jobId?: string | string[] }>();
-  const jobId = Array.isArray(params.jobId) ? params.jobId[0] : params.jobId;
+  const { colors, text, spacing } = useTheme();
+  const card = createCard(colors);
+  const scrollRef = useRef<ScrollView>(null);
 
   const [loading, setLoading] = useState(true);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [items, setItems] = useState<Msg[]>([]);
-  const [me, setMe] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  const [input, setInput] = useState("");
-  const [focused, setFocused] = useState(false);
+  const loadMessages = useCallback(async () => {
+    if (!jobId) return;
 
-  const listRef = useRef<FlatList<Msg>>(null);
-  const { colors, text, spacing } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
-
-  const canSend = useMemo(
-    () => input.trim().length > 0 && !sending && !!me && !!jobId,
-    [input, sending, me, jobId]
-  );
-
-  const load = useCallback(async () => {
     try {
       setLoading(true);
 
-      const { data: userData, error: uErr } = await supabase.auth.getUser();
-      if (uErr) throw uErr;
+      const { data: sessionData } = await supabase.auth.getSession();
+      const currentUserId = sessionData.session?.user?.id;
 
-      const uid = userData.user?.id ?? null;
-      setMe(uid);
-
-      if (!jobId) {
-        setItems([]);
+      if (!currentUserId) {
+        router.replace("/(auth)/sign-in");
         return;
       }
 
+      setUserId(currentUserId);
+
       const { data, error } = await supabase
         .from("messages")
-        .select("id,job_id,sender_id,body,created_at")
+        .select("*")
         .eq("job_id", jobId)
         .order("created_at", { ascending: true });
 
-      if (error) throw error;
-      setItems((data as Msg[]) ?? []);
-    } catch (e: any) {
-      Alert.alert("Chat error", e?.message ?? "Failed to load chat.");
-      setItems([]);
+      if (error) {
+        console.error("Error loading messages:", error);
+        Alert.alert("Error", "Failed to load messages. Please try again.");
+        return;
+      }
+
+      setMessages(data || []);
+      
+      setTimeout(() => {
+        scrollRef.current?.scrollToEnd({ animated: true });
+      }, 100);
+    } catch (error: any) {
+      console.error("Messages load error:", error);
+      Alert.alert("Error", error?.message ?? "Failed to load messages.");
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [jobId, router]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMessages();
+    }, [loadMessages])
+  );
 
   useEffect(() => {
-    load();
-  }, [load]);
-
-  useEffect(() => {
-    if (!jobId) return;
+    if (!jobId || !userId) return;
 
     const channel = supabase
-      .channel("job-chat-" + jobId)
+      .channel(`job-messages-${jobId}`)
       .on(
         "postgres_changes",
-        {
-          event: "INSERT",
-          schema: "public",
-          table: "messages",
-          filter: `job_id=eq.${jobId}`,
-        },
-        (payload: { new: Msg }) => {
-          const m = payload.new as Msg;
-          setItems((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+        { event: "INSERT", schema: "public", table: "messages", filter: `job_id=eq.${jobId}` },
+        (payload) => {
+          setMessages((prev) => [...prev, payload.new as Message]);
+          setTimeout(() => {
+            scrollRef.current?.scrollToEnd({ animated: true });
+          }, 100);
         }
       )
       .subscribe();
@@ -114,265 +97,147 @@ export default function JobChat() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [jobId]);
+  }, [jobId, userId]);
 
-  const send = useCallback(async () => {
-    if (!jobId || !me) return;
-
-    const body = input.trim();
-    if (!body) return;
-
-    setSending(true);
-    setInput("");
-
-    const tempId = `temp-${Date.now()}`;
-    const temp: Msg = {
-      id: tempId,
-      job_id: jobId,
-      sender_id: me,
-      body,
-      created_at: new Date().toISOString(),
-    };
-    setItems((prev) => [...prev, temp]);
+  const sendMessage = useCallback(async () => {
+    if (!newMessage.trim() || !jobId || !userId) return;
 
     try {
+      setSending(true);
+
+      const { data: job } = await supabase
+        .from("jobs")
+        .select("customer_id, mechanic_id")
+        .eq("id", jobId)
+        .maybeSingle();
+
+      if (!job) {
+        Alert.alert("Error", "Job not found.");
+        return;
+      }
+
+      const recipientId = job.customer_id === userId ? job.mechanic_id : job.customer_id;
+
+      if (!recipientId) {
+        Alert.alert("Error", "No recipient found for this job.");
+        return;
+      }
+
       const { error } = await supabase.from("messages").insert({
         job_id: jobId,
-        sender_id: me,
-        body,
+        sender_id: userId,
+        recipient_id: recipientId,
+        content: newMessage.trim(),
       });
 
       if (error) {
-        setItems((prev) => prev.filter((m) => m.id !== tempId));
-        setInput(body);
-        Alert.alert("Send failed", error.message ?? "You can't chat until a quote is accepted.");
+        console.error("Error sending message:", error);
+        Alert.alert("Error", "Failed to send message. Please try again.");
+        return;
       }
-    } catch (e: any) {
-      setItems((prev) => prev.filter((m) => m.id !== tempId));
-      setInput(body);
-      Alert.alert("Send failed", e?.message ?? "Message failed to send.");
+
+      setNewMessage("");
+    } catch (error: any) {
+      console.error("Send message error:", error);
+      Alert.alert("Error", error?.message ?? "Failed to send message.");
     } finally {
       setSending(false);
     }
-  }, [jobId, me, input]);
-
-  const Bubble = ({ item }: { item: Msg }) => {
-    const mine = item.sender_id === me;
-
-    return (
-      <View
-        style={{
-          alignSelf: mine ? "flex-end" : "flex-start",
-          maxWidth: "86%",
-          marginVertical: 4,
-        }}
-      >
-        <View
-          style={[
-            card,
-            {
-              paddingVertical: 12,
-              paddingHorizontal: 12,
-              backgroundColor: mine ? colors.accent + "12" : colors.surface,
-              borderColor: mine ? colors.accent + "55" : colors.border,
-              borderRadius: 18,
-            },
-          ]}
-        >
-          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>
-            {item.body}
-          </Text>
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "flex-end",
-              gap: 6,
-              marginTop: 8,
-            }}
-          >
-            <Ionicons
-              name={mine ? "checkmark-done" : "time-outline"}
-              size={14}
-              color={colors.textMuted}
-            />
-            <Text style={{ ...text.muted, fontSize: 12 }}>{fmtTime(item.created_at)}</Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+  }, [newMessage, jobId, userId]);
 
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
         <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Opening chat…</Text>
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+    <KeyboardAvoidingView 
+      style={{ flex: 1, backgroundColor: colors.bg }} 
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
+      keyboardVerticalOffset={100}
     >
-      <LinearGradient
-        colors={["#14b8a6", "#0d9488"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{
-          padding: spacing.md,
-          paddingTop: spacing.lg,
-          borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.2)",
-        }}
-      >
-        <View
-          style={{
-            position: "absolute",
-            top: 20,
-            right: 30,
-            width: 80,
-            height: 80,
-            borderRadius: 40,
-            backgroundColor: "rgba(255,255,255,0.1)",
-          }}
-        />
-        <View
-          style={{
-            position: "absolute",
-            top: 60,
-            left: 40,
-            width: 60,
-            height: 60,
-            borderRadius: 30,
-            backgroundColor: "rgba(255,255,255,0.08)",
-          }}
-        />
-
-        <Pressable
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/inbox"))}
-          hitSlop={12}
-          style={{ paddingTop: 20, flexDirection: "row", alignItems: "center", gap: 8 }}
+      <View style={{ flex: 1 }}>
+        <ScrollView 
+          ref={scrollRef}
+          contentContainerStyle={{ padding: spacing.lg, paddingBottom: spacing.xl }}
         >
-          <Ionicons name="chevron-back" size={18} color="#fff" />
-          <Text style={{ color: "#fff", fontWeight: "900" }}>Back</Text>
-        </Pressable>
-
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={{ ...text.title, color: "#fff" }}>Chat</Text>
-            <Text style={{ ...text.muted, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>
-              Fast updates with your mechanic.
-            </Text>
-          </View>
-
-          <View
-            style={{
-              paddingHorizontal: 10,
-              paddingVertical: 6,
-              borderRadius: 999,
-              backgroundColor: "rgba(255,255,255,0.2)",
-              borderWidth: 1,
-              borderColor: "rgba(255, 255, 255, 0.89)",
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: "#fff" }} />
-            <Text style={{ fontSize: 12, fontWeight: "800", color: "#fff" }}>Live</Text>
-          </View>
-        </View>
-      </LinearGradient>
-
-      <FlatList
-        ref={listRef}
-        contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xl }}
-        data={items}
-        keyExtractor={(m) => m.id}
-        renderItem={({ item }) => <Bubble item={item} />}
-        onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-        ListEmptyComponent={
-          <View style={[card, { padding: spacing.lg, marginTop: spacing.md, alignItems: "center", gap: 8 }]}>
-            <View
-              style={{
-                width: 54,
-                height: 54,
-                borderRadius: 18,
-                backgroundColor: colors.accent + "12",
-                borderWidth: 1,
-                borderColor: colors.accent + "33",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.accent} />
+          {messages.length === 0 ? (
+            <View style={[card, { padding: spacing.lg, alignItems: "center" }]}>
+              <Ionicons name="chatbubbles-outline" size={48} color={colors.textSecondary} />
+              <Text style={[text.body, { marginTop: spacing.md, textAlign: "center" }]}>
+                No messages yet. Start the conversation!
+              </Text>
             </View>
-            <Text style={text.section}>No messages yet</Text>
-            <Text style={{ ...text.muted, textAlign: "center" }}>
-              Send a quick "Hi" to get the conversation started.
-            </Text>
-          </View>
-        }
-      />
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.sender_id === userId;
+              return (
+                <View
+                  key={msg.id}
+                  style={{
+                    marginBottom: spacing.md,
+                    alignSelf: isMe ? "flex-end" : "flex-start",
+                    maxWidth: "80%",
+                  }}
+                >
+                  <View
+                    style={[
+                      card,
+                      {
+                        padding: spacing.md,
+                        backgroundColor: isMe ? colors.accent + "22" : colors.cardBg,
+                        borderColor: isMe ? colors.accent : colors.border,
+                      },
+                    ]}
+                  >
+                    <Text style={text.body}>{msg.content}</Text>
+                    <Text style={[text.muted, { fontSize: 12, marginTop: spacing.xs }]}>
+                      {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </Text>
+                  </View>
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
 
-      <View
-        style={{
-          padding: spacing.md,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          backgroundColor: colors.surface,
-        }}
-      >
-        <View style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-end" }}>
-          <View
-            style={{
-              flex: 1,
-              borderWidth: 1,
-              borderColor: focused ? colors.accent : colors.border,
-              borderRadius: 18,
-              backgroundColor: colors.bg,
-              paddingHorizontal: 12,
-              paddingVertical: 10,
-            }}
-          >
+        <View
+          style={{
+            padding: spacing.md,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.bg,
+          }}
+        >
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
             <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Message…"
-              placeholderTextColor={colors.textMuted}
-              style={{ color: colors.textPrimary, minHeight: 22 }}
+              style={[
+                card,
+                {
+                  flex: 1,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  minHeight: 44,
+                },
+              ]}
+              placeholder="Type a message..."
+              placeholderTextColor={colors.textSecondary}
+              value={newMessage}
+              onChangeText={setNewMessage}
               multiline
-              blurOnSubmit={false}
-              onFocus={() => setFocused(true)}
-              onBlur={() => setFocused(false)}
-              returnKeyType="send"
-              onSubmitEditing={() => {
-                if (Platform.OS === "android") send();
-              }}
+              maxLength={500}
+            />
+            <AppButton
+              title={sending ? "..." : "Send"}
+              variant="primary"
+              onPress={sendMessage}
+              disabled={!newMessage.trim() || sending}
+              style={{ minWidth: 80 }}
             />
           </View>
-
-          <Pressable
-            onPress={send}
-            disabled={!canSend}
-            style={({ pressed }) => ({
-              backgroundColor: colors.accent,
-              width: 48,
-              height: 48,
-              borderRadius: 16,
-              alignItems: "center",
-              justifyContent: "center",
-              opacity: !canSend ? 0.55 : pressed ? 0.85 : 1,
-              transform: [{ scale: pressed ? 0.98 : 1 }],
-            })}
-          >
-            {sending ? <ActivityIndicator color="#fff" /> : <Ionicons name="send" size={18} color="#fff" />}
-          </Pressable>
         </View>
       </View>
     </KeyboardAvoidingView>

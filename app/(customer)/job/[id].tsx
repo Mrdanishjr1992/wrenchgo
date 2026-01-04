@@ -54,9 +54,8 @@ type Quote = {
     | "rejected"
     | "canceled_by_customer"
     | "canceled_by_mechanic";
-  proposed_price_cents: number | null;
-  proposed_time_text: string | null;
-  note: string | null;
+  price_cents: number | null;
+  notes: string | null;
   created_at: string;
   accepted_at: string | null;
   canceled_at: string | null;
@@ -277,11 +276,9 @@ export default function CustomerJobDetails() {
       const { data: q, error: qErr } = await supabase
         .from("quote_requests")
         .select(
-          `
-          id,job_id,mechanic_id,status,proposed_price_cents,proposed_time_text,note,created_at,
+          `id,job_id,mechanic_id,status,price_cents,notes,created_at,
           accepted_at,canceled_at,canceled_by,cancel_reason,cancel_note,cancellation_fee_cents,
-          mechanic:profiles!quote_requests_mechanic_id_fkey(full_name, phone)
-        `
+          mechanic:profiles!quote_requests_mechanic_id_fkey(full_name,phone)`
         )
         .eq("job_id", jobId)
         .order("created_at", { ascending: false });
@@ -331,7 +328,7 @@ export default function CustomerJobDetails() {
 
   const quoteCount = quotes.length;
   const prices = quotes
-    .map((q) => q.proposed_price_cents)
+    .map((q) => q.price_cents)
     .filter((p): p is number => p !== null && p !== undefined);
   const minQuote = prices.length > 0 ? Math.min(...prices) : null;
   const maxQuote = prices.length > 0 ? Math.max(...prices) : null;
@@ -362,7 +359,7 @@ export default function CustomerJobDetails() {
 
                 const { data: quote, error: qGetErr } = await supabase
                   .from("quote_requests")
-                  .select("id,job_id,mechanic_id,customer_id,status,proposed_price_cents")
+                  .select("id,job_id,mechanic_id,customer_id,status,price_cents")
                   .eq("id", quoteId)
                   .single();
                 if (qGetErr) throw qGetErr;
@@ -375,7 +372,7 @@ export default function CustomerJobDetails() {
                   Alert.alert("Mismatch", "This quote is not for this job.");
                   return;
                 }
-                if (quote.status !== "quoted" || quote.proposed_price_cents == null) {
+                if (quote.status !== "quoted" || quote.price_cents == null) {
                   Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
                   return;
                 }
@@ -830,7 +827,7 @@ export default function CustomerJobDetails() {
             <View style={{ gap: spacing.md }}>
               {quotes.map((q) => {
                 const canAccept =
-                  q.status === "quoted" && q.proposed_price_cents != null && !job.accepted_mechanic_id;
+                  q.status === "quoted" && q.price_cents != null && !job.accepted_mechanic_id;
                 const isAccepted = q.status === "accepted" || q.mechanic_id === job.accepted_mechanic_id;
                 const isOpen = expanded[q.id] ?? isAccepted;
 
@@ -895,33 +892,14 @@ export default function CustomerJobDetails() {
                       >
                         <Text style={{ ...text.muted, fontSize: 11 }}>Total Price</Text>
                         <Text style={{ ...text.title, fontSize: 18, color: colors.accent, marginTop: 2 }}>
-                          {money(q.proposed_price_cents)}
+                          {money(q.price_cents)}
                         </Text>
                       </View>
-
-                      {q.proposed_time_text ? (
-                        <View
-                          style={{
-                            flex: 1,
-                            minWidth: 120,
-                            backgroundColor: colors.surface,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: 10,
-                            padding: spacing.sm,
-                          }}
-                        >
-                          <Text style={{ ...text.muted, fontSize: 11 }}>Availability</Text>
-                          <Text style={{ ...text.body, fontWeight: "900", marginTop: 2, fontSize: 13 }}>
-                            {q.proposed_time_text}
-                          </Text>
-                        </View>
-                      ) : null}
                     </View>
 
                     {isOpen ? (
                       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
-                        {q.note ? (
+                        {q.notes ? (
                           <View
                             style={{
                               backgroundColor: colors.surface,
@@ -932,7 +910,7 @@ export default function CustomerJobDetails() {
                             }}
                           >
                             <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>Mechanic Note</Text>
-                            <Text style={{ ...text.body, marginTop: 4 }}>{q.note}</Text>
+                            <Text style={{ ...text.body, marginTop: 4 }}>{q.notes}</Text>
                           </View>
                         ) : null}
 

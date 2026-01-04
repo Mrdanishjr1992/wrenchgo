@@ -1,417 +1,199 @@
-import React, { useEffect, useMemo, useCallback, useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  Pressable,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  KeyboardAvoidingView,
-  Platform,
-} from "react-native";
+import React, { useCallback, useState } from "react";
+import { View, Text, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
-import { useStripe, CardField } from "@stripe/stripe-react-native";
+import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
-import {
-  createPaymentIntent,
-  validatePromotion,
-  formatCurrency,
-  calculateCustomerBreakdown,
-  type PaymentBreakdown,
-  type ValidationResponse,
-} from "../../../src/lib/payments";
-import { supabase } from "../../../src/lib/supabase";
+import { AppButton } from "../../../src/ui/components/AppButton";
 
-export default function PaymentScreen() {
+type Job = {
+  id: string;
+  customer_id: string;
+  title: string;
+  status: string;
+};
+
+type Quote = {
+  id: string;
+  job_id: string;
+  mechanic_id: string;
+  price_cents: number;
+  status: string;
+  accepted_at: string | null;
+};
+
+export default function JobPayment() {
+  const { jobId } = useLocalSearchParams<{ jobId: string }>();
   const router = useRouter();
-  const params = useLocalSearchParams<{ jobId?: string | string[]; quoteId?: string | string[] }>();
-  const jobId = Array.isArray(params.jobId) ? params.jobId[0] : params.jobId;
-  const quoteId = Array.isArray(params.quoteId) ? params.quoteId[0] : params.quoteId;
-
   const { colors, text, spacing } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
-  const { confirmPayment } = useStripe();
+  const card = createCard(colors);
 
   const [loading, setLoading] = useState(true);
+  const [job, setJob] = useState<Job | null>(null);
+  const [quote, setQuote] = useState<Quote | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [quote, setQuote] = useState<any>(null);
 
-  const [promotionCode, setPromotionCode] = useState("");
-  const [validatingPromo, setValidatingPromo] = useState(false);
-  const [promoValidation, setPromoValidation] = useState<ValidationResponse | null>(null);
-
-  const [breakdown, setBreakdown] = useState<PaymentBreakdown | null>(null);
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-
-  const [cardComplete, setCardComplete] = useState(false);
-
-  const loadQuoteAndJob = useCallback(async () => {
-    if (!jobId) {
-      Alert.alert("Error", "Missing job information");
-      router.back();
-      return;
-    }
+  const loadPaymentInfo = useCallback(async () => {
+    if (!jobId) return;
 
     try {
       setLoading(true);
 
-      let q = supabase
+      const { data: sessionData } = await supabase.auth.getSession();
+      const userId = sessionData.session?.user?.id;
+
+      if (!userId) {
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
+      const { data: jobData, error: jobError } = await supabase
+        .from("jobs")
+        .select("id, customer_id, title, status")
+        .eq("id", jobId)
+        .eq("customer_id", userId)
+        .maybeSingle();
+
+      if (jobError || !jobData) {
+        console.error("Error loading job:", jobError);
+        Alert.alert("Error", "Failed to load job details.");
+        router.back();
+        return;
+      }
+
+      setJob(jobData);
+
+      const { data: quoteData, error: quoteError } = await supabase
         .from("quote_requests")
-        .select("*, jobs!inner(*)")
+        .select("id, job_id, mechanic_id, price_cents, status, accepted_at")
         .eq("job_id", jobId)
-        .eq("status", "accepted");
+        .eq("status", "accepted")
+        .maybeSingle();
 
-      // If you actually want to enforce quoteId when provided:
-      if (quoteId) q = q.eq("id", quoteId);
-
-      const { data: quoteData, error: quoteError } = await q.single();
-
-      if (quoteError || !quoteData) {
-        throw new Error("No accepted quote found for this job");
+      if (quoteError) {
+        console.error("Error loading quote:", quoteError);
       }
 
       setQuote(quoteData);
-
-      const quoteAmountCents = quoteData.proposed_price_cents || 0;
-
-      // Assumes calculateCustomerBreakdown returns values in cents:
-      const initial = calculateCustomerBreakdown(quoteAmountCents);
-
-      setBreakdown({
-        quoteAmountCents: quoteAmountCents,
-        customerPlatformFeeCents: initial.platformFee,
-        customerDiscountCents: initial.discount,
-        customerTotalCents: initial.total,
-        mechanicPlatformCommissionCents: 0,
-        mechanicPayoutCents: 0,
-        platformRevenueCents: 0,
-      });
     } catch (error: any) {
-      console.error("Error loading quote:", error);
-      Alert.alert("Error", error.message || "Failed to load quote");
-      router.back();
+      console.error("Payment info load error:", error);
+      Alert.alert("Error", error?.message ?? "Failed to load payment information.");
     } finally {
       setLoading(false);
     }
-  }, [jobId, quoteId, router]);
+  }, [jobId, router]);
 
-  useEffect(() => {
-    loadQuoteAndJob();
-  }, [loadQuoteAndJob]);
+  useFocusEffect(
+    useCallback(() => {
+      loadPaymentInfo();
+    }, [loadPaymentInfo])
+  );
 
-  const handleValidatePromotion = useCallback(async () => {
-    if (!promotionCode.trim() || !breakdown) return;
+  const handlePayment = useCallback(async () => {
+    if (!quote) return;
 
-    try {
-      setValidatingPromo(true);
-
-      const validation = await validatePromotion(
-        promotionCode.trim(),
-        breakdown.quoteAmountCents
-      );
-
-      setPromoValidation(validation);
-
-      if (validation.valid && validation.discountCents) {
-        const newBreakdown = calculateCustomerBreakdown(
-          breakdown.quoteAmountCents,
-          validation.discountCents
-        );
-
-        setBreakdown({
-          ...breakdown,
-          customerDiscountCents: newBreakdown.discount,
-          customerTotalCents: newBreakdown.total,
-          promotionApplied: {
-            code: validation.promotion!.code,
-            type: validation.promotion!.type,
-            discountCents: validation.discountCents,
-          },
-        });
-
-        Alert.alert("Success", "Promotion code applied!");
-      } else {
-        Alert.alert("Invalid Code", validation.reason || "This promotion code is not valid");
-      }
-    } catch (error: any) {
-      console.error("Error validating promotion:", error);
-      Alert.alert("Error", "Failed to validate promotion code");
-    } finally {
-      setValidatingPromo(false);
-    }
-  }, [promotionCode, breakdown]);
-
-  const handleRemovePromotion = useCallback(() => {
-    if (!breakdown) return;
-
-    const newBreakdown = calculateCustomerBreakdown(breakdown.quoteAmountCents, 0);
-
-    setBreakdown({
-      ...breakdown,
-      customerDiscountCents: 0,
-      customerTotalCents: newBreakdown.total,
-      promotionApplied: undefined,
-    });
-
-    setPromotionCode("");
-    setPromoValidation(null);
-  }, [breakdown]);
-
-  const handlePayNow = useCallback(async () => {
-    if (!jobId || !quote || !breakdown || !cardComplete) {
-      Alert.alert("Error", "Please complete all payment information");
-      return;
-    }
-
-    try {
-      setProcessing(true);
-
-      const paymentData = await createPaymentIntent(
-        jobId,
-        quote.id,
-        breakdown.promotionApplied?.code
-      );
-
-      setClientSecret(paymentData.clientSecret);
-      setPaymentIntentId(paymentData.paymentIntentId);
-      setBreakdown(paymentData.breakdown);
-
-      const { error: confirmError } = await confirmPayment(paymentData.clientSecret, {
-        paymentMethodType: "Card",
-      });
-
-      if (confirmError) {
-        throw new Error(confirmError.message);
-      }
-
-      Alert.alert(
-        "Payment Successful!",
-        "Your payment has been processed. The mechanic will start working on your vehicle soon.",
-        [{ text: "View Job", onPress: () => router.replace(`/(customer)/job/${jobId}`) }]
-      );
-    } catch (error: any) {
-      console.error("Payment error:", error);
-      Alert.alert("Payment Failed", error.message || "Failed to process payment");
-    } finally {
-      setProcessing(false);
-    }
-  }, [jobId, quote, breakdown, cardComplete, confirmPayment, router]);
+    Alert.alert(
+      "Payment Coming Soon",
+      "Payment processing will be integrated in a future update. For now, please coordinate payment directly with your mechanic.",
+      [{ text: "OK" }]
+    );
+  }, [quote]);
 
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={{ ...text.muted, marginTop: spacing.md }}>Loading payment details...</Text>
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }
 
-  if (!breakdown || !quote) return null;
+  if (!job) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+        <Text style={text.title}>Job not found</Text>
+        <AppButton title="Go Back" variant="outline" onPress={() => router.back()} style={{ marginTop: spacing.lg }} />
+      </View>
+    );
+  }
+
+  if (!quote) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+        <View style={[card, { padding: spacing.lg, alignItems: "center" }]}>
+          <Ionicons name="alert-circle-outline" size={48} color={colors.textSecondary} />
+          <Text style={[text.title, { marginTop: spacing.md, textAlign: "center" }]}>No Accepted Quote</Text>
+          <Text style={[text.body, { marginTop: spacing.sm, textAlign: "center" }]}>
+            You need to accept a quote before making a payment.
+          </Text>
+        </View>
+        <AppButton title="Go Back" variant="outline" onPress={() => router.back()} style={{ marginTop: spacing.lg }} />
+      </View>
+    );
+  }
+
+  const priceInDollars = (quote.price_cents / 100).toFixed(2);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 80 : 0}
-    >
-      <ScrollView contentContainerStyle={{ padding: spacing.md }}>
-        <Pressable
-          onPress={() => router.back()}
-          hitSlop={12}
-          style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: spacing.lg }}
-        >
-          <Ionicons name="chevron-back" size={20} color={colors.accent} />
-          <Text style={{ color: colors.accent, fontWeight: "900" }}>Back</Text>
-        </Pressable>
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <ScrollView contentContainerStyle={{ padding: spacing.lg }}>
+        <View style={[card, { padding: spacing.lg, marginBottom: spacing.lg }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+            <Ionicons name="card" size={32} color={colors.accent} />
+            <Text style={[text.title, { marginLeft: spacing.md }]}>Payment</Text>
+          </View>
 
-        <Text style={[text.title, { marginBottom: spacing.sm }]}>Payment</Text>
-        <Text style={{ ...text.muted, marginBottom: spacing.lg }}>
-          Complete your payment to start the service
-        </Text>
+          <View style={{ marginBottom: spacing.lg }}>
+            <Text style={[text.muted, { marginBottom: spacing.xs }]}>Job:</Text>
+            <Text style={text.body}>{job.title}</Text>
+          </View>
 
-        <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
-          <Text style={[text.section, { marginBottom: spacing.md }]}>Payment Breakdown</Text>
+          <View style={{ 
+            padding: spacing.lg, 
+            backgroundColor: colors.accent + "11",
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.accent + "33",
+            marginBottom: spacing.lg
+          }}>
+            <Text style={[text.muted, { marginBottom: spacing.xs }]}>Amount Due:</Text>
+            <Text style={[text.title, { fontSize: 32, color: colors.accent }]}>${priceInDollars}</Text>
+          </View>
 
-          <View style={{ gap: spacing.sm }}>
+          <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={text.body}>Service Amount</Text>
-              <Text style={{ ...text.body, fontWeight: "700" }}>
-                {formatCurrency(breakdown.quoteAmountCents)}
-              </Text>
+              <Text style={text.muted}>Quote Status:</Text>
+              <Text style={[text.body, { color: colors.success }]}>Accepted</Text>
             </View>
-
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={text.body}>Platform Fee</Text>
-              <Text style={{ ...text.body, fontWeight: "700" }}>
-                {formatCurrency(breakdown.customerPlatformFeeCents)}
-              </Text>
-            </View>
-
-            {breakdown.customerDiscountCents > 0 && (
+            {quote.accepted_at && (
               <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Text style={{ ...text.body, color: colors.success }}>Discount</Text>
-                  {breakdown.promotionApplied && (
-                    <View
-                      style={{
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                        borderRadius: 4,
-                        backgroundColor: colors.success + "20",
-                      }}
-                    >
-                      <Text style={{ fontSize: 10, fontWeight: "900", color: colors.success }}>
-                        {breakdown.promotionApplied.code}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-                <Text style={{ ...text.body, fontWeight: "700", color: colors.success }}>
-                  -{formatCurrency(breakdown.customerDiscountCents)}
-                </Text>
+                <Text style={text.muted}>Accepted On:</Text>
+                <Text style={text.body}>{new Date(quote.accepted_at).toLocaleDateString()}</Text>
               </View>
             )}
-
-            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.sm }} />
-
-            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-              <Text style={[text.section, { fontSize: 18 }]}>Total</Text>
-              <Text style={[text.section, { fontSize: 18, color: colors.accent }]}>
-                {formatCurrency(breakdown.customerTotalCents)}
-              </Text>
-            </View>
           </View>
         </View>
 
-        <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
-          <Text style={[text.section, { marginBottom: spacing.md }]}>Promotion Code</Text>
-
-          {breakdown.promotionApplied ? (
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                padding: spacing.md,
-                borderRadius: 12,
-                backgroundColor: colors.success + "10",
-                borderWidth: 1,
-                borderColor: colors.success + "30",
-              }}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
-                <Text style={{ ...text.body, fontWeight: "700" }}>
-                  {breakdown.promotionApplied.code} applied
-                </Text>
-              </View>
-              <Pressable onPress={handleRemovePromotion} hitSlop={8}>
-                <Ionicons name="close-circle" size={20} color={colors.textMuted} />
-              </Pressable>
-            </View>
-          ) : (
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <TextInput
-                value={promotionCode}
-                onChangeText={setPromotionCode}
-                placeholder="Enter code"
-                placeholderTextColor={colors.textMuted}
-                autoCapitalize="characters"
-                style={{
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.surface,
-                }}
-              />
-              <Pressable
-                onPress={handleValidatePromotion}
-                disabled={!promotionCode.trim() || validatingPromo}
-                style={({ pressed }) => ({
-                  paddingHorizontal: 16,
-                  paddingVertical: 12,
-                  borderRadius: 12,
-                  backgroundColor: colors.accent,
-                  opacity: !promotionCode.trim() || validatingPromo ? 0.5 : pressed ? 0.8 : 1,
-                  alignItems: "center",
-                  justifyContent: "center",
-                })}
-              >
-                {validatingPromo ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Text style={{ color: "#fff", fontWeight: "900" }}>Apply</Text>
-                )}
-              </Pressable>
-            </View>
-          )}
-        </View>
-
-        <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
-          <Text style={[text.section, { marginBottom: spacing.md }]}>Card Information</Text>
-
-          <CardField
-            postalCodeEnabled
-            placeholders={{ number: "4242 4242 4242 4242" }}
-            cardStyle={{
-              backgroundColor: colors.surface,
-              textColor: colors.textPrimary,
-              placeholderColor: colors.textMuted,
-              borderRadius: 12,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-            style={{ width: "100%", height: 50, marginVertical: 8 }}
-            onCardChange={(cardDetails) => setCardComplete(!!cardDetails.complete)}
-          />
-
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 8,
-              marginTop: spacing.sm,
-              padding: spacing.sm,
-              borderRadius: 8,
-              backgroundColor: colors.surface,
-            }}
-          >
-            <Ionicons name="lock-closed" size={16} color={colors.textMuted} />
-            <Text style={{ ...text.muted, fontSize: 12 }}>
-              Your payment information is secure and encrypted
+        <View style={[card, { padding: spacing.lg, marginBottom: spacing.lg, backgroundColor: colors.accent + "11" }]}>
+          <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
+            <Ionicons name="information-circle" size={24} color={colors.accent} style={{ marginRight: spacing.sm }} />
+            <Text style={[text.body, { flex: 1 }]}>
+              Payment processing is coming soon. For now, please coordinate payment directly with your mechanic through the messaging system.
             </Text>
           </View>
         </View>
 
-        <Pressable
-          onPress={handlePayNow}
-          disabled={!cardComplete || processing}
-          style={({ pressed }) => ({
-            backgroundColor: colors.accent,
-            paddingVertical: 16,
-            borderRadius: 16,
-            alignItems: "center",
-            opacity: !cardComplete || processing ? 0.5 : pressed ? 0.8 : 1,
-            marginBottom: spacing.xl,
-          })}
-        >
-          {processing ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>
-              Pay {formatCurrency(breakdown.customerTotalCents)}
-            </Text>
-          )}
-        </Pressable>
+        <AppButton
+          title="Process Payment (Coming Soon)"
+          variant="primary"
+          onPress={handlePayment}
+          disabled={processing}
+          style={{ marginBottom: spacing.md }}
+        />
+
+        <AppButton title="Go Back" variant="outline" onPress={() => router.back()} />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </View>
   );
 }

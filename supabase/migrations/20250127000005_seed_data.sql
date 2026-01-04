@@ -143,6 +143,21 @@ VALUES
 )
 ON CONFLICT (symptom_key) DO NOTHING;
 
+-- 5.5) SYMPTOM_MAPPINGS (REQUIRED FOR FOREIGN KEY)
+
+INSERT INTO public.symptom_mappings
+(symptom_key, symptom_label, category, quote_strategy, risk_level, id, created_at, updated_at)
+VALUES
+('wont_start', 'Won''t start', 'Engine', 'diagnosis-first', 'high', gen_random_uuid(), NOW(), NOW()),
+('warning_light', 'Warning light', 'Electrical', 'diagnosis-first', 'medium', gen_random_uuid(), NOW(), NOW()),
+('brakes_wrong', 'Brakes feel wrong', 'Brakes', 'inspection_required', 'high', gen_random_uuid(), NOW(), NOW()),
+('strange_noise', 'Strange noise', 'Unknown', 'diagnosis-first', 'low', gen_random_uuid(), NOW(), NOW()),
+('fluid_leak', 'Fluid leak', 'Engine', 'diagnosis-first', 'medium', gen_random_uuid(), NOW(), NOW()),
+('battery_issues', 'Battery issues', 'Electrical', 'fixed_simple', 'low', gen_random_uuid(), NOW(), NOW()),
+('maintenance', 'Maintenance', 'Maintenance', 'fixed_simple', 'low', gen_random_uuid(), NOW(), NOW()),
+('not_sure', 'Not sure', 'Unknown', 'diagnosis-first', 'low', gen_random_uuid(), NOW(), NOW())
+ON CONFLICT (symptom_key) DO NOTHING;
+
 -- 6) SYMPTOM_QUESTIONS (CUSTOMER-FRIENDLY)
 
 INSERT INTO public.symptom_questions

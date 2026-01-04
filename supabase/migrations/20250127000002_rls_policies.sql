@@ -50,7 +50,18 @@ DROP POLICY IF EXISTS "Users can view public profile cards" ON public.profiles;
 CREATE POLICY "Users can view public profile cards"
   ON public.profiles FOR SELECT
   TO authenticated
-  USING (deleted_at IS NULL);
+  USING (deleted_at IS NULL AND role IS NOT NULL);
+
+DROP POLICY IF EXISTS "Users can update their own role if null" ON public.profiles;
+CREATE POLICY "Users can update their own role if null"
+  ON public.profiles
+  FOR UPDATE
+  TO authenticated
+  USING (auth_id = auth.uid() AND role IS NULL)
+  WITH CHECK (auth_id = auth.uid());
+
+COMMENT ON POLICY "Users can update their own role if null" ON public.profiles IS
+  'Allows users to set their role during onboarding via set_user_role() RPC. Role can only be set once.';
 
 -- 3) MECHANIC_PROFILES POLICIES
 

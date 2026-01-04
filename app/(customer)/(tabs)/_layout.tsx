@@ -1,4 +1,4 @@
-﻿import { Ionicons } from "@expo/vector-icons";
+import { Ionicons } from "@expo/vector-icons";
 import { Tabs, useRouter, usePathname } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Image, View, ActivityIndicator, Text } from "react-native";
@@ -62,14 +62,21 @@ export default function CustomerLayout() {
       const userId = await getUserId();
       if (!userId) return;
 
-      const { count, error } = await supabase
-        .from("notifications")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("is_read", false);
+      // ⚠️ notifications table may not exist yet - gracefully handle
+      try {
+        const { count, error } = await supabase
+          .from("notifications")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .eq("is_read", false);
 
-      if (error) return;
-      if (mountedRef.current) setUnread(count ?? 0);
+        if (!error && mountedRef.current) {
+          setUnread(count ?? 0);
+        }
+      } catch (notifError) {
+        // Table doesn't exist - set unread to 0
+        if (mountedRef.current) setUnread(0);
+      }
     } catch {
       // ignore
     }
@@ -90,7 +97,7 @@ export default function CustomerLayout() {
     }, [refreshHeaderStuff])
   );
 
-  // Realtime badge update
+  // Realtime badge update - only subscribe if notifications table exists
   useEffect(() => {
     let channel: any;
 
@@ -98,14 +105,18 @@ export default function CustomerLayout() {
       const userId = await getUserId();
       if (!userId) return;
 
-      channel = supabase
-        .channel("customer-notif-badge-" + userId)
-        .on(
-          "postgres_changes",
-          { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
-          () => loadUnread()
-        )
-        .subscribe();
+      try {
+        channel = supabase
+          .channel("customer-notif-badge-" + userId)
+          .on(
+            "postgres_changes",
+            { event: "*", schema: "public", table: "notifications", filter: `user_id=eq.${userId}` },
+            () => loadUnread()
+          )
+          .subscribe();
+      } catch {
+        // Notifications table doesn't exist - skip realtime
+      }
     })();
 
     return () => {

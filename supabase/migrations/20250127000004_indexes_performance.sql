@@ -13,6 +13,7 @@ CREATE INDEX IF NOT EXISTS idx_profiles_id_status ON public.profiles(id_status);
 CREATE INDEX IF NOT EXISTS idx_profiles_id_verified_at ON public.profiles(id_verified_at);
 CREATE INDEX IF NOT EXISTS idx_profiles_public_card ON public.profiles(id, deleted_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_profiles_auth_id_role ON public.profiles(auth_id, role) WHERE deleted_at IS NULL;
 
 -- 2) MECHANIC_PROFILES INDEXES
 CREATE INDEX IF NOT EXISTS idx_mechanic_profiles_is_available ON public.mechanic_profiles(is_available);

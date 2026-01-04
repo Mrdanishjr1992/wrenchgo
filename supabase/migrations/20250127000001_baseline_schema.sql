@@ -45,6 +45,14 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+DO $$ BEGIN
+  CREATE TYPE public.user_role AS ENUM (
+    'customer',
+    'mechanic'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
 -- 3) TABLES (in dependency order)
 
 -- profiles (no FK dependencies)
@@ -55,7 +63,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email text,
   phone text,
   avatar_url text,
-  role text CHECK (role = ANY (ARRAY['customer'::text, 'mechanic'::text])),
+  role public.user_role,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   deleted_at timestamptz,
@@ -71,6 +79,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   id_verified_by uuid,
   CONSTRAINT profiles_pkey PRIMARY KEY (id)
 );
+
+COMMENT ON COLUMN public.profiles.role IS 'User role: customer or mechanic. NULL until explicitly set during onboarding via set_user_role()';
 
 -- mechanic_profiles (depends on auth.users)
 CREATE TABLE IF NOT EXISTS public.mechanic_profiles (

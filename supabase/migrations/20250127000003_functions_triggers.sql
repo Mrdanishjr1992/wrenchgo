@@ -39,15 +39,15 @@ DECLARE
 BEGIN
   fn := COALESCE(NEW.raw_user_meta_data->>'full_name', '');
 
-  INSERT INTO public.profiles (id, auth_id, full_name, email, role, created_at, updated_at)
-  VALUES (NEW.id, NEW.id, fn, NEW.email, NULL, NOW(), NOW())
+  INSERT INTO public.profiles (auth_id, full_name, email, role, created_at, updated_at)
+  VALUES (NEW.id, fn, NEW.email, NULL, NOW(), NOW())
   ON CONFLICT (auth_id) DO NOTHING;
 
   RETURN NEW;
 END;
 $$;
 
--- 3) SET_USER_ROLE RPC FUNCTION (FROM ROLE FIX)
+-- 3) SET_USER_ROLE RPC FUNCTION (HANDLES ENUM TYPE)
 
 CREATE OR REPLACE FUNCTION public.set_user_role(new_role text)
 RETURNS void
@@ -58,9 +58,10 @@ AS $$
 DECLARE
   user_id uuid;
   current_role text;
+  profile_exists boolean;
 BEGIN
   user_id := auth.uid();
-  
+
   IF user_id IS NULL THEN
     RAISE EXCEPTION 'Not authenticated';
   END IF;
@@ -69,20 +70,37 @@ BEGIN
     RAISE EXCEPTION 'Invalid role: must be customer or mechanic';
   END IF;
 
-  SELECT role INTO current_role
+  -- Check if profile exists
+  SELECT EXISTS(SELECT 1 FROM public.profiles WHERE auth_id = user_id) INTO profile_exists;
+
+  IF NOT profile_exists THEN
+    RAISE EXCEPTION 'Profile not found for user %', user_id;
+  END IF;
+
+  -- Get current role, casting to text to handle enum types
+  SELECT COALESCE(role::text, '') INTO current_role
   FROM public.profiles
   WHERE auth_id = user_id;
 
-  IF current_role IS NOT NULL THEN
-    RAISE EXCEPTION 'Role already set. Cannot change role after initial selection.';
+  -- If role is already set to the same value, just return success (idempotent)
+  IF current_role = new_role THEN
+    RETURN;
   END IF;
 
-  UPDATE public.profiles
-  SET 
-    role = new_role,
-    updated_at = NOW()
-  WHERE auth_id = user_id;
+  -- If role is set to a different valid value, that's an error
+  IF current_role != '' AND current_role IN ('customer', 'mechanic') AND current_role != new_role THEN
+    RAISE EXCEPTION 'Role already set to %. Cannot change role after initial selection.', current_role;
+  END IF;
 
+  -- Role is NULL or invalid, so set it
+  -- Use EXECUTE to dynamically handle both enum and text types
+  EXECUTE format(
+    'UPDATE public.profiles SET role = %L, updated_at = NOW() WHERE auth_id = %L',
+    new_role,
+    user_id
+  );
+
+  -- Create mechanic profile if needed
   IF new_role = 'mechanic' THEN
     INSERT INTO public.mechanic_profiles (id, created_at, updated_at)
     VALUES (user_id, NOW(), NOW())
@@ -91,8 +109,8 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION public.set_user_role(text) IS 
-  'Sets the user role during onboarding. Can only be called once per user. Role must be customer or mechanic.';
+COMMENT ON FUNCTION public.set_user_role(text) IS
+  'Sets the user role during onboarding. Idempotent - can be called multiple times with same role. Handles both enum and text column types.';
 
 GRANT EXECUTE ON FUNCTION public.set_user_role(text) TO authenticated;
 

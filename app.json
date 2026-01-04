@@ -9,12 +9,12 @@
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wrenchgo.app",
+      "bundleIdentifier": "com.wrenchgo",
       "requireFullScreen": false,
       "entitlements": {
         "com.apple.developer.in-app-payments": [
-          "merchant.com.wrenchgo.app",
-          "merchant.com.wrenchgo.app"
+          "merchant.com.wrenchgo",
+          "merchant.com.wrenchgo"
         ]
       }
     },
@@ -28,7 +28,7 @@
       "edgeToEdgeEnabled": true,
       "googleServicesFile": "./google-services.json",
       "predictiveBackGestureEnabled": false,
-      "package": "com.wrenchgo.app",
+      "package": "com.wrenchgo",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",

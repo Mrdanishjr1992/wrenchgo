@@ -131,12 +131,14 @@ export default function CustomerHome() {
         .eq("auth_id", customerId)
         .maybeSingle();
 
-      // ✅ messages unread = read_at IS NULL (and count should use head: true)
+      // Messages: Get unread count for jobs where user is customer
+      // Since recipient_id may not exist, we'll join through jobs table
       const unreadQ = supabase
         .from("messages")
-        .select("id", { count: "exact", head: true })
-        .eq("recipient_id", customerId)
-        .is("read_at", null);
+        .select("id, job_id, jobs!inner(customer_id)", { count: "exact", head: true })
+        .eq("jobs.customer_id", customerId)
+        .is("read_at", null)
+        .neq("sender_id", customerId); // Don't count messages sent by customer
 
       // ✅ education_cards has NO id column
       const eduQ = supabase

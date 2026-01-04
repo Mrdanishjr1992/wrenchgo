@@ -1,4 +1,4 @@
-package com.wrenchgo.app
+package com.wrenchgo
 
 import android.os.Build
 import android.os.Bundle

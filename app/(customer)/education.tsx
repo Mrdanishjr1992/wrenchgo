@@ -6,6 +6,7 @@ import { useTheme } from "../../src/ui/theme-context";
 import { normalize } from "../../src/ui/theme";
 import { createCard } from "../../src/ui/styles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React from "react";
 
 type EducationCard = {
   id: string;

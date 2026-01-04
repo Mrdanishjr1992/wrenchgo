@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { View, Text, ActivityIndicator, ScrollView, Image, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../src/lib/supabase";
@@ -19,44 +19,42 @@ export default function Index() {
     let mounted = true;
 
     const boot = async () => {
-      if (bootingRef.current) return; // prevent duplicate runs
+      if (bootingRef.current) return;
       bootingRef.current = true;
 
       try {
         const { data: sessionData, error: sErr } = await supabase.auth.getSession();
-        if (sErr) console.warn("boot getSession error:", sErr);
+        if (sErr && __DEV__) console.warn("boot getSession error:", sErr);
 
         const user = sessionData.session?.user;
 
-        // Not signed in -> show landing screen
         if (!user) return;
 
         const authId = user.id;
 
-        // Read profile role
         const { data: p, error: pErr } = await supabase
           .from("profiles")
           .select("role")
           .eq("auth_id", authId)
           .maybeSingle();
 
-        console.log("boot user:", authId, "profile:", p, "error:", pErr);
-
-        if (pErr) {
-          // If RLS / transient issue, don't hard-crash. You can choose to sign out here if you want.
+        if (pErr && __DEV__) {
           console.warn("boot profile read error:", pErr);
+          return;
+        }
+
+        if (!p) {
+          await supabase.auth.signOut();
           return;
         }
 
         const role = (p?.role as string | null) ?? null;
 
-        // No role yet -> choose-role screen
         if (!role) {
           router.replace("/(auth)/choose-role");
           return;
         }
 
-        // Route to correct app area
         router.replace(role === "mechanic" ? "/(mechanic)/(tabs)/leads" : "/(customer)/(tabs)");
       } finally {
         bootingRef.current = false;
@@ -66,9 +64,7 @@ export default function Index() {
 
     boot();
 
-    // React to login/logout without restart
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      // When auth changes, show loader briefly and re-run boot
       if (mounted) setBooting(true);
       boot();
     });

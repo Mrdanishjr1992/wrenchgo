@@ -22,6 +22,14 @@ export async function signInWithGoogle(): Promise<{ idToken: string | null; erro
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
     }
 
+    // Sign out first to force account selection
+    try {
+      await GoogleSignin.signOut();
+    } catch (signOutError) {
+      // Ignore if not signed in
+      if (__DEV__) console.log("No previous Google session to sign out");
+    }
+
     // IMPORTANT: ensure clean state if a previous attempt got stuck
     try {
       await GoogleSignin.signInSilently();
