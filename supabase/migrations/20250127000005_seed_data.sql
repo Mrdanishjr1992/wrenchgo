@@ -70,7 +70,9 @@ INSERT INTO public.symptoms ("key", label, icon) VALUES
   ('battery_issues', 'Battery issues', '🔋'),
   ('maintenance', 'Maintenance', '🧰'),
   ('not_sure', 'Not sure', '❓')
-ON CONFLICT ("key") DO NOTHING;
+  ON CONFLICT ("key") DO UPDATE SET
+  label = EXCLUDED.label,
+  icon = EXCLUDED.icon;
 
 -- 5) SYMPTOM_EDUCATION (CUSTOMER-FRIENDLY)
 
@@ -143,20 +145,150 @@ VALUES
 )
 ON CONFLICT (symptom_key) DO NOTHING;
 
--- 5.5) SYMPTOM_MAPPINGS (REQUIRED FOR FOREIGN KEY)
+
+-- 5.5) SYMPTOM_MAPPINGS (FIXED: matches actual schema, no fake id column)
 
 INSERT INTO public.symptom_mappings
-(symptom_key, symptom_label, category, quote_strategy, risk_level, id, created_at, updated_at)
+(
+  id,
+  symptom_key,
+  symptom_label,
+  category,
+  required_skill_keys,
+  suggested_tool_keys,
+  required_safety_keys,
+  quote_strategy,
+  risk_level,
+  customer_explainer,
+  mechanic_notes,
+  created_at,
+  updated_at
+)
 VALUES
-('wont_start', 'Won''t start', 'Engine', 'diagnosis-first', 'high', gen_random_uuid(), NOW(), NOW()),
-('warning_light', 'Warning light', 'Electrical', 'diagnosis-first', 'medium', gen_random_uuid(), NOW(), NOW()),
-('brakes_wrong', 'Brakes feel wrong', 'Brakes', 'inspection_required', 'high', gen_random_uuid(), NOW(), NOW()),
-('strange_noise', 'Strange noise', 'Unknown', 'diagnosis-first', 'low', gen_random_uuid(), NOW(), NOW()),
-('fluid_leak', 'Fluid leak', 'Engine', 'diagnosis-first', 'medium', gen_random_uuid(), NOW(), NOW()),
-('battery_issues', 'Battery issues', 'Electrical', 'fixed_simple', 'low', gen_random_uuid(), NOW(), NOW()),
-('maintenance', 'Maintenance', 'Maintenance', 'fixed_simple', 'low', gen_random_uuid(), NOW(), NOW()),
-('not_sure', 'Not sure', 'Unknown', 'diagnosis-first', 'low', gen_random_uuid(), NOW(), NOW())
-ON CONFLICT (symptom_key) DO NOTHING;
+(
+  'wont_start',
+  'Won''t start',
+  'Engine',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'high',
+  'Most no-start issues are related to the battery, starter, or fuel system.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'warning_light',
+  'Warning light',
+  'Electrical',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'medium',
+  'Warning lights indicate your car''s computer detected an issue.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'brakes_wrong',
+  'Brakes feel wrong',
+  'Brakes',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'high',
+  'Brake problems should never be ignored—get checked ASAP.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'strange_noise',
+  'Strange noise',
+  'Unknown',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'low',
+  'Different noises point to different issues. Tell us when you hear it.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'fluid_leak',
+  'Fluid leak',
+  'Engine',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'medium',
+  'Different fluids mean different issues. Color and location help a lot.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'battery_issues',
+  'Battery issues',
+  'Electrical',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'low',
+  'Battery issues can be the battery, alternator, or connections.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'maintenance',
+  'Maintenance',
+  'Maintenance',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'fixed_simple',
+  'low',
+  'Regular maintenance keeps your car running smoothly.',
+  NULL,
+  NOW(),
+  NOW()
+),
+(
+  'not_sure',
+  'Not sure',
+  'Unknown',
+  '{}'::text[],
+  '{}'::text[],
+  '{}'::text[],
+  'diagnosis-first',
+  'low',
+  'No problem—our mechanics can diagnose what''s going on.',
+  NULL,
+  NOW(),
+  NOW()
+)
+ON CONFLICT (symptom_key) DO UPDATE SET
+  symptom_label = EXCLUDED.symptom_label,
+  category = EXCLUDED.category,
+  required_skill_keys = EXCLUDED.required_skill_keys,
+  suggested_tool_keys = EXCLUDED.suggested_tool_keys,
+  required_safety_keys = EXCLUDED.required_safety_keys,
+  quote_strategy = EXCLUDED.quote_strategy,
+  risk_level = EXCLUDED.risk_level,
+  customer_explainer = EXCLUDED.customer_explainer,
+  mechanic_notes = EXCLUDED.mechanic_notes,
+  updated_at = NOW();
+
 
 -- 6) SYMPTOM_QUESTIONS (CUSTOMER-FRIENDLY)
 

@@ -20,7 +20,7 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
       role,
       full_name,
       phone,
-      photo_url,
+      avatar_url,
       created_at
     `)
     .eq('id', userId)
@@ -196,13 +196,13 @@ export async function getUserReviews(
       reviewer:profiles!reviews_reviewer_id_fkey (
         id,
         full_name,
-        photo_url,
+        avatar_url,
         role
       ),
       reviewee:profiles!reviews_reviewee_id_fkey (
         id,
         full_name,
-        photo_url,
+        avatar_url,
         role
       )
     `, { count: 'exact' })
@@ -439,7 +439,7 @@ export async function searchMechanicsBySkill(
         id,
         role,
         full_name,
-        photo_url
+        avatar_url
       )
     `)
     .eq('skill_id', skillId);

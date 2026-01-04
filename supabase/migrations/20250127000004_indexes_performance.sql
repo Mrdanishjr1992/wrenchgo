@@ -60,7 +60,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON public.messages(sender_id);
 DROP INDEX IF EXISTS public.idx_messages_recipient_unread;
 
 -- Helpful for unread counts (per job): read_at is used for "unread"
-CREATE INDEX IF NOT EXISTS idx_messages_job_unread ON public.messages(job_id) WHERE read_at IS NULL AND deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_messages_job_unread ON public.messages(job_id) WHERE read_at IS NULL;
 
 
 -- 8) SYMPTOM TABLES INDEXES

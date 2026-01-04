@@ -16,26 +16,13 @@ import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import * as ImagePicker from "expo-image-picker";
-import { uploadIDPhoto, deleteIDPhoto, getIDPhotoUrl } from "../../../src/lib/verification";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
-
-type ProfileRow = {
-  id: string;
-  auth_id: string | null;
-  full_name: string | null;
-  avatar_url: string | null;
-  email: string | null;
-  role: "customer" | "mechanic" | null;
-
-  id_photo_path: string | null;
-  id_status: "none" | "pending" | "verified" | "rejected" | null;
-  id_rejected_reason: string | null;
-};
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -53,114 +40,91 @@ function contentTypeFromExt(ext: string) {
   return "image/jpeg";
 }
 
-function isNoRows(err: any) {
-  const code = String(err?.code ?? "");
-  const status = Number(err?.status ?? err?.statusCode ?? 0);
-  const msg = String(err?.message ?? "");
-  return code === "PGRST116" || status === 406 || /No rows/i.test(msg) || /0 rows/i.test(msg);
-}
-
-export default function Account() {
+export default function CustomerAccount() {
   const router = useRouter();
   const { mode, toggle, colors, spacing, radius, text } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
-  const [profile, setProfile] = useState<ProfileRow | null>(null);
-
-  const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  const [idPhotoUrl, setIdPhotoUrl] = useState<string | null>(null);
-  const [uploadingID, setUploadingID] = useState(false);
-  const [idExpanded, setIdExpanded] = useState(false);
-
+  const [editing, setEditing] = useState(false);
+  const [profile, setProfile] = useState<any>(null);
   const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState(""); // UI-only
-  const [homeLatitude, setHomeLatitude] = useState(""); // UI-only
-  const [homeLongitude, setHomeLongitude] = useState(""); // UI-only
-  const goToLegal = () => router.push("/(customer)/legal");
+  const [phone, setPhone] = useState("");
+  const [city, setCity] = useState("");
+  const [locationLat, setLocationLat] = useState("");
+  const [locationLng, setLocationLng] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<any>(null);
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [loadingReviews, setLoadingReviews] = useState(false);
+
   const isDark = mode === "dark";
-
-  // ✅ Only redirect when session is truly missing
-  const getSessionUser = useCallback(async () => {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) {
-      // Session read failing should NOT instantly boot the user
-      console.warn("getSession error:", error);
-    }
-
-    const session = data.session;
-    if (!session?.user?.id) return null;
-    return session.user;
-  }, []);
-
-  const ensureProfileRow = useCallback(async (userId: string, email?: string | null) => {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("id,auth_id,full_name,avatar_url,email,role,id_photo_path,id_status,id_rejected_reason")
-      .eq("auth_id", userId)
-      .maybeSingle();
-
-    if (error && !isNoRows(error)) throw error;
-    if (data) return data as ProfileRow;
-
-    const ins = await supabase
-      .from("profiles")
-      .insert([
-        {
-          auth_id: userId,
-          email: email ?? null,
-          role: null,
-          id_status: "none",
-        },
-      ])
-      .select("id,auth_id,full_name,avatar_url,email,role,id_photo_path,id_status,id_rejected_reason")
-      .single();
-
-    if (ins.error) throw ins.error;
-    return ins.data as ProfileRow;
-  }, []);
+  const goToLegal = () => router.push("/(customer)/legal");
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) return router.replace("/(auth)/sign-in");
 
-      const user = await getSessionUser();
-      if (!user?.id) {
-        router.replace("/(auth)/sign-in");
-        return;
-      }
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(`
+          id,
+          full_name,
+          email,
+          phone,
+          avatar_url,
+          city
+        `)
+        .eq("auth_id", userId)
+        .single();
 
-      const row = await ensureProfileRow(user.id, user.email);
-      setProfile(row);
+      if (error) throw error;
 
-      setFullName(row.full_name ?? "");
-      setPhone("");
-      setHomeLatitude("");
-      setHomeLongitude("");
+      setProfile(data);
+      setFullName(data.full_name ?? "");
+      setPhone(data.phone ?? "");
+      setCity(data.city ?? "");
 
-      if (row.id_photo_path) {
-        const url = await getIDPhotoUrl(row.id_photo_path);
-        setIdPhotoUrl(url);
-      } else {
-        setIdPhotoUrl(null);
-      }
+      const { data: paymentData } = await supabase
+        .from("customer_payment_methods")
+        .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4, card_exp_month, card_exp_year")
+        .eq("customer_id", data.id)
+        .maybeSingle();
+
+      setPaymentMethod(paymentData);
+
+      const { data: reviewsData } = await supabase
+        .from("reviews")
+        .select(`
+          id,
+          overall_rating,
+          performance_rating,
+          timing_rating,
+          cost_rating,
+          comment,
+          created_at,
+          reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq("reviewee_id", data.id)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      setReviews(reviewsData || []);
     } catch (e: any) {
-      console.warn("Account load error:", e);
-      Alert.alert("Account error", e?.message ?? "Failed to load account.");
-      // ✅ do NOT redirect unless session is missing
+      console.error("Profile load error:", e);
+      if (e?.message) {
+        Alert.alert("Profile error", e.message);
+      }
     } finally {
       setLoading(false);
     }
-  }, [ensureProfileRow, getSessionUser, router]);
+  }, [router]);
 
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load])
-  );
+  useFocusEffect(useCallback(() => { load(); }, [load]));
 
   const changePhoto = useCallback(async () => {
     try {
@@ -178,18 +142,16 @@ export default function Account() {
 
       if (result.canceled) return;
 
-      const user = await getSessionUser();
-      if (!user?.id) {
-        router.replace("/(auth)/sign-in");
-        return;
-      }
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData.user?.id;
+      if (!userId) return router.replace("/(auth)/sign-in");
 
       const uri = result.assets?.[0]?.uri;
       if (!uri) return;
 
       const ext = getExt(uri);
       const buffer = await uriToArrayBuffer(uri);
-      const path = `avatars/${user.id}.${ext}`;
+      const path = `avatars/${userId}.${ext}`;
 
       const up = await supabase.storage.from("avatars").upload(path, buffer, {
         contentType: contentTypeFromExt(ext),
@@ -200,7 +162,7 @@ export default function Account() {
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = `${pub.publicUrl}?t=${Date.now()}`;
 
-      const upd = await supabase.from("profiles").update({ avatar_url: url }).eq("auth_id", user.id);
+      const upd = await supabase.from("profiles").update({ avatar_url: url }).eq("auth_id", userId);
       if (upd.error) throw upd.error;
 
       Alert.alert("Success", "Profile photo updated.");
@@ -208,142 +170,91 @@ export default function Account() {
     } catch (e: any) {
       Alert.alert("Photo error", e?.message ?? "Failed to update photo.");
     }
-  }, [getSessionUser, load, router]);
+  }, [load, router]);
 
   const saveProfile = useCallback(async () => {
+    if (!profile?.id) return;
+
     try {
       setSaving(true);
 
-      const user = await getSessionUser();
-      if (!user?.id) {
-        router.replace("/(auth)/sign-in");
-        return;
-      }
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          full_name: fullName.trim() || null,
+          phone: phone.trim() || null,
+          city: city.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", profile.id);
 
-    const upd = await supabase
-      .from("profiles")
-      .update({
-        full_name: fullName.trim() || null,
-        phone: phone.trim() || null,
-      })
-      .eq("auth_id", user.id);
+      if (error) throw error;
 
-
-      if (upd.error) throw upd.error;
-
-      Alert.alert("Saved", "Profile updated successfully.");
+      Alert.alert("Success", "Profile updated successfully");
       setEditing(false);
-      load();
+      await load();
     } catch (e: any) {
-      Alert.alert("Save error", e?.message ?? "Failed to save profile.");
+      console.error("Save error:", e);
+      Alert.alert("Error", e?.message ?? "Failed to save profile");
     } finally {
       setSaving(false);
     }
-  }, [fullName, getSessionUser, load, router]);
+  }, [profile, fullName, phone, city, load]);
+
+  const fetchCurrentLocation = useCallback(async () => {
+    try {
+      setLoadingLocation(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Please allow location access to use this feature.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      const lat = location.coords.latitude.toFixed(6);
+      const lng = location.coords.longitude.toFixed(6);
+
+      setLocationLat(lat);
+      setLocationLng(lng);
+
+      if (profile?.id) {
+        const { error } = await supabase
+          .from("profiles")
+          .update({
+            city: `${lat}, ${lng}`,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", profile.id);
+
+        if (error) throw error;
+
+        Alert.alert('Success', 'Location saved successfully');
+        await load();
+      }
+    } catch (error: any) {
+      console.error('Location error:', error);
+      Alert.alert('Error', error.message || 'Failed to get location');
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, [profile, load]);
 
   const signOut = useCallback(async () => {
-    setBusy(true);
     try {
       const { error } = await supabase.auth.signOut();
-      if (error && !/session/i.test(error.message)) throw error;
-    } catch (e) {
-      console.warn("Sign out warning:", e);
-    } finally {
-      setBusy(false);
-      try {
-        await GoogleSignin.signOut();
-      } catch {}
+      if (error) throw error;
+      try { await GoogleSignin.signOut(); } catch {}
       router.replace("/(auth)/sign-in");
+    } catch (e: any) {
+      Alert.alert("Sign out failed", e?.message ?? "Could not sign out.");
     }
   }, [router]);
-
-  const handleUploadID = useCallback(async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission needed", "Please allow access to your photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        quality: 0.9,
-      });
-
-      if (result.canceled) return;
-
-      const user = await getSessionUser();
-      if (!user?.id) {
-        router.replace("/(auth)/sign-in");
-        return;
-      }
-
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
-
-      setUploadingID(true);
-      const uploadResult = await uploadIDPhoto(uri, user.id);
-
-      if (uploadResult.success) {
-        Alert.alert("Success", "ID photo uploaded! Verification in progress...");
-        load();
-      } else {
-        Alert.alert("Upload failed", uploadResult.error || "Failed to upload ID photo");
-      }
-    } catch (e: any) {
-      Alert.alert("Upload error", e?.message ?? "Failed to upload ID photo");
-    } finally {
-      setUploadingID(false);
-    }
-  }, [getSessionUser, load, router]);
-
-  const handleDeleteID = useCallback(() => {
-    Alert.alert(
-      "Delete ID Photo",
-      "Are you sure you want to delete your ID photo? You'll need to upload a new one to request services.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const user = await getSessionUser();
-              if (!user?.id) {
-                router.replace("/(auth)/sign-in");
-                return;
-              }
-
-              setUploadingID(true);
-              const result = await deleteIDPhoto(user.id);
-
-              if (result.success) {
-                Alert.alert("Deleted", "ID photo deleted successfully");
-                load();
-              } else {
-                Alert.alert("Delete failed", result.error || "Failed to delete ID photo");
-              }
-            } catch (e: any) {
-              Alert.alert("Delete error", e?.message ?? "Failed to delete ID photo");
-            } finally {
-              setUploadingID(false);
-            }
-          },
-        },
-      ]
-    );
-  }, [getSessionUser, load, router]);
 
   const avatarSource = profile?.avatar_url
     ? { uri: profile.avatar_url }
     : require("../../../assets/profile.png");
 
-  const displayName =
-    profile?.full_name && profile.full_name.trim().length > 0
-      ? profile.full_name
-      : "Your Account";
-
+  const displayName = fullName && fullName.trim().length > 0 ? fullName : "Customer Account";
   const subtitle = profile?.email ? profile.email : "Customer";
 
   if (loading) {
@@ -354,8 +265,6 @@ export default function Account() {
       </View>
     );
   }
-
-  const status = profile?.id_status ?? "none";
 
   return (
     <KeyboardAvoidingView
@@ -375,6 +284,31 @@ export default function Account() {
             overflow: "hidden",
           }}
         >
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              right: -60,
+              top: -50,
+              width: 190,
+              height: 190,
+              borderRadius: 999,
+              backgroundColor: `${colors.accent}1A`,
+            }}
+          />
+          <View
+            pointerEvents="none"
+            style={{
+              position: "absolute",
+              left: -70,
+              bottom: -80,
+              width: 230,
+              height: 230,
+              borderRadius: 999,
+              backgroundColor: `${colors.accent}10`,
+            }}
+          />
+
           <View style={{ gap: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
               <Pressable
@@ -421,7 +355,7 @@ export default function Account() {
                     }}
                   >
                     <Text style={{ fontWeight: "900", color: colors.textPrimary, fontSize: 11 }}>
-                      {(profile?.role ?? "customer").toUpperCase()}
+                      CUSTOMER
                     </Text>
                   </View>
 
@@ -445,317 +379,67 @@ export default function Account() {
 
             <Pressable
               onPress={() => setEditing(!editing)}
-              style={({ pressed }) => ({
-                paddingVertical: 12,
-                paddingHorizontal: 16,
-                borderRadius: radius.md,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: editing ? colors.accent : colors.surface,
-                opacity: pressed ? 0.9 : 1,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 8,
-              })}
+              style={({ pressed }) => [
+                {
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: editing ? colors.accent : colors.surface,
+                  opacity: pressed ? 0.9 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                },
+              ]}
             >
               <Ionicons
                 name={editing ? "close-outline" : "create-outline"}
                 size={18}
                 color={editing ? colors.black : colors.textPrimary}
               />
-              <Text style={{ fontWeight: "900", color: editing ? colors.black : colors.textPrimary }}>
+              <Text style={{ fontWeight: "900", color: editing ? colors.black  : colors.textPrimary }}>
                 {editing ? "CANCEL EDITING" : "EDIT PROFILE"}
               </Text>
             </Pressable>
           </View>
         </LinearGradient>
 
-        {!editing ? (
+        {!editing && (
           <>
-            {/* ID Verification */}
-            <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>ID Verification</Text>
-
-              {/* VERIFIED */}
-              {status === "verified" && (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "#10b981",
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    backgroundColor: `#10b98110`,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 14,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: "#10b981",
-                        backgroundColor: "#10b98120",
-                      }}
-                    >
-                      <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#10b981" }}>Verified</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>Your ID has been verified</Text>
-                    </View>
-
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#10b981" />
-                  </Pressable>
-
-                  {idExpanded && (
-                    <>
-                      {idPhotoUrl && (
-                        <Image
-                          source={{ uri: idPhotoUrl }}
-                          style={{ width: "100%", height: 150, borderRadius: radius.md, backgroundColor: colors.surface }}
-                          resizeMode="contain"
-                        />
-                      )}
-
-                      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                        <Pressable
-                          onPress={handleUploadID}
-                          disabled={uploadingID}
-                          style={{
-                            flex: 1,
-                            borderWidth: 1,
-                            borderColor: colors.border,
-                            borderRadius: radius.md,
-                            padding: spacing.sm,
-                            alignItems: "center",
-                            backgroundColor: colors.bg,
-                            opacity: uploadingID ? 0.7 : 1,
-                          }}
-                        >
-                          <Text style={{ ...text.body, fontWeight: "900", fontSize: 12 }}>
-                            {uploadingID ? "Uploading..." : "Re-upload"}
-                          </Text>
-                        </Pressable>
-
-                        <Pressable
-                          onPress={handleDeleteID}
-                          disabled={uploadingID}
-                          style={{
-                            flex: 1,
-                            borderWidth: 1,
-                            borderColor: "#ef4444",
-                            borderRadius: radius.md,
-                            padding: spacing.sm,
-                            alignItems: "center",
-                            backgroundColor: `#ef444410`,
-                            opacity: uploadingID ? 0.7 : 1,
-                          }}
-                        >
-                          <Text style={{ fontWeight: "900", fontSize: 12, color: "#ef4444" }}>Delete</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <Text style={text.section}>Contact Information</Text>
+              <View style={{ gap: spacing.xs }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={text.muted}>Email</Text>
+                  <Text style={{ ...text.body, fontWeight: "700" }}>{profile?.email || "Not set"}</Text>
                 </View>
-              )}
-
-              {/* PENDING */}
-              {status === "pending" && (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "#f59e0b",
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    backgroundColor: `#f59e0b10`,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 14,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: "#f59e0b",
-                        backgroundColor: "#f59e0b20",
-                      }}
-                    >
-                      <Ionicons name="time-outline" size={20} color="#f59e0b" />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#f59e0b" }}>Pending Verification</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>Your ID is being verified</Text>
-                    </View>
-
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#f59e0b" />
-                  </Pressable>
-
-                  {idExpanded && idPhotoUrl && (
-                    <Image
-                      source={{ uri: idPhotoUrl }}
-                      style={{ width: "100%", height: 150, borderRadius: radius.md, backgroundColor: colors.surface }}
-                      resizeMode="contain"
-                    />
-                  )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={text.muted}>Phone</Text>
+                  <Text style={{ ...text.body, fontWeight: "700" }}>{phone || "Not set"}</Text>
                 </View>
-              )}
-
-              {/* REJECTED */}
-              {status === "rejected" && (
-                <View
-                  style={{
-                    borderWidth: 1,
-                    borderColor: "#ef4444",
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    backgroundColor: `#ef444410`,
-                    gap: spacing.sm,
-                  }}
-                >
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 14,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: "#ef4444",
-                        backgroundColor: "#ef444420",
-                      }}
-                    >
-                      <Ionicons name="close-circle" size={20} color="#ef4444" />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#ef4444" }}>Verification Failed</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>
-                        {profile?.id_rejected_reason || "Please upload a valid ID"}
-                      </Text>
-                    </View>
-
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#ef4444" />
-                  </Pressable>
-
-                  {idExpanded && (
-                    <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                      <Pressable
-                        onPress={handleUploadID}
-                        disabled={uploadingID}
-                        style={{
-                          flex: 1,
-                          borderWidth: 1,
-                          borderColor: colors.accent,
-                          borderRadius: radius.md,
-                          padding: spacing.sm,
-                          alignItems: "center",
-                          backgroundColor: colors.accent,
-                          opacity: uploadingID ? 0.7 : 1,
-                        }}
-                      >
-                        <Text style={{ fontWeight: "900", fontSize: 12, color: colors.black }}>
-                          {uploadingID ? "Uploading..." : "Upload New ID"}
-                        </Text>
-                      </Pressable>
-
-                      <Pressable
-                        onPress={handleDeleteID}
-                        disabled={uploadingID}
-                        style={{
-                          flex: 1,
-                          borderWidth: 1,
-                          borderColor: "#ef4444",
-                          borderRadius: radius.md,
-                          padding: spacing.sm,
-                          alignItems: "center",
-                          backgroundColor: `#ef444410`,
-                          opacity: uploadingID ? 0.7 : 1,
-                        }}
-                      >
-                        <Text style={{ fontWeight: "900", fontSize: 12, color: "#ef4444" }}>Delete</Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              )}
-
-              {/* NONE */}
-              {(status === "none" || !status) && (
-                <Pressable
-                  onPress={handleUploadID}
-                  disabled={uploadingID}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    backgroundColor: colors.bg,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: spacing.md,
-                    opacity: uploadingID ? 0.7 : 1,
-                  }}
-                >
-                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View
-                      style={{
-                        width: 42,
-                        height: 42,
-                        borderRadius: 14,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surface,
-                      }}
-                    >
-                      <Ionicons name="card-outline" size={18} color={colors.textPrimary} />
-                    </View>
-
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>
-                        {uploadingID ? "Uploading..." : "Upload Photo ID"}
-                      </Text>
-                      <Text style={{ ...text.muted, marginTop: 3 }}>Required to request services</Text>
-                    </View>
+                {city && (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                    <Text style={text.muted}>City</Text>
+                    <Text style={{ ...text.body, fontWeight: "700" }}>{city}</Text>
                   </View>
-
-                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                </Pressable>
-              )}
+                )}
+              </View>
             </View>
 
-            {/* Appearance */}
-            <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <Text style={text.section}>Appearance</Text>
-
               <View
                 style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: radius.md,
-                  padding: spacing.md,
-                  backgroundColor: colors.bg,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  gap: spacing.md,
+                  paddingVertical: spacing.xs,
                 }}
               >
-                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <View
                     style={{
                       width: 42,
@@ -770,79 +454,314 @@ export default function Account() {
                   >
                     <Ionicons name={isDark ? "moon" : "sunny"} size={18} color={colors.textPrimary} />
                   </View>
-
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>Dark mode</Text>
-                    <Text style={{ ...text.muted, marginTop: 3 }}>
-                      Currently: <Text style={{ color: colors.accent, fontWeight: "900" }}>{mode.toUpperCase()}</Text>
+                  <View>
+                    <Text style={{ ...text.body, fontWeight: "700" }}>Dark mode</Text>
+                    <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>
+                      Currently: {mode.toUpperCase()}
                     </Text>
                   </View>
                 </View>
-
-                <Switch value={isDark} onValueChange={toggle} trackColor={{ false: colors.border, true: colors.accent }} />
+                <Switch
+                  value={isDark}
+                  onValueChange={toggle}
+                  trackColor={{ false: colors.border, true: colors.accent }}
+                />
               </View>
             </View>
-          </>
-        ) : (
-          <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
-            <Text style={text.section}>Basic Info</Text>
 
-            <Text style={text.muted}>Full name</Text>
-            <TextInput
-              value={fullName}
-              onChangeText={setFullName}
-              placeholder="Enter your name"
-              placeholderTextColor={colors.textMuted}
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 12,
-                padding: 12,
-                color: colors.textPrimary,
-                backgroundColor: colors.bg,
-              }}
-            />
-            <Text style={text.muted}>Phone</Text>
-            <TextInput
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="(555) 555-5555"
-              placeholderTextColor={colors.textMuted}
-              keyboardType="phone-pad"
-              style={{
-                borderWidth: 1,
-                borderColor: colors.border,
-                borderRadius: 12,
-                padding: 12,
-                color: colors.textPrimary,
-                backgroundColor: colors.bg,
-              }}
-            />
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <Text style={text.section}>Payment Method</Text>
+              {paymentMethod?.stripe_payment_method_id ? (
+                <View style={{ gap: spacing.sm }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: radius.md,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.accent + "20",
+                        borderWidth: 1,
+                        borderColor: colors.accent + "30",
+                      }}
+                    >
+                      <Ionicons name="card" size={22} color={colors.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
+                        {paymentMethod.card_brand?.toUpperCase() || "Card"} •••• {paymentMethod.card_last4}
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+                        Expires {paymentMethod.card_exp_month}/{paymentMethod.card_exp_year}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() => Alert.alert("Update Payment", "Payment method update coming soon")}
+                    style={({ pressed }) => [
+                      {
+                        paddingVertical: 10,
+                        paddingHorizontal: 14,
+                        borderRadius: radius.md,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        backgroundColor: colors.surface,
+                        opacity: pressed ? 0.7 : 1,
+                        flexDirection: "row",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                      },
+                    ]}
+                  >
+                    <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
+                    <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
+                      Update Payment Method
+                    </Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <Pressable
+                  onPress={() => Alert.alert("Add Payment", "Payment method setup coming soon")}
+                  style={({ pressed }) => [
+                    {
+                      paddingVertical: 14,
+                      paddingHorizontal: 16,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.accent,
+                      backgroundColor: colors.accent + "10",
+                      opacity: pressed ? 0.7 : 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    },
+                  ]}
+                >
+                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                  <Text style={{ fontWeight: "800", color: colors.accent }}>
+                    ADD PAYMENT METHOD
+                  </Text>
+                </Pressable>
+              )}
+            </View>
+
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <Text style={text.section}>Current Location</Text>
+              <Text style={{ ...text.muted, fontSize: 13, marginBottom: spacing.xs }}>
+                Save your current location for faster service requests
+              </Text>
+              <Pressable
+                onPress={fetchCurrentLocation}
+                disabled={loadingLocation}
+                style={({ pressed }) => [
+                  {
+                    paddingVertical: 14,
+                    paddingHorizontal: 16,
+                    borderRadius: radius.md,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    backgroundColor: colors.surface,
+                    opacity: pressed || loadingLocation ? 0.7 : 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  },
+                ]}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator color={colors.accent} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="location" size={18} color={colors.accent} />
+                    <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
+                      Use Current Location
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+
+            {profile?.id && reviews.length > 0 && (
+              <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+                <Text style={text.section}>My Reviews</Text>
+                <Text style={{ ...text.muted, fontSize: 13, marginBottom: spacing.xs }}>
+                  Reviews from mechanics you've worked with
+                </Text>
+                {reviews.map((review: any) => (
+                  <View
+                    key={review.id}
+                    style={{
+                      padding: spacing.md,
+                      borderRadius: radius.md,
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      gap: spacing.xs,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        {review.reviewer?.avatar_url ? (
+                          <Image
+                            source={{ uri: review.reviewer.avatar_url }}
+                            style={{ width: 32, height: 32, borderRadius: 16 }}
+                          />
+                        ) : (
+                          <View
+                            style={{
+                              width: 32,
+                              height: 32,
+                              borderRadius: 16,
+                              backgroundColor: colors.accent + "20",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <Ionicons name="person" size={16} color={colors.accent} />
+                          </View>
+                        )}
+                        <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
+                          {review.reviewer?.full_name || "Anonymous"}
+                        </Text>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 2 }}>
+                        {[1, 2, 3, 4, 5].map((star) => (
+                          <Ionicons
+                            key={star}
+                            name={star <= review.overall_rating ? "star" : "star-outline"}
+                            size={14}
+                            color="#FFB800"
+                          />
+                        ))}
+                      </View>
+                    </View>
+                    {review.comment && (
+                      <Text style={{ ...text.body, fontSize: 14, color: colors.textPrimary }}>
+                        {review.comment}
+                      </Text>
+                    )}
+                    <Text style={{ ...text.muted, fontSize: 12 }}>
+                      {new Date(review.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                ))}
+                {reviews.length >= 10 && (
+                  <Text style={{ ...text.muted, fontSize: 12, textAlign: "center", marginTop: spacing.xs }}>
+                    Showing 10 most recent reviews
+                  </Text>
+                )}
+              </View>
+            )}
+          </>
+        )}
+
+        {editing && (
+          <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.md }]}>
+            <Text style={text.section}>Edit Profile</Text>
+
+            <View style={{ gap: spacing.xs }}>
+              <Text style={{ ...text.muted, fontSize: 13 }}>Full name</Text>
+              <TextInput
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Enter your name"
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.bg,
+                  fontSize: 15,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: spacing.xs }}>
+              <Text style={{ ...text.muted, fontSize: 13 }}>Phone</Text>
+              <TextInput
+                value={phone}
+                onChangeText={setPhone}
+                placeholder="(555) 555-5555"
+                placeholderTextColor={colors.textMuted}
+                keyboardType="phone-pad"
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.bg,
+                  fontSize: 15,
+                }}
+              />
+            </View>
+
+            <View style={{ gap: spacing.xs }}>
+              <Text style={{ ...text.muted, fontSize: 13 }}>City</Text>
+              <TextInput
+                value={city}
+                onChangeText={setCity}
+                placeholder="Enter your city"
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.bg,
+                  fontSize: 15,
+                }}
+              />
+            </View>
 
             <Pressable
               onPress={saveProfile}
               disabled={saving}
-              style={{
-                backgroundColor: colors.accent,
-                paddingVertical: 16,
-                borderRadius: radius.lg,
-                alignItems: "center",
-                marginTop: spacing.sm,
-                opacity: saving ? 0.7 : 1,
-              }}
+              style={({ pressed }) => [
+                {
+                  paddingVertical: 14,
+                  paddingHorizontal: 16,
+                  borderRadius: radius.md,
+                  backgroundColor: colors.accent,
+                  opacity: pressed || saving ? 0.7 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  marginTop: spacing.sm,
+                },
+              ]}
             >
-              <Text style={{ fontWeight: "900", color: colors.black }}>{saving ? "SAVING…" : "SAVE CHANGES"}</Text>
+              {saving ? (
+                <ActivityIndicator color={colors.black} size="small" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle-outline" size={18} color={colors.black} />
+                  <Text style={{ fontWeight: "900", color: colors.black }}>
+                    SAVE CHANGES
+                  </Text>
+                </>
+              )}
             </Pressable>
           </View>
         )}
+
         <Pressable
           onPress={goToLegal}
           style={({ pressed }) => [
-            card.container,
+            card,
             {
               flexDirection: "row",
               alignItems: "center",
               padding: spacing.lg,
+              borderRadius: radius.lg,
               gap: spacing.md,
               opacity: pressed ? 0.7 : 1,
             },
@@ -875,33 +794,32 @@ export default function Account() {
 
         <Pressable
           onPress={signOut}
-          disabled={busy}
           style={({ pressed }) => [
             card,
             {
-              borderWidth: 1,
-              borderColor: colors.black,
-              backgroundColor: colors.accent,
               paddingVertical: 16,
+              paddingHorizontal: 16,
               borderRadius: radius.lg,
-              alignItems: "center",
-              opacity: busy ? 0.7 : pressed ? 0.92 : 1,
-              transform: [{ scale: pressed ? 0.99 : 1 }],
+              backgroundColor: colors.accent,
+              opacity: pressed ? 0.9 : 1,
               flexDirection: "row",
+              alignItems: "center",
               justifyContent: "center",
               gap: 10,
             },
           ]}
         >
           <Ionicons name="log-out-outline" size={18} color={colors.black} />
-          <Text style={{ fontWeight: "900", color: colors.black }}>{busy ? "SIGNING OUT…" : "SIGN OUT"}</Text>
+          <Text style={{ fontWeight: "900", color: colors.black }}>SIGN OUT</Text>
         </Pressable>
 
-        <View style={{ marginTop: spacing.lg }}>
+        <View style={{ marginTop: spacing.sm }}>
           <DeleteAccountButton variant="card" />
         </View>
 
-        <Text style={{ ...text.muted, textAlign: "center", marginTop: 6 }}>WrenchGo • Customer</Text>
+        <Text style={{ ...text.muted, textAlign: "center", marginTop: spacing.sm, fontSize: 12 }}>
+          WrenchGo • Customer
+        </Text>
       </ScrollView>
     </KeyboardAvoidingView>
   );

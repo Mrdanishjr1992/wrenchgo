@@ -71,14 +71,14 @@ export interface Review {
     id: string;
     full_name: string;
     display_name: string | null;
-    photo_url: string | null;
+    avatar_url: string | null;
     role: string;
   };
   reviewee?: {
     id: string;
     full_name: string;
     display_name: string | null;
-    photo_url: string | null;
+    avatar_url: string | null;
     role: string;
   };
 }
@@ -115,7 +115,7 @@ export interface PublicProfile {
   role: string;
   full_name: string;
   phone: string | null;
-  photo_url: string | null;
+  avatar_url: string | null;
   created_at: string;
   display_name?: string;
   city?: string;

@@ -90,8 +90,8 @@ function MiniProfileCard({
     <View style={[styles.miniCard, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: insets.top, marginBottom: insets.bottom, marginLeft: insets.left, marginRight: insets.right }]}>
       <Image
         source={
-          profile.photo_url
-            ? { uri: profile.photo_url }
+          profile.avatar_url
+            ? { uri: profile.avatar_url }
             : require('../../assets/profile.png')
         }
         style={styles.miniAvatar}
@@ -172,8 +172,8 @@ function FullProfileCard({
       <View style={styles.fullHeader}>
         <Image
           source={
-            profile.photo_url
-              ? { uri: profile.photo_url }
+            profile.avatar_url
+              ? { uri: profile.avatar_url }
               : require('../../assets/profile.png')
           }
           style={styles.fullAvatar}

@@ -22,7 +22,7 @@ type Msg = {
   id: string;
   job_id: string;
   sender_id: string;
-  body: string;
+  content: string;
   created_at: string;
 };
 
@@ -44,6 +44,7 @@ export default function JobChat() {
   const [sending, setSending] = useState(false);
   const [items, setItems] = useState<Msg[]>([]);
   const [me, setMe] = useState<string | null>(null);
+  const [customerId, setCustomerId] = useState<string | null>(null);
 
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
@@ -70,9 +71,19 @@ export default function JobChat() {
         return;
       }
 
+      const { data: jobData } = await supabase
+        .from("jobs")
+        .select("customer_id")
+        .eq("id", jobId)
+        .single();
+
+      if (jobData) {
+        setCustomerId(jobData.customer_id);
+      }
+
       const { data, error } = await supabase
         .from("messages")
-        .select("id,job_id,sender_id,body,created_at")
+        .select("id,job_id,sender_id,content,created_at")
         .eq("job_id", jobId)
         .order("created_at", { ascending: true });
 
@@ -119,8 +130,8 @@ export default function JobChat() {
   const send = useCallback(async () => {
     if (!jobId || !me) return;
 
-    const body = input.trim();
-    if (!body) return;
+    const content = input.trim();
+    if (!content) return;
 
     setSending(true);
     setInput("");
@@ -130,7 +141,7 @@ export default function JobChat() {
       id: tempId,
       job_id: jobId,
       sender_id: me,
-      body,
+      content,
       created_at: new Date().toISOString(),
     };
     setItems((prev) => [...prev, temp]);
@@ -138,17 +149,18 @@ export default function JobChat() {
     const { error } = await supabase.from("messages").insert({
       job_id: jobId,
       sender_id: me,
-      body,
+      recipient_id: customerId,
+      content,
     });
 
     if (error) {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
-      setInput(body);
+      setInput(content);
       Alert.alert("Send failed", error.message ?? "You can’t chat until a quote is accepted.");
     }
 
     setSending(false);
-  }, [jobId, me, input]);
+  }, [jobId, me, input, customerId]);
 
   const Bubble = ({ item }: { item: Msg }) => {
     const mine = item.sender_id === me;
@@ -175,7 +187,7 @@ export default function JobChat() {
             },
           ]}
         >
-          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>{item.body}</Text>
+          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>{item.content}</Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
             <Ionicons name={mine ? "checkmark-done" : "time-outline"} size={14} color={colors.textMuted} />
@@ -346,3 +358,4 @@ export default function JobChat() {
     </KeyboardAvoidingView>
   );
 }
+

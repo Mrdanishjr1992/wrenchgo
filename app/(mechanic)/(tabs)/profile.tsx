@@ -100,15 +100,12 @@ export default function MechanicProfile() {
           id,
           full_name,
           phone,
-          photo_url,
+          avatar_url,
           id_photo_path,
           id_status,
-          id_rejected_reason,
-          home_latitude,
-          home_longitude
+          id_rejected_reason
         `)
         .eq("auth_id", userId)
-
         .single();
 
       if (error) throw error;
@@ -125,64 +122,39 @@ export default function MechanicProfile() {
       const { data: mechProfile } = await supabase
         .from("mechanic_profiles")
         .select("*")
-        .eq("user_id", userId)
+        .eq("id", userId)
         .maybeSingle();
 
-      const { data: mechData } = await supabase
-        .from("mechanics")
-        .select("*")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-      const { data: toolsData } = await supabase.from("tools").select("*").order("label");
-      const { data: skillsData } = await supabase.from("skills").select("*").order("label");
-      const { data: safetyData } = await supabase.from("safety_measures").select("*").order("label");
-
-      const { data: mechTools } = await supabase
-        .from("mechanic_tools")
-        .select("tool_id")
-        .eq("mechanic_id", userId);
+      const { data: toolsData } = await supabase.from("tools").select("key,label,category").order("label");
+      const { data: skillsData } = await supabase.from("skills").select("id,key,category").order("key");
+      const { data: safetyData } = await supabase.from("safety_measures").select("key,label").order("label");
 
       const { data: mechSkills } = await supabase
         .from("mechanic_skills")
         .select("skill_id")
         .eq("mechanic_id", userId);
 
-      const { data: mechSafety } = await supabase
-        .from("mechanic_safety")
-        .select("safety_id")
-        .eq("mechanic_id", userId);
-
       setAllTools(toolsData || []);
       setAllSkills(skillsData || []);
       setAllSafety(safetyData || []);
-      setSelectedTools(new Set((mechTools || []).map((t) => t.tool_id)));
+      setSelectedTools(new Set());
       setSelectedSkills(new Set((mechSkills || []).map((s) => s.skill_id)));
-      setSelectedSafety(new Set((mechSafety || []).map((s) => s.safety_id)));
+      setSelectedSafety(new Set());
 
       setProfile(data);
       setFullName(data.full_name ?? "");
-      setHomeLatitude(data.home_latitude?.toString() ?? "");
-      setHomeLongitude(data.home_longitude?.toString() ?? "");
       setPhone(data.phone ?? "");
 
       if (mechProfile) {
-        setShopName(mechProfile.shop_name ?? "");
+        setShopName(mechProfile.business_name ?? "");
         setBio(mechProfile.bio ?? "");
-        setServiceRadius(String(mechProfile.service_radius_miles ?? 15));
-        setAvailableNow(mechProfile.available_now ?? true);
-        setNextAvailableAt(mechProfile.next_available_at ?? "");
-        setZipCode(mechProfile.zip_code ?? "");
-      }
-
-      if (mechData) {
-        setYearsExperience(String(mechData.years_experience ?? ""));
-        setHourlyRate(String(mechData.hourly_rate ?? ""));
-        setIsMobile(mechData.is_mobile ?? true);
-        setIsAvailable(mechData.is_available ?? false);
-        setRating(mechData.rating ?? 0);
-        setJobsCompleted(mechData.jobs_completed ?? 0);
-        setBackgroundCheckStatus(mechData.background_check_status ?? "pending");
+        setServiceRadius(String(mechProfile.service_radius_km ?? 50));
+        setAvailableNow(mechProfile.is_available ?? true);
+        setYearsExperience(String(mechProfile.years_experience ?? ""));
+        setRating(mechProfile.average_rating ?? 0);
+        setJobsCompleted(mechProfile.jobs_completed ?? 0);
+        setHomeLatitude(mechProfile.base_location_lat?.toString() ?? "");
+        setHomeLongitude(mechProfile.base_location_lng?.toString() ?? "");
       }
 
       const { data: payoutData } = await supabase
@@ -193,7 +165,10 @@ export default function MechanicProfile() {
 
       setPayoutAccount(payoutData);
     } catch (e: any) {
-      Alert.alert("Profile error", e.message ?? "Failed to load profile.");
+      console.error("Profile load error:", e);
+      if (e?.message) {
+        Alert.alert("Profile error", e.message);
+      }
     } finally {
       setLoading(false);
     }
@@ -267,59 +242,38 @@ export default function MechanicProfile() {
         .update({
           full_name: fullName.trim() || null,
           phone: phone.trim() || null,
-          home_latitude: lat,
-          home_longitude: lng,
         })
-        .eq("auth_id", userId)
-;
+        .eq("auth_id", userId);
 
       await supabase
         .from("mechanic_profiles")
         .upsert({
-          user_id: userId,
-          shop_name: shopName.trim() || null,
+          id: userId,
+          business_name: shopName.trim() || null,
           bio: bio.trim() || null,
-          service_radius_miles: parseFloat(serviceRadius) || 15,
-          available_now: availableNow,
-          next_available_at: nextAvailableAt || null,
-          zip_code: zipCode.trim() || null,
-        });
-
-      await supabase
-        .from("mechanics")
-        .upsert({
-          user_id: userId,
+          service_radius_km: parseFloat(serviceRadius) || 50,
+          is_available: availableNow,
           years_experience: yearsExperience ? parseInt(yearsExperience) : null,
-          hourly_rate: hourlyRate ? parseFloat(hourlyRate) : null,
-          is_mobile: isMobile,
-          is_available: isAvailable,
+          base_location_lat: lat,
+          base_location_lng: lng,
         });
-
-      await supabase.from("mechanic_tools").delete().eq("mechanic_id", userId);
-      if (selectedTools.size > 0) {
-        await supabase
-          .from("mechanic_tools")
-          .insert(Array.from(selectedTools).map((tool_id) => ({ mechanic_id: userId, tool_id })));
-      }
 
       await supabase.from("mechanic_skills").delete().eq("mechanic_id", userId);
       if (selectedSkills.size > 0) {
         await supabase
           .from("mechanic_skills")
-          .insert(Array.from(selectedSkills).map((skill_id) => ({ mechanic_id: userId, skill_id })));
-      }
-
-      await supabase.from("mechanic_safety").delete().eq("mechanic_id", userId);
-      if (selectedSafety.size > 0) {
-        await supabase
-          .from("mechanic_safety")
-          .insert(Array.from(selectedSafety).map((safety_id) => ({ mechanic_id: userId, safety_id })));
+          .insert(Array.from(selectedSkills).map((skill_id) => ({
+            mechanic_id: userId,
+            skill_id,
+            level: 'intermediate'
+          })));
       }
 
       Alert.alert("Saved", "Profile updated successfully.");
       setEditing(false);
       load();
     } catch (e: any) {
+      console.error("Save error:", e);
       Alert.alert("Save error", e.message ?? "Failed to save profile.");
     } finally {
       setSaving(false);
@@ -517,8 +471,8 @@ router.replace("/(auth)/sign-in");
     }, [refreshPayoutStatus])
   );
 
-  const avatarSource = profile?.photo_url
-    ? { uri: profile.photo_url }
+  const avatarSource = profile?.avatar_url
+    ? { uri: profile.avatar_url }
     : require("../../../assets/profile.png");
 
   const displayName = fullName && fullName.trim().length > 0 ? fullName : "Mechanic Profile";

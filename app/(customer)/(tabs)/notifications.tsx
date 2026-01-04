@@ -106,7 +106,7 @@ const TypePill = React.memo(({ type }: { type: string }) => {
         gap: 6,
         paddingHorizontal: 10,
         paddingVertical: 6,
-        borderRadius: radius.full,
+        borderRadius: radius.xl,
         borderWidth: 1,
         borderColor: colors.border,
         backgroundColor: colors.bg,

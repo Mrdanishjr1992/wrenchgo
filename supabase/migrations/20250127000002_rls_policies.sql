@@ -263,17 +263,15 @@ CREATE POLICY "Users can insert messages for their jobs"
     )
   );
 
--- UPDATE: allow users to update ONLY their own messages (and only if not soft-deleted)
+-- UPDATE: allow users to update ONLY their own messages
 CREATE POLICY "Users can update their own messages"
   ON public.messages FOR UPDATE
   TO authenticated
   USING (
     sender_id = auth.uid()
-    AND deleted_at IS NULL
   )
   WITH CHECK (
     sender_id = auth.uid()
-    AND deleted_at IS NULL
   );
 
 -- NOTE: No DELETE policy on purpose (soft-delete only).

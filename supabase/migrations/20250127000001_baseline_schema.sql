@@ -45,14 +45,6 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
-DO $$ BEGIN
-  CREATE TYPE public.user_role AS ENUM (
-    'customer',
-    'mechanic'
-  );
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
 -- 3) TABLES (in dependency order)
 
 -- profiles (no FK dependencies)
@@ -63,7 +55,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   email text,
   phone text,
   avatar_url text,
-  role public.user_role,
+  role text DEFAULT 'customer' CHECK (role = ANY (ARRAY['customer'::text, 'mechanic'::text])),
+  city text,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now(),
   deleted_at timestamptz,
@@ -323,7 +316,6 @@ CREATE TABLE IF NOT EXISTS public.messages (
   recipient_id uuid,
   content text NOT NULL,
   read_at timestamptz,
-  deleted_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT messages_pkey PRIMARY KEY (id)

@@ -14,7 +14,7 @@ export interface MechanicLead {
   distance_miles: number | null;
   customer_id: string;
   customer_name: string;
-  customer_photo_url: string | null;
+  customer_photo_url: string | null;  // Note: RPC returns this as customer_photo_url, mapped from avatar_url
   customer_rating: number;
   customer_review_count: number;
   vehicle_id: string | null;

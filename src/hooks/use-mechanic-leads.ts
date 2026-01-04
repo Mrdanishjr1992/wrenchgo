@@ -1,9 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/src/lib/supabase';
 import type {
   MechanicLead,
   LeadsSummary,
-  MechanicLeadsParams,
   LeadFilterType,
   LeadSortType,
 } from '@/src/types/mechanic-leads';
@@ -37,103 +36,172 @@ export function useMechanicLeads(
   const [hasMore, setHasMore] = useState(true);
   const [sortBy, setSortBy] = useState<LeadSortType>('newest');
 
-  const fetchLeads = useCallback(
-    async (reset: boolean = false) => {
-      if (!mechanicId) {
+  const isMountedRef = useRef(true);
+  const loadingRef = useRef(false);
+  const offsetRef = useRef(0);
+  const hasMoreRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    offsetRef.current = offset;
+  }, [offset]);
+
+  useEffect(() => {
+    hasMoreRef.current = hasMore;
+  }, [hasMore]);
+
+  const loadMore = useCallback(async () => {
+    // Guard hard: prevents UI onEndReached spam + stale offset calls
+    if (!mechanicId) return;
+    if (loadingRef.current) return;
+    if (!hasMoreRef.current) return;
+
+    loadingRef.current = true;
+    setLoading(true);
+
+    try {
+      const currentOffset = offsetRef.current;
+
+      const { data, error: rpcError } = await supabase.rpc('get_mechanic_leads', {
+        p_mechanic_id: mechanicId,
+        p_filter: filter,
+        p_mechanic_lat: mechanicLat,
+        p_mechanic_lng: mechanicLng,
+        p_radius_miles: radiusMiles,
+        p_limit: LEADS_PER_PAGE,
+        p_offset: currentOffset,
+        p_sort_by: sortBy,
+      });
+
+      if (rpcError) throw rpcError;
+      if (!isMountedRef.current) return;
+
+      const newLeads = (data || []) as MechanicLead[];
+
+      // If backend can return duplicates (realtime + pagination), de-dupe by job_id
+      setLeads((prev) => {
+        const seen = new Set(prev.map((l) => l.job_id));
+        const merged = [...prev];
+        for (const l of newLeads) {
+          if (!seen.has(l.job_id)) {
+            merged.push(l);
+            seen.add(l.job_id);
+          }
+        }
+        return merged;
+      });
+
+      const nextOffset = currentOffset + LEADS_PER_PAGE;
+
+      // Keep refs in sync immediately (do NOT wait for state effects)
+      offsetRef.current = nextOffset;
+      hasMoreRef.current = newLeads.length === LEADS_PER_PAGE;
+
+      setOffset(nextOffset);
+      setHasMore(newLeads.length === LEADS_PER_PAGE);
+    } catch (err) {
+      if (!isMountedRef.current) return;
+      console.error('Error fetching more mechanic leads:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load more leads');
+    } finally {
+      if (isMountedRef.current) {
+        loadingRef.current = false;
         setLoading(false);
-        return;
+      } else {
+        loadingRef.current = false;
       }
+    }
+  }, [mechanicId, filter, mechanicLat, mechanicLng, radiusMiles, sortBy]);
 
-      try {
-        setLoading(true);
-        setError(null);
+  const refetch = useCallback(async () => {
+    if (!mechanicId) return;
 
-        const currentOffset = reset ? 0 : offset;
+    // Reset state + refs up-front so UI cannot call loadMore with stale offset
+    loadingRef.current = true;
+    offsetRef.current = 0;
+    hasMoreRef.current = true;
 
-        const { data, error: rpcError } = await supabase.rpc('get_mechanic_leads', {
+    setOffset(0);
+    setHasMore(true);
+    setLoading(true);
+    setError(null);
+
+    try {
+      const [leadsResult, summaryResult] = await Promise.all([
+        supabase.rpc('get_mechanic_leads', {
           p_mechanic_id: mechanicId,
           p_filter: filter,
           p_mechanic_lat: mechanicLat,
           p_mechanic_lng: mechanicLng,
           p_radius_miles: radiusMiles,
           p_limit: LEADS_PER_PAGE,
-          p_offset: currentOffset,
+          p_offset: 0,
           p_sort_by: sortBy,
-        });
+        }),
+        supabase.rpc('get_mechanic_leads_summary', {
+          p_mechanic_id: mechanicId,
+          p_mechanic_lat: mechanicLat,
+          p_mechanic_lng: mechanicLng,
+          p_radius_miles: radiusMiles,
+        }),
+      ]);
 
-        if (rpcError) throw rpcError;
+      if (!isMountedRef.current) return;
 
-        const newLeads = (data || []) as MechanicLead[];
+      if (leadsResult.error) throw leadsResult.error;
 
-        if (reset) {
-          setLeads(newLeads);
-          setOffset(LEADS_PER_PAGE);
-        } else {
-          setLeads((prev) => [...prev, ...newLeads]);
-          setOffset((prev) => prev + LEADS_PER_PAGE);
-        }
+      const newLeads = (leadsResult.data || []) as MechanicLead[];
 
-        setHasMore(newLeads.length === LEADS_PER_PAGE);
-      } catch (err) {
-        console.error('Error fetching mechanic leads:', err);
-        setError(err instanceof Error ? err.message : 'Failed to load leads');
-      } finally {
-        setLoading(false);
-      }
-    },
-    [mechanicId, filter, mechanicLat, mechanicLng, radiusMiles, sortBy]
-  );
+      setLeads(newLeads);
 
-  const fetchSummary = useCallback(async () => {
-    if (!mechanicId) return;
+      const nextOffset = LEADS_PER_PAGE;
+      const nextHasMore = newLeads.length === LEADS_PER_PAGE;
 
-    try {
-      const { data, error: summaryError } = await supabase.rpc('get_mechanic_leads_summary', {
-        p_mechanic_id: mechanicId,
-        p_mechanic_lat: mechanicLat,
-        p_mechanic_lng: mechanicLng,
-        p_radius_miles: radiusMiles,
-      });
+      // Keep refs in sync immediately
+      offsetRef.current = nextOffset;
+      hasMoreRef.current = nextHasMore;
 
-      if (summaryError) throw summaryError;
+      setOffset(nextOffset);
+      setHasMore(nextHasMore);
 
-      if (data && data.length > 0) {
-        setSummary(data[0] as LeadsSummary);
+      if (summaryResult.data && summaryResult.data.length > 0) {
+        setSummary(summaryResult.data[0] as LeadsSummary);
+      } else {
+        setSummary(null);
       }
     } catch (err) {
-      console.error('Error fetching leads summary:', err);
+      if (!isMountedRef.current) return;
+      console.error('Error fetching mechanic leads:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load leads');
+    } finally {
+      if (isMountedRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      } else {
+        loadingRef.current = false;
+      }
     }
-  }, [mechanicId, mechanicLat, mechanicLng, radiusMiles]);
-
-  const refetch = useCallback(async () => {
-    setOffset(0);
-    setHasMore(true);
-    await Promise.all([fetchLeads(true), fetchSummary()]);
-  }, [fetchLeads, fetchSummary]);
-
-  const loadMore = useCallback(async () => {
-    if (!loading && hasMore) {
-      await fetchLeads(false);
-    }
-  }, [loading, hasMore, fetchLeads]);
+  }, [mechanicId, filter, mechanicLat, mechanicLng, radiusMiles, sortBy]);
 
   const changeSortBy = useCallback((newSortBy: LeadSortType) => {
     setSortBy(newSortBy);
-    setOffset(0);
-    setHasMore(true);
   }, []);
 
   useEffect(() => {
-    if (mechanicId) {
-      refetch();
+    if (!mechanicId) {
+      setLoading(false);
+      return;
     }
-  }, [mechanicId, filter, sortBy]);
 
-  useEffect(() => {
-    if (mechanicId) {
-      fetchSummary();
-    }
-  }, [mechanicId, mechanicLat, mechanicLng, radiusMiles]);
+    // When key inputs change, refetch once
+    refetch();
+  }, [mechanicId, filter, sortBy, refetch]);
 
   return {
     leads,

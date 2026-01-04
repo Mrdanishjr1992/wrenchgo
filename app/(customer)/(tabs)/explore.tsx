@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { View, Text, Pressable, ScrollView, Image, ActivityIndicator } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -8,7 +8,6 @@ import { spacing } from "../../../src/ui/theme";
 import { createCard, cardPressed } from "../../../src/ui/styles";
 import { VehicleChip } from "../../../src/components/VehicleChip";
 import { VehiclePickerDrawer } from "../../../src/components/VehiclePickerDrawer";
-import { CollapsibleCategorySection } from "../../../src/components/CollapsibleCategorySection";
 import { RiskBadge } from "../../../src/components/RiskBadge";
 import { useSymptoms } from "../../../src/hooks/use-symptoms";
 
@@ -24,7 +23,8 @@ type SymptomItem = {
   symptom_key: string;
   symptom_label: string;
   customer_explainer: string;
-  risk_level: string; // assume string but guard in code anyway
+  risk_level: string;
+  icon?: string | null;
 };
 
 type CategoryGroup = {
@@ -47,12 +47,6 @@ function getHighestRiskLevel(symptoms: { risk_level: string }[]): "high" | "medi
   return "low";
 }
 
-function getDefaultExpandedCategory(categoryGroups: CategoryGroup[]): string | null {
-  if (categoryGroups.length === 0) return null;
-  const high = categoryGroups.find((g) => g.highestRiskLevel === "high");
-  return high?.category ?? categoryGroups[0].category;
-}
-
 export default function Explore() {
   const router = useRouter();
   const { colors } = useTheme();
@@ -65,8 +59,6 @@ export default function Explore() {
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
-  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
-  const [didSetDefaultExpanded, setDidSetDefaultExpanded] = useState(false);
 
   const categoryGroups = useMemo<CategoryGroup[]>(() => {
     const grouped: Record<string, CategoryGroup> = {};
@@ -87,6 +79,7 @@ export default function Explore() {
         symptom_label: symptom.symptom_label,
         customer_explainer: symptom.customer_explainer,
         risk_level: symptom.risk_level ?? "low",
+        icon: symptom.icon ?? null,
       });
     });
 
@@ -102,18 +95,6 @@ export default function Explore() {
       return a.category.localeCompare(b.category);
     });
   }, [symptoms]);
-
-  // Set default expanded category once after symptoms load
-  useEffect(() => {
-    if (didSetDefaultExpanded) return;
-    if (categoryGroups.length === 0) return;
-
-    const defaultCategory = getDefaultExpandedCategory(categoryGroups);
-    if (defaultCategory) {
-      setExpandedCategories(new Set([defaultCategory]));
-    }
-    setDidSetDefaultExpanded(true);
-  }, [categoryGroups, didSetDefaultExpanded]);
 
   const loadVehicles = useCallback(async () => {
     try {
@@ -163,7 +144,6 @@ export default function Explore() {
     }, [loadVehicles])
   );
 
-  // If user selects vehicle from drawer, persist it
   const handleSelectVehicle = useCallback((vehicle: Vehicle) => {
     setSelectedVehicleId(vehicle.id);
     setSelectedVehicle(vehicle);
@@ -172,15 +152,6 @@ export default function Explore() {
 
   const handleChangeVehicle = useCallback(() => {
     setShowVehicleDrawer(true);
-  }, []);
-
-  const toggleCategory = useCallback((category: string) => {
-    setExpandedCategories((prev) => {
-      const next = new Set(prev);
-      if (next.has(category)) next.delete(category);
-      else next.add(category);
-      return next;
-    });
   }, []);
 
   const handleSymptomSelect = useCallback(
@@ -386,55 +357,56 @@ export default function Explore() {
             </Text>
           </View>
         ) : (
-          categoryGroups.map((group) => (
-            <CollapsibleCategorySection
-              key={group.category}
-              category={group.category}
-              symptomCount={group.symptoms.length}
-              isExpanded={expandedCategories.has(group.category)}
-              onToggle={() => toggleCategory(group.category)}
-            >
-              {group.symptoms.map((symptom) => {
-                const risk = normalizeRiskLevel(symptom.risk_level);
+          <>
+            {categoryGroups.map((group) => (
+              <View key={group.category} style={{ marginBottom: spacing.lg }}>
+                <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.sm }}>
+                  {group.category} ({(group.symptoms ?? []).length})
+                </Text>
 
-                return (
-                  <Pressable
-                    key={symptom.symptom_key}
-                    onPress={() => handleSymptomSelect(symptom.symptom_key)}
-                    style={({ pressed }) => [
-                      card,
-                      pressed && cardPressed,
-                      {
-                        padding: spacing.md,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: spacing.md,
-                        marginBottom: spacing.sm,
-                      },
-                    ]}
-                  >
-                    <View style={{ flex: 1 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
-                        <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>
-                          {symptom.symptom_label}
+                {(group.symptoms ?? []).map((symptom) => {
+                  const risk = normalizeRiskLevel(symptom.risk_level);
+
+                  return (
+                    <Pressable
+                      key={symptom.symptom_key}
+                      onPress={() => handleSymptomSelect(symptom.symptom_key)}
+                      style={({ pressed }) => [
+                        card,
+                        pressed && cardPressed,
+                        {
+                          padding: spacing.md,
+                          flexDirection: "row",
+                          alignItems: "center",
+                          gap: spacing.md,
+                          marginBottom: spacing.sm,
+                        },
+                      ]}
+                    >
+                      {symptom.icon && (
+                        <Text style={{ fontSize: 28 }}>{symptom.icon}</Text>
+                      )}
+
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
+                          <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>
+                            {symptom.symptom_label}
+                          </Text>
+                          {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}
+                        </View>
+
+                        <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }} numberOfLines={2}>
+                          {symptom.customer_explainer ?? ""}
                         </Text>
-                        {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}
                       </View>
 
-                      <Text
-                        style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}
-                        numberOfLines={2}
-                      >
-                        {symptom.customer_explainer}
-                      </Text>
-                    </View>
-
-                    <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
-                  </Pressable>
-                );
-              })}
-            </CollapsibleCategorySection>
-          ))
+                      <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ))}
+          </>
         )}
       </ScrollView>
     </View>

@@ -21,7 +21,7 @@ export function useProfile(router: any) {
 
       const { data, error } = await supabase
         .from("profiles")
-        .select("id, full_name, phone, photo_url, role")
+        .select("id, full_name, phone, avatar_url, role")
         .eq("auth_id", userId)
 
         .single();
@@ -39,7 +39,7 @@ export function useProfile(router: any) {
   const updateProfile = async (payload: {
     full_name?: string | null;
     phone?: string | null;
-    photo_url?: string | null;
+    avatar_url?: string | null;
   }) => {
     try {
       setSaving(true);

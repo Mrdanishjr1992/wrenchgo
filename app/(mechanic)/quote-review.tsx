@@ -240,26 +240,25 @@ export default function QuoteReview() {
           : null;
 
       let priceCents = null;
-      let priceLowCents = null;
-      let priceHighCents = null;
+      let notesText = params.message || null;
 
       if (params.quoteType === "range" && !pricing.isTBD) {
-        priceLowCents = Math.round(pricing.totalLow! * 100);
-        priceHighCents = Math.round(pricing.totalHigh! * 100);
+        const priceLowCents = Math.round(pricing.totalLow! * 100);
+        const priceHighCents = Math.round(pricing.totalHigh! * 100);
+        priceCents = Math.round((priceLowCents + priceHighCents) / 2);
+        notesText = `Range: $${(priceLowCents / 100).toFixed(0)} - $${(priceHighCents / 100).toFixed(0)}${notesText ? '\n\n' + notesText : ''}`;
       } else if (!pricing.isTBD && pricing.total !== undefined) {
         priceCents = Math.round(pricing.total * 100);
       }
 
+      const estimatedHours = params.durationMinutes ? parseInt(params.durationMinutes) / 60 : null;
+
       const { error } = await supabase.from("quotes").insert({
         job_id: params.jobId,
         mechanic_id: userData.user.id,
-        quote_type: params.quoteType,
         price_cents: priceCents,
-        price_low_cents: priceLowCents,
-        price_high_cents: priceHighCents,
-        arrival_time: arrivalTimeStr,
-        estimated_duration_minutes: params.durationMinutes ? parseInt(params.durationMinutes) : null,
-        message_to_customer: params.message || null,
+        estimated_hours: estimatedHours,
+        notes: notesText,
         status: "pending",
       });
 

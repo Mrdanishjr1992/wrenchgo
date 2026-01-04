@@ -19,12 +19,9 @@ type QuoteType = "diagnostic_only" | "range" | "fixed" | "inspection_required";
 
 type Quote = {
   id: string;
-  quote_type: QuoteType;
   price_cents: number | null;
-  price_low_cents: number | null;
-  price_high_cents: number | null;
-  arrival_time: string | null;
-  estimated_duration_minutes: number | null;
+  estimated_hours: number | null;
+  notes: string | null;
   status: "pending" | "accepted" | "declined" | "withdrawn" | "expired";
   created_at: string;
 };
@@ -99,21 +96,8 @@ export default function QuoteSent() {
     }
   };
 
-  const getQuoteTypeLabel = (type: QuoteType) => {
-    const labels: Record<QuoteType, string> = {
-      diagnostic_only: "Diagnostic Only",
-      range: "Range Quote",
-      fixed: "Fixed Price",
-      inspection_required: "Inspection Required",
-    };
-    return labels[type];
-  };
-
   const getPriceDisplay = () => {
     if (!quote) return "";
-    if (quote.quote_type === "range" && quote.price_low_cents && quote.price_high_cents) {
-      return `$${(quote.price_low_cents / 100).toFixed(0)} - $${(quote.price_high_cents / 100).toFixed(0)}`;
-    }
     if (quote.price_cents) {
       return `$${(quote.price_cents / 100).toFixed(0)}`;
     }
@@ -247,31 +231,26 @@ export default function QuoteSent() {
             </View>
 
             <View>
-              <Text style={{ ...text.muted, fontSize: 13 }}>Quote type</Text>
-              <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
-                {getQuoteTypeLabel(quote.quote_type)}
-              </Text>
-            </View>
-
-            <View>
               <Text style={{ ...text.muted, fontSize: 13 }}>Price</Text>
               <Text style={{ ...text.body, fontSize: 20, fontWeight: "700", marginTop: 2 }}>
                 {getPriceDisplay()}
               </Text>
             </View>
 
-            {quote.arrival_time && (
+            {quote.estimated_hours && (
               <View>
-                <Text style={{ ...text.muted, fontSize: 13 }}>Arrival time</Text>
-                <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>{quote.arrival_time}</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Estimated time</Text>
+                <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
+                  {quote.estimated_hours} hours
+                </Text>
               </View>
             )}
 
-            {quote.estimated_duration_minutes && (
+            {quote.notes && (
               <View>
-                <Text style={{ ...text.muted, fontSize: 13 }}>Estimated duration</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Notes</Text>
                 <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
-                  {quote.estimated_duration_minutes} min
+                  {quote.notes}
                 </Text>
               </View>
             )}

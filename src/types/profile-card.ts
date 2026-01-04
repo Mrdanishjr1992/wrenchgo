@@ -37,7 +37,7 @@ export interface PublicProfileCard {
   id: string;
   role: 'customer' | 'mechanic';
   display_name: string;
-  photo_url: string | null;
+  avatar_url: string | null;
   created_at: string;
   ratings: PublicProfileCardRatings;
   badges: PublicProfileCardBadge[];

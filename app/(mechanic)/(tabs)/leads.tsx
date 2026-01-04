@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -31,13 +31,17 @@ export default function MechanicLeadsPage() {
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [locationPermission, setLocationPermission] = useState<boolean>(false);
 
-  const { leads, summary, loading, error, hasMore, sortBy, refetch, loadMore, changeSortBy } = useMechanicLeads(
-    mechanicId,
-    filter,
-    location?.latitude,
-    location?.longitude,
-    25
-  );
+  const { leads, summary, loading, error, hasMore, sortBy, refetch, loadMore, changeSortBy } =
+    useMechanicLeads(
+      mechanicId,
+      filter,
+      location?.latitude,
+      location?.longitude,
+      25
+    );
+
+  // Prevent FlatList from calling onEndReached repeatedly
+  const endReachedLockRef = useRef(false);
 
   useEffect(() => {
     const getCurrentUser = async () => {
@@ -69,6 +73,11 @@ export default function MechanicLeadsPage() {
 
     requestLocationPermission();
   }, []);
+
+  // Unlock endReached when inputs change (so pagination works after refetch/filter/sort changes)
+  useEffect(() => {
+    endReachedLockRef.current = false;
+  }, [filter, sortBy, mechanicId, location?.latitude, location?.longitude]);
 
   const handleViewJob = (jobId: string) => {
     const lead = leads.find(l => l.job_id === jobId);
@@ -131,6 +140,14 @@ export default function MechanicLeadsPage() {
       </TouchableOpacity>
     );
   };
+
+  const handleEndReached = useCallback(() => {
+    if (endReachedLockRef.current) return;
+    if (hasMore && !loading) {
+      endReachedLockRef.current = true;
+      loadMore();
+    }
+  }, [hasMore, loading, loadMore]);
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
@@ -240,16 +257,18 @@ export default function MechanicLeadsPage() {
           ListFooterComponent={renderFooter}
           refreshControl={
             <RefreshControl
-              refreshing={false}
-              onRefresh={refetch}
+              refreshing={loading && leads.length > 0}
+              onRefresh={() => {
+                endReachedLockRef.current = false;
+                refetch();
+              }}
               tintColor={colors.accent}
               colors={[colors.accent]}
             />
           }
-          onEndReached={() => {
-            if (hasMore && !loading) {
-              loadMore();
-            }
+          onEndReached={handleEndReached}
+          onMomentumScrollBegin={() => {
+            endReachedLockRef.current = false;
           }}
           onEndReachedThreshold={0.5}
         />
@@ -266,51 +285,51 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 20,
     shadowColor: '#000',
-  shadowOffset: { width: 0, height: 2 },
-  shadowOpacity: 0.1,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    },
+  },
   headerContent: {
-  gap: 4,
-    },
-    headerLeft: {
+    gap: 4,
+  },
+  headerLeft: {
     flexDirection: 'row',
-  alignItems: 'center',
-  gap: 12,
-    },
-    headerTitleRow: {
-  flexDirection: 'row',
-  alignItems: 'center',
+    alignItems: 'center',
     gap: 12,
-    },
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
   headerTitle: {
-  fontSize: 32,
+    fontSize: 32,
     fontWeight: '700',
     color: '#fff',
-    },
-    headerSubtitle: {
+  },
+  headerSubtitle: {
     fontSize: 14,
-  color: '#fff',
-  opacity: 0.9,
+    color: '#fff',
+    opacity: 0.9,
     marginLeft: 44,
-    },
-    filterTabs: {
-  flexDirection: 'row',
-  borderBottomWidth: 1,
-  shadowColor: '#000',
-  shadowOffset: { width: 0, height: 1 },
-  shadowOpacity: 0.05,
-  shadowRadius: 2,
-  elevation: 2,
+  },
+  filterTabs: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
   filterTab: {
-  flex: 1,
-  paddingVertical: 14,
-  alignItems: 'center',
-  flexDirection: 'row',
-  justifyContent: 'center',
-  gap: 6,
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
   },
   filterTabText: {
     fontSize: 15,

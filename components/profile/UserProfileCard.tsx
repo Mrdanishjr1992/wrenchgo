@@ -43,8 +43,8 @@ export function UserProfileCard({ profile, onPress, compact = false }: UserProfi
     }, compact && styles.cardCompact]}>
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
-          {profile.photo_url ? (
-            <Image source={{ uri: profile.photo_url }} style={styles.avatar} />
+          {profile.avatar_url ? (
+            <Image source={{ uri: profile.avatar_url }} style={styles.avatar} />
           ) : (
             <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary }]}>
               <Text style={styles.avatarText}>
