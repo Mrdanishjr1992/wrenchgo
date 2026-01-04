@@ -26,6 +26,20 @@ export default function ChooseRole() {
 
   const canContinue = useMemo(() => !saving && !loading && !!role, [saving, loading, role]);
 
+  const requireUser = async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) console.log("choose-role getSession error:", error.message);
+
+    const user = data.session?.user;
+    if (!user) {
+      router.replace("/(auth)/sign-in");
+      return null;
+    }
+    return user;
+  };
+
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
   useEffect(() => {
     let mounted = true;
 
@@ -33,23 +47,20 @@ export default function ChooseRole() {
       try {
         setLoading(true);
 
-        const { data: sessionData, error: sErr } = await supabase.auth.getSession();
-        if (sErr) console.log("choose-role getSession error:", sErr.message);
+        const user = await requireUser();
+        if (!user) return;
 
-        const user = sessionData.session?.user;
-        if (!user) {
-          router.replace("/(auth)/sign-in");
-          return;
-        }
-
-        // If profile already has a role, skip this screen
+        // If profile already has role, skip.
+        // For brand-new users, profile might not exist yet; treat that as "needs role".
         const { data: profile, error: pErr } = await supabase
           .from("profiles")
           .select("role")
           .eq("auth_id", user.id)
           .maybeSingle();
 
-        if (pErr) console.log("choose-role: profile fetch error:", pErr.message);
+        if (pErr) {
+          console.log("choose-role: profile fetch error:", pErr.message);
+        }
 
         if (profile?.role) {
           router.replace("/");
@@ -67,7 +78,8 @@ export default function ChooseRole() {
     return () => {
       mounted = false;
     };
-  }, [router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const saveRole = async () => {
     try {
@@ -75,27 +87,28 @@ export default function ChooseRole() {
 
       setSaving(true);
 
-      const { data: sessionData, error: sErr } = await supabase.auth.getSession();
-      if (sErr) console.log("choose-role getSession error:", sErr.message);
+      const user = await requireUser();
+      if (!user) return;
 
-      const user = sessionData.session?.user;
-      if (!user) {
-        Alert.alert("Session missing", "Please sign in again.");
-        router.replace("/(auth)/sign-in");
-        return;
-      }
-
-      const { data, error } = await supabase.rpc("set_user_role", {
-        new_role: role,
-      });
-
+      // Call your SECURITY DEFINER RPC so RLS can stay strict
+      const { error } = await supabase.rpc("set_user_role", { new_role: role });
       if (error) throw error;
 
-      console.log("choose-role: role set successfully", { role, userId: user.id });
+      // Small delay helps if downstream screens fetch mechanic_profiles immediately
+      await sleep(150);
 
       router.replace("/");
     } catch (e: any) {
       console.log("choose-role save error:", e?.message);
+
+      // Make "already set" friendlier if your RPC throws that message
+      const msg = String(e?.message || "");
+      if (msg.toLowerCase().includes("role already set")) {
+        Alert.alert("Role already set", "Your role is already chosen. Continuing…");
+        router.replace("/");
+        return;
+      }
+
       Alert.alert("Couldn’t save role", e?.message ?? "Try again.");
     } finally {
       setSaving(false);
@@ -184,7 +197,7 @@ export default function ChooseRole() {
         <LinearGradient
           colors={["rgba(13,148,136,0.22)", "rgba(13,148,136,0.00)"]}
           style={{
-            paddingTop: Platform.OS === "android" ? spacing.xl : spacing.xl,
+            paddingTop: spacing.xl,
             paddingBottom: spacing.lg,
             paddingHorizontal: spacing.lg,
           }}
