@@ -108,7 +108,8 @@ export function useMechanicLeads(
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error('Error fetching more mechanic leads:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load more leads');
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      setError(err instanceof Error ? err.message : JSON.stringify(err));
     } finally {
       if (isMountedRef.current) {
         loadingRef.current = false;
@@ -178,7 +179,8 @@ export function useMechanicLeads(
     } catch (err) {
       if (!isMountedRef.current) return;
       console.error('Error fetching mechanic leads:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load leads');
+      console.error('Error details:', JSON.stringify(err, null, 2));
+      setError(err instanceof Error ? err.message : JSON.stringify(err));
     } finally {
       if (isMountedRef.current) {
         loadingRef.current = false;
@@ -199,9 +201,9 @@ export function useMechanicLeads(
       return;
     }
 
-    // When key inputs change, refetch once
     refetch();
-  }, [mechanicId, filter, sortBy, refetch]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mechanicId, filter, sortBy]);
 
   return {
     leads,

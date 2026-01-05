@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+﻿import { useCallback, useEffect, useState } from "react";
 import { supabase } from "../lib/supabase";
 
 export type SymptomListItem = {
@@ -9,27 +9,37 @@ export type SymptomListItem = {
   quote_strategy: string | null;
   customer_explainer: string | null;
 
-  // optional extras
   required_skill_keys: string[];
   suggested_tool_keys: string[];
   required_safety_keys: string[];
 
-  // from public.symptoms (optional)
   icon?: string | null;
 };
+
+const FALLBACK_ICON = "🛠️";
+
+function normalizeRisk(risk: unknown): "high" | "medium" | "low" {
+  const v = String(risk ?? "").toLowerCase();
+  if (v === "high") return "high";
+  if (v === "medium") return "medium";
+  return "low";
+}
 
 export function useSymptoms() {
   const [symptoms, setSymptoms] = useState<SymptomListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchSymptoms = async () => {
+  const fetchSymptoms = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // ✅ Primary source: symptom_mappings
-      // ✅ Left join symptoms to get icon if it exists
+      /**
+       * IMPORTANT:
+       * Use explicit FK embed so PostgREST always returns the joined row.
+       * symptom_mappings.symptom_key -> symptoms.key
+       */
       const { data, error: fetchError } = await supabase
         .from("symptom_mappings")
         .select(
@@ -43,15 +53,17 @@ export function useSymptoms() {
           required_skill_keys,
           suggested_tool_keys,
           required_safety_keys,
-          symptoms: symptoms ( icon )
+          symptom:symptoms!symptom_mappings_symptom_key_fkey (
+            icon,
+            label,
+            key
+          )
         `
-        )
-        .order("category", { ascending: true })
-        .order("symptom_label", { ascending: true });
+        );
 
       if (fetchError) throw fetchError;
 
-      const rows =
+      const rows: SymptomListItem[] =
         (data ?? []).map((row: any) => ({
           symptom_key: row.symptom_key,
           symptom_label: row.symptom_label,
@@ -62,21 +74,41 @@ export function useSymptoms() {
           required_skill_keys: row.required_skill_keys ?? [],
           suggested_tool_keys: row.suggested_tool_keys ?? [],
           required_safety_keys: row.required_safety_keys ?? [],
-          icon: row.symptoms?.icon ?? null,
+          icon: row.symptom?.icon ?? FALLBACK_ICON,
         })) ?? [];
+
+      // Better UX ordering: risk first, then category, then label
+      const riskOrder: Record<"high" | "medium" | "low", number> = {
+        high: 0,
+        medium: 1,
+        low: 2,
+      };
+
+      rows.sort((a, b) => {
+        const ra = normalizeRisk(a.risk_level);
+        const rb = normalizeRisk(b.risk_level);
+        const rd = riskOrder[ra] - riskOrder[rb];
+        if (rd !== 0) return rd;
+
+        const cd = a.category.localeCompare(b.category);
+        if (cd !== 0) return cd;
+
+        return a.symptom_label.localeCompare(b.symptom_label);
+      });
 
       setSymptoms(rows);
     } catch (e: any) {
       console.error("Failed to fetch symptoms:", e);
       setError(e?.message || "Failed to load symptoms");
+      setSymptoms([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchSymptoms();
-  }, []);
+  }, [fetchSymptoms]);
 
   return { symptoms, loading, error, refetch: fetchSymptoms };
 }

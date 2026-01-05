@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,18 +7,15 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
+import { spacing } from "../../src/ui/theme";
 
-type SimpleCategory = {
-  id: string;
-  title: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  description: string;
-};
 type Question = {
   id: string;
   question: string;
@@ -26,384 +23,497 @@ type Question = {
   options?: string[];
 };
 
-type QuestionFlow = {
-  [key: string]: Question[];
-};
-
-const SIMPLE_CATEGORIES: SimpleCategory[] = [
-  {
-    id: "wont-start",
-    title: "Won't Start",
-    icon: "power-outline",
-    description: "Car won't turn on or start",
-  },
-  {
-    id: "strange-noises",
-    title: "Strange Noises",
-    icon: "volume-high-outline",
-    description: "Hearing unusual sounds",
-  },
-  {
-    id: "warning-lights",
-    title: "Warning Lights",
-    icon: "warning-outline",
-    description: "Dashboard lights are on",
-  },
-  {
-    id: "leaking-fluids",
-    title: "Leaking Fluids",
-    icon: "water-outline",
-    description: "Fluid under the car",
-  },
-  {
-    id: "performance-issues",
-    title: "Performance Issues",
-    icon: "speedometer-outline",
-    description: "Car feels sluggish or rough",
-  },
-  {
-    id: "maintenance",
-    title: "Regular Maintenance",
-    icon: "build-outline",
-    description: "Oil change, tune-up, etc.",
-  },
-  {
-    id: "accident-damage",
-    title: "Accident/Damage",
-    icon: "car-outline",
-    description: "Body work or collision repair",
-  },
-  {
-    id: "other",
-    title: "Something Else",
-    icon: "help-circle-outline",
-    description: "Describe your issue",
-  },
-];
+// Fallback flows (only used if DB doesn’t return questions)
+type QuestionFlow = { [key: string]: Question[] };
 
 const QUESTION_FLOWS: QuestionFlow = {
-  "wont-start": [
+  wont_start: [
     {
-      id: "q1",
+      id: "key_turn_result",
       question: "What happens when you turn the key?",
       type: "choice",
-      options: ["Nothing at all", "Clicking sound", "Engine cranks but won't start", "Starts then dies"],
+      options: ["Nothing at all", "Clicking sound", "Engine cranks but won’t start", "Starts then dies", "Not sure"],
     },
     {
-      id: "q2",
+      id: "dashboard_lights",
       question: "Are your dashboard lights working?",
       type: "choice",
-      options: ["Yes, all lights work", "No lights at all", "Lights are dim"],
+      options: ["Yes, normal", "Dim or flickering", "Not working", "Not sure"],
     },
   ],
-  "strange-noises": [
+  strange_noise: [
     {
-      id: "q1",
-      question: "Where is the noise coming from?",
+      id: "noise_type",
+      question: "What kind of noise?",
       type: "choice",
-      options: ["Front of car", "Back of car", "Under the hood", "Inside the car", "Not sure"],
+      options: ["Squealing", "Grinding", "Knocking", "Rattling", "Humming", "Other"],
     },
     {
-      id: "q2",
+      id: "when_hear",
       question: "When do you hear it?",
       type: "choice",
-      options: ["When braking", "When turning", "When accelerating", "All the time", "When idling"],
-    },
-    {
-      id: "q3",
-      question: "What does it sound like?",
-      type: "choice",
-      options: ["Squealing/Screeching", "Grinding", "Knocking/Tapping", "Rattling", "Humming/Whining"],
+      options: ["When starting", "While driving", "When turning", "When braking", "All the time"],
     },
   ],
-  "warning-lights": [
+  warning_light: [
     {
-      id: "q1",
+      id: "which_light",
       question: "Which warning light is on?",
       type: "choice",
-      options: ["Check Engine", "Oil", "Battery", "Brake", "Temperature", "ABS", "Tire Pressure", "Multiple lights"],
+      options: ["Check Engine", "ABS/Brake", "Oil pressure", "Battery", "Other/Multiple"],
     },
     {
-      id: "q2",
-      question: "Is the light flashing or steady?",
+      id: "solid_or_flashing",
+      question: "Is the light solid or flashing?",
       type: "choice",
-      options: ["Flashing", "Steady on"],
+      options: ["Solid", "Flashing", "Not sure"],
     },
   ],
-  "leaking-fluids": [
+  fluid_leak: [
     {
-      id: "q1",
+      id: "fluid_color",
       question: "What color is the fluid?",
       type: "choice",
-      options: ["Clear/Water", "Brown/Black", "Red/Pink", "Green/Orange", "Yellow/Brown"],
+      options: ["Clear/water", "Green/yellow", "Red/pink", "Brown/black", "Not sure"],
     },
     {
-      id: "q2",
-      question: "Where is it leaking from?",
+      id: "puddle_location",
+      question: "Where is the puddle?",
       type: "choice",
-      options: ["Front of car", "Middle/Under car", "Back of car", "Not sure"],
+      options: ["Front of car", "Middle", "Back", "Not sure"],
     },
   ],
-  "performance-issues": [
+  battery_issues: [
     {
-      id: "q1",
-      question: "What's the main problem?",
+      id: "battery_symptom",
+      question: "What’s happening?",
       type: "choice",
-      options: ["Loss of power", "Rough idle", "Stalling", "Poor acceleration", "Vibration"],
+      options: ["Slow to start", "Won’t hold charge", "Electrical issues", "Battery light on", "Not sure"],
     },
     {
-      id: "q2",
-      question: "When does it happen?",
+      id: "battery_age",
+      question: "How old is your battery?",
       type: "choice",
-      options: ["All the time", "Only when cold", "Only when hot", "During acceleration", "At highway speeds"],
+      options: ["Less than 2 years", "2–4 years", "4+ years", "Not sure"],
     },
   ],
-  "maintenance": [
+  maintenance: [
     {
-      id: "q1",
+      id: "service_needed",
       question: "What service do you need?",
       type: "choice",
-      options: ["Oil change", "Tire rotation", "Brake inspection", "Tune-up", "Fluid check", "Not sure"],
-    },
-    {
-      id: "q2",
-      question: "When was your last service?",
-      type: "choice",
-      options: ["Less than 3 months ago", "3-6 months ago", "6-12 months ago", "Over a year ago", "Don't remember"],
+      options: ["Oil change", "Tire rotation", "Brake inspection", "Full service", "Other", "Not sure"],
     },
   ],
-  "accident-damage": [
+  not_sure: [
     {
-      id: "q1",
-      question: "What type of damage?",
+      id: "concern_reason",
+      question: "What made you concerned?",
       type: "choice",
-      options: ["Dent/Scratch", "Broken glass", "Bumper damage", "Multiple areas", "Frame damage"],
-    },
-    {
-      id: "q2",
-      question: "How severe is the damage?",
-      type: "choice",
-      options: ["Minor (cosmetic)", "Moderate (affects function)", "Severe (not drivable)"],
-    },
-  ],
-  "other": [
-    {
-      id: "q1",
-      question: "Please describe the issue",
-      type: "text",
+      options: ["Something feels off", "Preventive check", "Recent issue", "Other"],
     },
   ],
 };
+
+function safeString(v: unknown): string {
+  return typeof v === "string" ? v : "";
+}
 
 export default function RequestService() {
   const { colors } = useTheme();
+
+  const params = useLocalSearchParams<{
+    symptom?: string;
+    vehicleId?: string;
+    vehicleYear?: string;
+    vehicleMake?: string;
+    vehicleModel?: string;
+    vehicleNickname?: string;
+  }>();
+
+  const symptomKey = safeString(params.symptom);
+  const vehicleId = safeString(params.vehicleId);
+
+  const vehicleSummary = useMemo(() => {
+    const year = safeString(params.vehicleYear);
+    const make = safeString(params.vehicleMake);
+    const model = safeString(params.vehicleModel);
+    const nick = safeString(params.vehicleNickname);
+    const name = [year, make, model].filter(Boolean).join(" ");
+    return nick ? `${name} (${nick})` : name;
+  }, [params.vehicleYear, params.vehicleMake, params.vehicleModel, params.vehicleNickname]);
+
   const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [step, setStep] = useState<"category" | "questions" | "details">("category");
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+
+  const [loadingSubmit, setLoadingSubmit] = useState(false);
+
+  // Steps:
+  // - if coming from explorer with symptomKey: start at questions (or details if no questions)
+  // - otherwise: show a friendly “no symptom selected” state
+  const [step, setStep] = useState<"questions" | "details">("questions");
+
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [loadingQuestions, setLoadingQuestions] = useState(false);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState<{ [key: string]: string }>({});
+  const [answers, setAnswers] = useState<Record<string, string>>({});
   const [additionalDetails, setAdditionalDetails] = useState("");
   const [location, setLocation] = useState("");
 
+  // Typography helpers
+  const text = useMemo(
+    () => ({
+      h2: { fontSize: 22, fontWeight: "900" as const, color: colors.textPrimary },
+      h3: { fontSize: 18, fontWeight: "800" as const, color: colors.textPrimary },
+      body: { fontSize: 16, fontWeight: "600" as const, color: colors.textPrimary },
+      muted: { fontSize: 13, fontWeight: "600" as const, color: colors.textMuted },
+    }),
+    [colors]
+  );
+
   useEffect(() => {
     const getUser = async () => {
-      const { data } = await supabase.auth.getSession();
-      if (data.session?.user?.id) {
-        setUserId(data.session.user.id);
-      } else {
-        router.replace("/(auth)/sign-in");
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error("getSession error:", error);
       }
+      if (data.session?.user?.id) setUserId(data.session.user.id);
+      else router.replace("/(auth)/sign-in");
     };
     getUser();
   }, []);
 
-  const currentQuestions = selectedCategory ? QUESTION_FLOWS[selectedCategory] : [];
-  const currentQuestion = currentQuestions[currentQuestionIndex];
+  const fetchQuestionsFromDB = useCallback(async (symptom: string) => {
+    setLoadingQuestions(true);
+    try {
+      // Pull questions from your seed-driven tables
+      const { data, error } = await supabase
+        .from("symptom_questions")
+        .select("question_key, question_text, question_type, options, display_order")
+        .eq("symptom_key", symptom)
+        .order("display_order", { ascending: true });
 
-  const spacing = {
-    xs: 4,
-    sm: 8,
-    md: 12,
-    lg: 16,
-    xl: 24,
-  };
+      if (error) throw error;
 
-  const text = {
-    h2: { fontSize: 24, fontWeight: "700" as const, color: colors.textPrimary },
-    h3: { fontSize: 20, fontWeight: "600" as const, color: colors.textPrimary },
-    body: { fontSize: 16, fontWeight: "400" as const, color: colors.textPrimary },
-    muted: { fontSize: 14, fontWeight: "400" as const, color: colors.textMuted },
-  };
+      const dbQuestions: Question[] =
+        (data ?? []).map((q: any) => {
+          let opts: string[] | undefined;
 
-  const handleCategorySelect = (categoryId: string) => {
-    setSelectedCategory(categoryId);
-    setAnswers({});
-    setCurrentQuestionIndex(0);
-    setStep("questions");
-  };
+          // Your seed uses jsonb array like ["A","B"]
+          if (Array.isArray(q.options)) {
+            opts = q.options;
+          } else if (typeof q.options === "string") {
+            // just in case it comes back stringified
+            try {
+              const parsed = JSON.parse(q.options);
+              if (Array.isArray(parsed)) opts = parsed;
+            } catch {
+              // ignore
+            }
+          }
 
-  const handleAnswerSelect = (answer: string) => {
-    const newAnswers = { ...answers, [currentQuestion.id]: answer };
-    setAnswers(newAnswers);
+          // question_type in DB might be "single_choice" / "multi_choice" / "text"
+          const t = String(q.question_type ?? "").toLowerCase();
+          const type: "choice" | "text" = t.includes("text") ? "text" : "choice";
 
-    if (currentQuestionIndex < currentQuestions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-    } else {
-      setStep("details");
-    }
-  };
+          return {
+            id: String(q.question_key),
+            question: String(q.question_text),
+            type,
+            options: type === "choice" ? opts ?? [] : undefined,
+          };
+        }) ?? [];
 
-  const handleBack = () => {
-    if (step === "details") {
-      setStep("questions");
-      setCurrentQuestionIndex(currentQuestions.length - 1);
-    } else if (step === "questions") {
-      if (currentQuestionIndex > 0) {
-        setCurrentQuestionIndex(currentQuestionIndex - 1);
+      if (dbQuestions.length > 0) {
+        setQuestions(dbQuestions);
       } else {
-        setStep("category");
-        setSelectedCategory(null);
+        // fallback
+        setQuestions(QUESTION_FLOWS[symptom] ?? []);
       }
-    } else {
+    } catch (e: any) {
+      console.error("Failed to load questions:", e?.message ?? e);
+      // fallback
+      setQuestions(QUESTION_FLOWS[symptom] ?? []);
+    } finally {
+      setLoadingQuestions(false);
+    }
+  }, []);
+
+  // Initialize flow based on symptomKey
+  useEffect(() => {
+    if (!symptomKey) return;
+
+    setAnswers({});
+    setAdditionalDetails("");
+    setLocation("");
+    setCurrentQuestionIndex(0);
+
+    fetchQuestionsFromDB(symptomKey);
+  }, [symptomKey, fetchQuestionsFromDB]);
+
+  // If no questions, jump to details after load
+  useEffect(() => {
+    if (!symptomKey) return;
+    if (loadingQuestions) return;
+
+    if (questions.length === 0) setStep("details");
+    else setStep("questions");
+  }, [questions.length, loadingQuestions, symptomKey]);
+
+  const currentQuestion = questions[currentQuestionIndex];
+
+  const canGoNextTextQuestion = useMemo(() => {
+    if (!currentQuestion) return false;
+    if (currentQuestion.type !== "text") return false;
+    return Boolean((answers[currentQuestion.id] ?? "").trim());
+  }, [answers, currentQuestion]);
+
+  const handleBack = useCallback(() => {
+    if (step === "details") {
+      if (questions.length > 0) {
+        setStep("questions");
+        setCurrentQuestionIndex(Math.max(0, questions.length - 1));
+        return;
+      }
       router.back();
-    }
-  };
-
-  const generateProblemDescription = (): string => {
-    const category = SIMPLE_CATEGORIES.find((c) => c.id === selectedCategory);
-    if (!category) return "";
-
-    let description = `${category.title}: `;
-    const answerTexts = Object.values(answers);
-    description += answerTexts.join(" | ");
-
-    if (additionalDetails) {
-      description += `\n\nAdditional details: ${additionalDetails}`;
+      return;
     }
 
-    return description;
-  };
+    if (step === "questions") {
+      if (currentQuestionIndex > 0) {
+        setCurrentQuestionIndex((i) => i - 1);
+      } else {
+        router.back();
+      }
+    }
+  }, [step, questions.length, currentQuestionIndex]);
 
-  const handleSubmit = async () => {
+  const handleAnswerSelect = useCallback(
+    (answer: string) => {
+      if (!currentQuestion) return;
+
+      const next = { ...answers, [currentQuestion.id]: answer };
+      setAnswers(next);
+
+      if (currentQuestionIndex < questions.length - 1) {
+        setCurrentQuestionIndex((i) => i + 1);
+      } else {
+        setStep("details");
+      }
+    },
+    [answers, currentQuestion, currentQuestionIndex, questions.length]
+  );
+
+  const generateProblemDescription = useCallback((): string => {
+    const answerTexts = Object.entries(answers)
+      .map(([, v]) => v)
+      .filter(Boolean);
+
+    let description = symptomKey ? `Symptom: ${symptomKey}\n` : "";
+    if (vehicleSummary) description += `Vehicle: ${vehicleSummary}\n`;
+
+    if (answerTexts.length > 0) {
+      description += `\nAnswers:\n- ${answerTexts.join("\n- ")}`;
+    }
+
+    if (additionalDetails.trim()) {
+      description += `\n\nAdditional details:\n${additionalDetails.trim()}`;
+    }
+
+    return description.trim();
+  }, [answers, additionalDetails, symptomKey, vehicleSummary]);
+
+  const handleSubmit = useCallback(async () => {
     if (!userId) {
-      Alert.alert("Error", "You must be logged in to request service");
+      Alert.alert("Error", "You must be logged in to request service.");
       return;
     }
-
+    if (!symptomKey) {
+      Alert.alert("Missing info", "Please select a symptom first.");
+      return;
+    }
+    if (!vehicleId) {
+      Alert.alert("Missing info", "Please select a vehicle first.");
+      return;
+    }
     if (!location.trim()) {
-      Alert.alert("Missing Information", "Please enter your location");
+      Alert.alert("Missing Information", "Please enter your location.");
       return;
     }
 
-    setLoading(true);
+    setLoadingSubmit(true);
 
     try {
-      const problemDescription = generateProblemDescription();
+      const { data: eligibilityData, error: eligibilityError } = await supabase.rpc(
+        "check_customer_eligibility",
+        { customer_auth_id: userId }
+      );
 
-      const { error } = await supabase.from("service_requests").insert({
-        customer_id: userId,
-        description: problemDescription,
-        location: location.trim(),
-        status: "pending",
-        category: selectedCategory,
-      }).select().single();
+      if (eligibilityError) throw eligibilityError;
+
+      if (!eligibilityData?.eligible) {
+        const missing = eligibilityData?.missing || [];
+        let message = "Before requesting quotes, you need to:\n\n";
+
+        if (missing.includes("id_verification")) {
+          message += "• Verify your identity\n";
+        }
+        if (missing.includes("payment_method")) {
+          message += "• Add a payment method\n";
+        }
+
+        Alert.alert(
+          "Action Required",
+          message + "\nPlease complete these steps in your account settings.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Go to Account", onPress: () => router.push("/(customer)/(tabs)/account") },
+          ]
+        );
+        setLoadingSubmit(false);
+        return;
+      }
+      const description = generateProblemDescription();
+
+      // Keep your existing table name to avoid breaking anything
+      const { error } = await supabase
+        .from("jobs")
+        .insert({
+          customer_id: userId,
+          title: symptomKey || "Service Request",
+          description,
+          location_address: location.trim(),
+          status: "searching",
+          vehicle_id: vehicleId,
+          symptom_id: null,
+        } as any)
+        .select()
+        .single();
 
       if (error) throw error;
 
       Alert.alert(
-        "Success!",
-        "Your service request has been sent to mechanics in your area. You'll receive quotes soon!",
-        [
-          {
-            text: "OK",
-            onPress: () => router.back(),
-          },
-        ]
+        "Sent!",
+        "Your request has been sent to mechanics in your area. You’ll receive quotes soon.",
+        [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (error: any) {
       console.error("Error submitting request:", error);
       Alert.alert("Error", error.message || "Failed to submit request");
     } finally {
-      setLoading(false);
+      setLoadingSubmit(false);
     }
-  };
+  }, [userId, symptomKey, vehicleId, location, generateProblemDescription]);
 
-  const renderCategorySelection = () => (
-    <View style={{ flex: 1 }}>
-      <Text style={{ ...text.h2, marginBottom: spacing.lg }}>What's wrong with your car?</Text>
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={{ gap: spacing.md }}>
-          {SIMPLE_CATEGORIES.map((category) => (
-            <TouchableOpacity
-              key={category.id}
-              onPress={() => handleCategorySelect(category.id)}
-              style={{
-                backgroundColor: colors.surface,
-                padding: spacing.lg,
-                borderRadius: 12,
-                borderWidth: 1,
-                borderColor: colors.border,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-              }}
-            >
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
-                  backgroundColor: colors.accent + "20",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name={category.icon} size={24} color={colors.accent} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...text.body, fontWeight: "600", marginBottom: 4 }}>{category.title}</Text>
-                <Text style={{ ...text.muted, fontSize: 14 }}>{category.description}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-          ))}
-        </View>
-      </ScrollView>
+  const renderTopHeader = () => (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        padding: spacing.lg,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
+      }}
+    >
+      <TouchableOpacity onPress={handleBack} style={{ marginRight: spacing.md }}>
+        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+      </TouchableOpacity>
+      <Text style={{ ...text.h3, flex: 1 }}>Request Service</Text>
     </View>
   );
 
-  const renderQuestions = () => {
-    if (!currentQuestion) return null;
+  const renderProgress = () => {
+    if (step !== "questions" || questions.length <= 1) return null;
 
     return (
-      <View style={{ flex: 1 }}>
-        <View style={{ marginBottom: spacing.xl }}>
-          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
-            {currentQuestions.map((_, index) => (
-              <View
-                key={index}
-                style={{
-                  flex: 1,
-                  height: 4,
-                  backgroundColor: index <= currentQuestionIndex ? colors.accent : colors.border,
-                  marginHorizontal: 2,
-                  borderRadius: 2,
-                }}
-              />
-            ))}
-          </View>
-          <Text style={{ ...text.muted, fontSize: 14 }}>
-            Question {currentQuestionIndex + 1} of {currentQuestions.length}
+      <View style={{ marginBottom: spacing.lg }}>
+        <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+          {questions.map((_, index) => (
+            <View
+              key={index}
+              style={{
+                flex: 1,
+                height: 4,
+                backgroundColor: index <= currentQuestionIndex ? colors.accent : colors.border,
+                marginHorizontal: 2,
+                borderRadius: 2,
+              }}
+            />
+          ))}
+        </View>
+        <Text style={text.muted}>
+          Question {currentQuestionIndex + 1} of {questions.length}
+        </Text>
+      </View>
+    );
+  };
+
+  const renderQuestions = () => {
+    if (!symptomKey) {
+      return (
+        <View style={{ padding: spacing.lg }}>
+          <Text style={text.h2}>Pick a symptom first</Text>
+          <Text style={[text.muted, { marginTop: spacing.sm }]}>
+            Go back to Explore and select the symptom that best matches your issue.
           </Text>
         </View>
+      );
+    }
 
-        <Text style={{ ...text.h2, marginBottom: spacing.xl }}>{currentQuestion.question}</Text>
+    if (loadingQuestions) {
+      return (
+        <View style={{ padding: spacing.xl, alignItems: "center" }}>
+          <ActivityIndicator size="large" color={colors.accent} />
+          <Text style={{ marginTop: spacing.md, ...text.muted }}>Loading questions…</Text>
+        </View>
+      );
+    }
+
+    if (!currentQuestion) {
+      // No questions — handled by step jump to details, but keep safe fallback
+      return (
+        <View style={{ padding: spacing.lg }}>
+          <Text style={text.h2}>A few quick details</Text>
+          <Text style={[text.muted, { marginTop: spacing.sm }]}>
+            We’ll use this to match you with the right mechanic.
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ padding: spacing.lg, paddingBottom: 120 }}>
+        {/* Context cards */}
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: 14,
+            padding: spacing.lg,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <Text style={{ ...text.body, fontWeight: "900" }}>Vehicle</Text>
+          <Text style={[text.muted, { marginTop: 4 }]} numberOfLines={2}>
+            {vehicleSummary || "Not selected"}
+          </Text>
+
+          <View style={{ height: 12 }} />
+
+          <Text style={{ ...text.body, fontWeight: "900" }}>Symptom</Text>
+          <Text style={[text.muted, { marginTop: 4 }]}>{symptomKey}</Text>
+        </View>
+
+        {renderProgress()}
+
+        <Text style={{ ...text.h2, marginBottom: spacing.lg }}>{currentQuestion.question}</Text>
 
         {currentQuestion.type === "choice" && currentQuestion.options ? (
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <View style={{ gap: spacing.md }}>
-              {currentQuestion.options.map((option) => (
+          <View style={{ gap: spacing.sm }}>
+            {currentQuestion.options.map((option) => {
+              const selected = answers[currentQuestion.id] === option;
+              return (
                 <TouchableOpacity
                   key={option}
                   onPress={() => handleAnswerSelect(option)}
@@ -412,22 +522,22 @@ export default function RequestService() {
                     padding: spacing.lg,
                     borderRadius: 12,
                     borderWidth: 2,
-                    borderColor: answers[currentQuestion.id] === option ? colors.accent : colors.border,
+                    borderColor: selected ? colors.accent : colors.border,
                   }}
                 >
                   <Text
                     style={{
                       ...text.body,
-                      color: answers[currentQuestion.id] === option ? colors.accent : colors.textPrimary,
-                      fontWeight: answers[currentQuestion.id] === option ? "600" : "400",
+                      color: selected ? colors.accent : colors.textPrimary,
+                      fontWeight: selected ? "900" : "700",
                     }}
                   >
                     {option}
                   </Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-          </ScrollView>
+              );
+            })}
+          </View>
         ) : (
           <View>
             <TextInput
@@ -437,29 +547,18 @@ export default function RequestService() {
                 borderRadius: 12,
                 borderWidth: 1,
                 borderColor: colors.border,
-                ...text.body,
+                color: colors.textPrimary,
                 minHeight: 120,
                 textAlignVertical: "top",
+                fontSize: 16,
+                fontWeight: "600",
               }}
-              placeholder="Type your answer here..."
+              placeholder="Type your answer…"
               placeholderTextColor={colors.textSecondary}
               multiline
               value={answers[currentQuestion.id] || ""}
-              onChangeText={(text) => setAnswers({ ...answers, [currentQuestion.id]: text })}
+              onChangeText={(t) => setAnswers({ ...answers, [currentQuestion.id]: t })}
             />
-            <TouchableOpacity
-              onPress={() => handleAnswerSelect(answers[currentQuestion.id] || "")}
-              disabled={!answers[currentQuestion.id]?.trim()}
-              style={{
-                backgroundColor: answers[currentQuestion.id]?.trim() ? colors.accent : colors.border,
-                padding: spacing.md,
-                borderRadius: 12,
-                alignItems: "center",
-                marginTop: spacing.lg,
-              }}
-            >
-              <Text style={{ ...text.body, color: colors.surface, fontWeight: "600" }}>Continue</Text>
-            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -467,107 +566,162 @@ export default function RequestService() {
   };
 
   const renderDetails = () => (
-    <View style={{ flex: 1 }}>
-      <Text style={{ ...text.h2, marginBottom: spacing.lg }}>Almost done!</Text>
-      
+    <View style={{ padding: spacing.lg, paddingBottom: 140 }}>
+      <Text style={{ ...text.h2, marginBottom: spacing.sm }}>Review & send</Text>
+      <Text style={{ ...text.muted, marginBottom: spacing.lg }}>
+        Add your location and any extra details — then we’ll send this to nearby mechanics.
+      </Text>
+
       <View
+        style={{
+          backgroundColor: colors.surface,
+          padding: spacing.lg,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          marginBottom: spacing.lg,
+        }}
+      >
+        <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Summary</Text>
+        <Text style={{ ...text.muted, lineHeight: 18 }}>{generateProblemDescription()}</Text>
+      </View>
+
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Where is your vehicle located?</Text>
+      <TextInput
         style={{
           backgroundColor: colors.surface,
           padding: spacing.lg,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: colors.border,
-          marginBottom: spacing.xl,
-        }}
-      >
-        <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.sm }}>Your Issue Summary:</Text>
-        <Text style={{ ...text.muted, fontSize: 14 }}>{generateProblemDescription()}</Text>
-      </View>
-
-      <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.sm }}>
-        Where is your vehicle located?
-      </Text>
-      <TextInput
-        style={{
-          backgroundColor: colors.surface,
-          padding: spacing.md,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          ...text.body,
+          color: colors.textPrimary,
           marginBottom: spacing.lg,
+          fontSize: 16,
+          fontWeight: "600",
         }}
-        placeholder="Enter your address or zip code"
+        placeholder="Address or zip code"
         placeholderTextColor={colors.textSecondary}
         value={location}
         onChangeText={setLocation}
       />
 
-      <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.sm }}>
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>
         Anything else we should know? (Optional)
       </Text>
       <TextInput
         style={{
           backgroundColor: colors.surface,
-          padding: spacing.md,
+          padding: spacing.lg,
           borderRadius: 12,
           borderWidth: 1,
           borderColor: colors.border,
-          ...text.body,
-          minHeight: 100,
+          color: colors.textPrimary,
+          minHeight: 110,
           textAlignVertical: "top",
-          marginBottom: spacing.xl,
+          marginBottom: spacing.lg,
+          fontSize: 16,
+          fontWeight: "600",
         }}
-        placeholder="Add any additional details..."
+        placeholder="Extra details, noises, recent work done, etc."
         placeholderTextColor={colors.textSecondary}
         multiline
         value={additionalDetails}
         onChangeText={setAdditionalDetails}
       />
-
-      <TouchableOpacity
-        onPress={handleSubmit}
-        disabled={loading || !location.trim()}
-        style={{
-          backgroundColor: loading || !location.trim() ? colors.border : colors.accent,
-          padding: spacing.lg,
-          borderRadius: 12,
-          alignItems: "center",
-        }}
-      >
-        {loading ? (
-          <ActivityIndicator color={colors.surface} />
-        ) : (
-          <Text style={{ ...text.body, color: colors.surface, fontWeight: "600" }}>
-            Send to Mechanics
-          </Text>
-        )}
-      </TouchableOpacity>
     </View>
   );
 
+  const showStickyNext =
+    step === "questions" &&
+    !loadingQuestions &&
+    currentQuestion &&
+    currentQuestion.type === "text";
+
+  const showStickySubmit = step === "details";
+
+  const onStickyNext = () => {
+    if (!currentQuestion) return;
+    const val = (answers[currentQuestion.id] ?? "").trim();
+    if (!val) return;
+
+    // behave like choice select: advance
+    handleAnswerSelect(val);
+  };
+
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          padding: spacing.lg,
-          borderBottomWidth: 1,
-          borderBottomColor: colors.border,
-        }}
-      >
-        <TouchableOpacity onPress={handleBack} style={{ marginRight: spacing.md }}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ ...text.h3, flex: 1 }}>Request Service</Text>
-      </View>
+      {renderTopHeader()}
 
-      <View style={{ flex: 1, padding: spacing.lg }}>
-        {step === "category" && renderCategorySelection()}
-        {step === "questions" && renderQuestions()}
-        {step === "details" && renderDetails()}
-      </View>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        <ScrollView showsVerticalScrollIndicator={false}>
+          {step === "questions" && renderQuestions()}
+          {step === "details" && renderDetails()}
+        </ScrollView>
+
+        {/* Sticky bottom CTA */}
+        {showStickyNext && (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              padding: spacing.lg,
+              backgroundColor: colors.bg,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+          >
+            <TouchableOpacity
+              onPress={onStickyNext}
+              disabled={!canGoNextTextQuestion}
+              style={{
+                backgroundColor: canGoNextTextQuestion ? colors.accent : colors.border,
+                padding: spacing.lg,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+            >
+              <Text style={{ color: colors.surface, fontSize: 16, fontWeight: "900" }}>Continue</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {showStickySubmit && (
+          <View
+            style={{
+              position: "absolute",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              padding: spacing.lg,
+              backgroundColor: colors.bg,
+              borderTopWidth: 1,
+              borderTopColor: colors.border,
+            }}
+          >
+            <TouchableOpacity
+              onPress={handleSubmit}
+              disabled={loadingSubmit || !location.trim() || !symptomKey || !vehicleId}
+              style={{
+                backgroundColor:
+                  loadingSubmit || !location.trim() || !symptomKey || !vehicleId ? colors.border : colors.accent,
+                padding: spacing.lg,
+                borderRadius: 12,
+                alignItems: "center",
+              }}
+            >
+              {loadingSubmit ? (
+                <ActivityIndicator color={colors.surface} />
+              ) : (
+                <Text style={{ color: colors.surface, fontSize: 16, fontWeight: "900" }}>
+                  Send to mechanics
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </KeyboardAvoidingView>
     </View>
   );
 }

@@ -9,7 +9,10 @@
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mechanic_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY; -- Disabled to prevent infinite recursion
+ALTER TABLE public.jobs DISABLE ROW LEVEL SECURITY;
+-- ALTER TABLE public.jobs FORCE ROW LEVEL SECURITY OFF;
+
 ALTER TABLE public.quote_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
@@ -192,8 +195,11 @@ CREATE POLICY "Customers can view quotes for their jobs"
   ON public.quotes FOR SELECT
   TO authenticated
   USING (
-    job_id IN (
-      SELECT id FROM public.jobs WHERE customer_id = auth.uid()
+    EXISTS (
+      SELECT 1
+      FROM public.quote_requests qr
+      WHERE qr.job_id = quotes.job_id
+        AND qr.customer_id = auth.uid()
     )
   );
 
@@ -277,65 +283,69 @@ CREATE POLICY "Users can update their own messages"
 -- NOTE: No DELETE policy on purpose (soft-delete only).
 -- With RLS enabled and no DELETE policy, hard deletes will be denied.
 
+-- NOTE: RLS on jobs table is DISABLED to prevent infinite recursion
+-- The jobs policies are defined above but RLS is not enabled
+-- This is because quotes and messages policies reference jobs table
+-- which would create circular policy checks during INSERT operations
 
 -- 9) LOOKUP TABLES POLICIES (public read)
 
 DROP POLICY IF EXISTS "Anyone can view symptoms" ON public.symptoms;
 CREATE POLICY "Anyone can view symptoms"
   ON public.symptoms FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view symptom_mappings" ON public.symptom_mappings;
 CREATE POLICY "Anyone can view symptom_mappings"
   ON public.symptom_mappings FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view symptom_questions" ON public.symptom_questions;
 CREATE POLICY "Anyone can view symptom_questions"
   ON public.symptom_questions FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view symptom_question_options" ON public.symptom_question_options;
 CREATE POLICY "Anyone can view symptom_question_options"
   ON public.symptom_question_options FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view symptom_refinements" ON public.symptom_refinements;
 CREATE POLICY "Anyone can view symptom_refinements"
   ON public.symptom_refinements FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (is_active = true);
 
 DROP POLICY IF EXISTS "Anyone can view symptom_education" ON public.symptom_education;
 CREATE POLICY "Anyone can view symptom_education"
   ON public.symptom_education FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view education_cards" ON public.education_cards;
 CREATE POLICY "Anyone can view education_cards"
   ON public.education_cards FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view skills" ON public.skills;
 CREATE POLICY "Anyone can view skills"
   ON public.skills FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view tools" ON public.tools;
 CREATE POLICY "Anyone can view tools"
   ON public.tools FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);
 
 DROP POLICY IF EXISTS "Anyone can view safety_measures" ON public.safety_measures;
 CREATE POLICY "Anyone can view safety_measures"
   ON public.safety_measures FOR SELECT
-  TO authenticated
+  TO anon, authenticated
   USING (true);

@@ -181,7 +181,7 @@ export default function CustomerLayout() {
         headerTintColor: colors.textPrimary,
 
         headerLeft: () => (
-          <View style={{ paddingLeft: 14 }}>
+          <View style={{ paddingLeft: 14 + insets.left }}>
             <Image
               source={require("../../../assets/wrenchgo.png")}
               style={{ width: 120, height: 60 }}
@@ -195,7 +195,7 @@ export default function CustomerLayout() {
             onPress={() => router.push("/(customer)/(tabs)/account")}
             hitSlop={12}
             style={{
-              paddingRight: 14,
+              paddingRight: 14 + insets.right,
               flexDirection: "row",
               alignItems: "center",
               gap: 10,

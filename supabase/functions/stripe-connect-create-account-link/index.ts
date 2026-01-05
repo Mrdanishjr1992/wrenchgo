@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
 
@@ -50,6 +50,8 @@ serve(async (req) => {
     if (userError || !user) {
       console.error("Auth error:", userError);
       return new Response(JSON.stringify({
+        code: 401,
+        message: "Invalid JWT",
         error: "Unauthorized",
         details: userError?.message || "No user found"
       }), {
@@ -62,9 +64,19 @@ serve(async (req) => {
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("full_name, email")
-      .eq("id", user.id)
+      .select("id, full_name, email")
+      .eq("auth_id", user.id)
       .single();
+
+    if (!profile) {
+      console.error("Profile not found for user:", user.id);
+      return new Response(JSON.stringify({
+        error: "Profile not found"
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const { data: existingAccount } = await supabaseAdmin
       .from("mechanic_stripe_accounts")
@@ -108,7 +120,7 @@ serve(async (req) => {
     // Stripe requires HTTPS URLs, not deep links
     // We'll use a web redirect that then opens the app
     const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const returnUrl = `${supabaseUrl}/functions/v1/stripe-connect-return`;
+    const returnUrl = `${supabaseUrl}/functions/v1/stipe-connect-return`;
     const refreshUrl = `${supabaseUrl}/functions/v1/stripe-connect-refresh`;
 
     console.log("Return URL:", returnUrl);

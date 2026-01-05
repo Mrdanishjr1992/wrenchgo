@@ -1,24 +1,37 @@
-# Supabase Seed Data
+# Seed Data
 
-## Files
-- `data.json` - Seed data for symptom_mappings and symptom_questions
-- `seed-data.js` - Node.js upsert script with validation
+Seed data has been moved to the migrations folder for proper database management.
 
-## Setup
+## Location
+All seed data is now in: `supabase/migrations/20250127000005_seed_data.sql`
+
+## What's Included
+- **Skills**: Mechanic capabilities (brakes, oil change, diagnostics, etc.)
+- **Tools**: Equipment needed for repairs
+- **Safety Measures**: Safety requirements for mechanics
+- **Symptoms**: Customer-friendly car problem categories
+- **Symptom Mappings**: Detailed explanations of each symptom in plain English
+- **Education Cards**: Educational guides for customers
+
+## How to Apply
+Run database reset to apply all migrations including seed data:
 ```bash
-npm install @supabase/supabase-js
+supabase db reset
 ```
 
-## Run
+Or apply just the seed data migration:
 ```bash
-export SUPABASE_URL="https://your-project.supabase.co"
-export SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
-node supabase/seed/seed-data.js
+supabase migration up
 ```
 
-## Features
-- Validates all fields and enums
-- Normalizes data (trim, lowercase keys, dedupe arrays)
-- Upserts (safe to re-run)
-- Logs warnings for invalid rows
-- Idempotent
+## Plain English Content
+All content has been simplified to be customer-friendly:
+- No technical jargon
+- Clear explanations
+- Easy to understand safety information
+- Practical advice
+
+## Used By
+- `app/(customer)/education.tsx` - Displays symptoms and guides to customers
+- Job creation flow - Symptom selection
+- Mechanic matching - Skills and tools

@@ -143,7 +143,7 @@ const normalizeLocation = (raw?: string) => {
 
 export default function CustomerJobDetails() {
   const router = useRouter();
-  const { id: jobId } = useLocalSearchParams<{ id: string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
 
   const { colors, text, spacing } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
@@ -243,9 +243,9 @@ export default function CustomerJobDetails() {
   };
 
   const openChat = useCallback(() => {
-    if (!jobId) return;
-    router.push(`/(customer)/messages/${jobId}` as any);
-  }, [jobId, router]);
+    if (!id) return;
+    router.push(`/(customer)/messages/${id}` as any);
+  }, [id, router]);
 
   const load = useCallback(async () => {
     try {
@@ -255,42 +255,51 @@ export default function CustomerJobDetails() {
       if (authErr) throw authErr;
 
       const customerId = userData.user?.id;
-      if (!customerId || !jobId) return;
+      if (!customerId || !id) return;
 
       const { data: j, error: jErr } = await supabase
         .from("jobs")
         .select(
           `
           id,title,description,preferred_time,status,created_at,accepted_mechanic_id,vehicle_id,canceled_at,canceled_by,
-          accepted_mechanic:profiles!jobs_accepted_mechanic_id_fkey(full_name, phone),
           vehicle:vehicles(year, make, model)
         `
         )
-        .eq("id", jobId)
+        .eq("id", id)
         .eq("customer_id", customerId)
-        .single();
+        .maybeSingle();
 
-      if (jErr) throw jErr;
+      if (jErr) {
+        console.error("Error loading job:", jErr);
+        Alert.alert("Error", "Failed to load job details. Please try again.");
+        return;
+      }
+
+      if (!j) {
+        Alert.alert("Not Found", "Job not found or you don't have access.");
+        return;
+      }
+
       setJob(j as any as Job);
 
       const { data: q, error: qErr } = await supabase
         .from("quote_requests")
         .select(
           `id,job_id,mechanic_id,status,price_cents,notes,created_at,
-          accepted_at,canceled_at,canceled_by,cancel_reason,cancel_note,cancellation_fee_cents,
-          mechanic:profiles!quote_requests_mechanic_id_fkey(full_name,phone)`
+          accepted_at,canceled_at,canceled_by,cancel_reason,cancel_note,cancellation_fee_cents`
         )
-        .eq("job_id", jobId)
+        .eq("job_id", id)
         .order("created_at", { ascending: false });
 
       if (qErr) throw qErr;
       setQuotes((q as any as Quote[]) ?? []);
     } catch (e: any) {
-      Alert.alert("Job error", e?.message ?? "Failed to load job.");
+      console.error("Job load error:", e);
+      Alert.alert("Error", e?.message ?? "Failed to load job.");
     } finally {
       setLoading(false);
     }
-  }, [jobId]);
+  }, [id]);
 
   useEffect(() => {
     load();
@@ -302,14 +311,14 @@ export default function CustomerJobDetails() {
     (async () => {
       const { data: userData } = await supabase.auth.getUser();
       const customerId = userData.user?.id;
-      if (!customerId || !jobId) return;
+      if (!customerId || !id) return;
 
       channel = supabase
-        .channel("customer-job-" + jobId)
-        .on("postgres_changes", { event: "*", schema: "public", table: "jobs", filter: `id=eq.${jobId}` }, load)
+        .channel("customer-job-" + id)
+        .on("postgres_changes", { event: "*", schema: "public", table: "jobs", filter: `id=eq.${id}` }, load)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "quote_requests", filter: `job_id=eq.${jobId}` },
+          { event: "*", schema: "public", table: "quote_requests", filter: `job_id=eq.${id}` },
           load
         )
         .subscribe();
@@ -318,7 +327,7 @@ export default function CustomerJobDetails() {
     return () => {
       if (channel) supabase.removeChannel(channel);
     };
-  }, [jobId, load]);
+  }, [id, load]);
 
   const quotedQuotes = useMemo(() => quotes.filter((q) => q.status === "quoted"), [quotes]);
   const acceptedQuote = useMemo(
@@ -368,12 +377,41 @@ export default function CustomerJobDetails() {
                   Alert.alert("Not allowed", "This quote is not yours.");
                   return;
                 }
-                if (quote.job_id !== jobId) {
+                if (quote.job_id !== id) {
                   Alert.alert("Mismatch", "This quote is not for this job.");
                   return;
                 }
                 if (quote.status !== "quoted" || quote.price_cents == null) {
                   Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
+                  return;
+                }
+
+                const { data: eligibilityData, error: eligibilityError } = await supabase.rpc(
+                  "check_customer_eligibility",
+                  { customer_auth_id: customerId }
+                );
+
+                if (eligibilityError) throw eligibilityError;
+
+                if (!eligibilityData?.eligible) {
+                  const missing = eligibilityData?.missing || [];
+                  let message = "Before accepting quotes, you need to:\n\n";
+
+                  if (missing.includes("id_verification")) {
+                    message += "• Verify your identity\n";
+                  }
+                  if (missing.includes("payment_method")) {
+                    message += "• Add a payment method\n";
+                  }
+
+                  Alert.alert(
+                    "Action Required",
+                    message + "\nPlease complete these steps in your account settings.",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      { text: "Go to Account", onPress: () => router.push("/(customer)/(tabs)/account") },
+                    ]
+                  );
                   return;
                 }
 
@@ -391,13 +429,13 @@ export default function CustomerJobDetails() {
                   body: "Your quote was accepted. Waiting for customer payment.",
                   type: "quote_accepted",
                   entityType: "job",
-                  entityId: jobId as any,
+                  entityId: id as any,
                 });
 
                 await supabase
                   .from("quote_requests")
                   .update({ status: "rejected", updated_at: new Date().toISOString() })
-                  .eq("job_id", jobId)
+                  .eq("job_id", id)
                   .neq("id", quoteId);
 
                 const { error: jErr } = await supabase
@@ -407,10 +445,10 @@ export default function CustomerJobDetails() {
                     status: "accepted",
                     updated_at: new Date().toISOString(),
                   })
-                  .eq("id", jobId);
+                  .eq("id", id);
                 if (jErr) throw jErr;
 
-                router.push(`/(customer)/payment/${jobId}?quoteId=${quoteId}` as any);
+                router.push(`/(customer)/payment/${id}?quoteId=${quoteId}` as any);
               } catch (e: any) {
                 Alert.alert("Accept error", e?.message ?? "Failed to accept quote.");
               } finally {
@@ -421,7 +459,7 @@ export default function CustomerJobDetails() {
         ]
       );
     },
-    [jobId, router]
+    [id, router]
   );
 
   if (loading) {
@@ -1035,7 +1073,7 @@ export default function CustomerJobDetails() {
             router.replace("/(customer)/(tabs)/jobs" as any);
           }}
           quoteId={acceptedQuote.id}
-          jobId={job.id}
+          jobId={id}
           acceptedAt={acceptedQuote.accepted_at}
           jobStatus={job.status}
         />

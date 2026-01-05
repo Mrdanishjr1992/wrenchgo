@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
@@ -23,6 +24,7 @@ import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import * as ImagePicker from "expo-image-picker";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+import { useStripe } from "@stripe/stripe-react-native";
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -43,7 +45,9 @@ function contentTypeFromExt(ext: string) {
 export default function CustomerAccount() {
   const router = useRouter();
   const { mode, toggle, colors, spacing, radius, text } = useTheme();
+  const insets = useSafeAreaInsets();
   const card = useMemo(() => createCard(colors), [colors]);
+  const { initPaymentSheet, presentPaymentSheet } = useStripe();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -58,6 +62,7 @@ export default function CustomerAccount() {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
   const [loadingReviews, setLoadingReviews] = useState(false);
+  const [settingUpPayment, setSettingUpPayment] = useState(false);
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -77,7 +82,9 @@ export default function CustomerAccount() {
           email,
           phone,
           avatar_url,
-          city
+          city,
+          id_verified,
+          id_verified_at
         `)
         .eq("auth_id", userId)
         .single();
@@ -239,6 +246,83 @@ export default function CustomerAccount() {
     }
   }, [profile, load]);
 
+  const setupPaymentMethod = useCallback(async () => {
+    try {
+      setSettingUpPayment(true);
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert("Error", "Please sign in to add a payment method");
+        return;
+      }
+
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/customer-setup-payment-method`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to setup payment method");
+      }
+
+      const setupIntentId = data.clientSecret.split('_secret_')[0];
+
+      const { error: initError } = await initPaymentSheet({
+        setupIntentClientSecret: data.clientSecret,
+        merchantDisplayName: "WrenchGo",
+        customerId: data.customerId,
+        returnURL: "wrenchgo://customer/account",
+      });
+
+      if (initError) {
+        throw new Error(initError.message);
+      }
+
+      const { error: presentError } = await presentPaymentSheet();
+
+      if (presentError) {
+        if (presentError.code !== "Canceled") {
+          throw new Error(presentError.message);
+        }
+        return;
+      }
+
+      const saveResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/customer-save-payment-method`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+            "Content-Type": "application/json",
+            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
+          },
+          body: JSON.stringify({ setupIntentId }),
+        }
+      );
+
+      if (!saveResponse.ok) {
+        console.error("Failed to save payment method, but payment was successful");
+      }
+
+      Alert.alert("Success", "Payment method added successfully");
+      await load();
+    } catch (error: any) {
+      console.error("Payment setup error:", error);
+      Alert.alert("Error", error.message || "Failed to setup payment method");
+    } finally {
+      setSettingUpPayment(false);
+    }
+  }, [initPaymentSheet, presentPaymentSheet, load]);
+
   const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -271,7 +355,15 @@ export default function CustomerAccount() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={{ padding: spacing.md, paddingBottom: spacing.xl, gap: spacing.md }}>
+      <ScrollView
+        contentContainerStyle={{
+          padding: spacing.md,
+          paddingLeft: spacing.md + insets.left,
+          paddingRight: spacing.md + insets.right,
+          paddingBottom: spacing.xl + insets.bottom,
+          gap: spacing.md,
+        }}
+      >
         <LinearGradient
           colors={[colors.surface, colors.bg]}
           start={{ x: 0, y: 0 }}
@@ -467,6 +559,80 @@ export default function CustomerAccount() {
                   trackColor={{ false: colors.border, true: colors.accent }}
                 />
               </View>
+
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <Text style={text.section}>Identity Verification</Text>
+              {profile?.id_verified ? (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: radius.md,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      backgroundColor: "#10b98120",
+                      borderWidth: 1,
+                      borderColor: "#10b98130",
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={22} color="#10b981" />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
+                      Verified
+                    </Text>
+                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+                      Identity verified on {new Date(profile.id_verified_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.sm }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                    <View
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: radius.md,
+                        alignItems: "center",
+                        justifyContent: "center",
+                        backgroundColor: colors.accent + "20",
+                        borderWidth: 1,
+                        borderColor: colors.accent + "30",
+                      }}
+                    >
+                      <Ionicons name="shield-checkmark" size={22} color={colors.accent} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
+                        Not Verified
+                      </Text>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+                        Required to request and accept quotes
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    onPress={() => router.push("/(customer)/verify-identity")}
+                    style={({ pressed }) => [
+                      {
+                        paddingVertical: 12,
+                        paddingHorizontal: 16,
+                        borderRadius: radius.md,
+                        backgroundColor: colors.accent,
+                        opacity: pressed ? 0.9 : 1,
+                        alignItems: "center",
+                      },
+                    ]}
+                  >
+                    <Text style={{ fontWeight: "900", color: colors.black }}>
+                      VERIFY IDENTITY
+                    </Text>
+                  </Pressable>
+                </View>
+              )}
+            </View>
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
@@ -498,7 +664,8 @@ export default function CustomerAccount() {
                     </View>
                   </View>
                   <Pressable
-                    onPress={() => Alert.alert("Update Payment", "Payment method update coming soon")}
+                    onPress={setupPaymentMethod}
+                    disabled={settingUpPayment}
                     style={({ pressed }) => [
                       {
                         paddingVertical: 10,
@@ -507,7 +674,7 @@ export default function CustomerAccount() {
                         borderWidth: 1,
                         borderColor: colors.border,
                         backgroundColor: colors.surface,
-                        opacity: pressed ? 0.7 : 1,
+                        opacity: pressed || settingUpPayment ? 0.7 : 1,
                         flexDirection: "row",
                         alignItems: "center",
                         justifyContent: "center",
@@ -515,15 +682,22 @@ export default function CustomerAccount() {
                       },
                     ]}
                   >
-                    <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
-                    <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
-                      Update Payment Method
-                    </Text>
+                    {settingUpPayment ? (
+                      <ActivityIndicator color={colors.textPrimary} size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
+                        <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
+                          Update Payment Method
+                        </Text>
+                      </>
+                    )}
                   </Pressable>
                 </View>
               ) : (
                 <Pressable
-                  onPress={() => Alert.alert("Add Payment", "Payment method setup coming soon")}
+                  onPress={setupPaymentMethod}
+                  disabled={settingUpPayment}
                   style={({ pressed }) => [
                     {
                       paddingVertical: 14,
@@ -532,7 +706,7 @@ export default function CustomerAccount() {
                       borderWidth: 1,
                       borderColor: colors.accent,
                       backgroundColor: colors.accent + "10",
-                      opacity: pressed ? 0.7 : 1,
+                      opacity: pressed || settingUpPayment ? 0.7 : 1,
                       flexDirection: "row",
                       alignItems: "center",
                       justifyContent: "center",
@@ -540,10 +714,16 @@ export default function CustomerAccount() {
                     },
                   ]}
                 >
-                  <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                  <Text style={{ fontWeight: "800", color: colors.accent }}>
-                    ADD PAYMENT METHOD
-                  </Text>
+                  {settingUpPayment ? (
+                    <ActivityIndicator color={colors.accent} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                      <Text style={{ fontWeight: "800", color: colors.accent }}>
+                        ADD PAYMENT METHOD
+                      </Text>
+                    </>
+                  )}
                 </Pressable>
               )}
             </View>

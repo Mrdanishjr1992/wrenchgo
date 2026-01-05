@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 

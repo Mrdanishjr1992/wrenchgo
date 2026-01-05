@@ -70,11 +70,22 @@ BEGIN
     RAISE EXCEPTION 'Invalid role: must be customer or mechanic';
   END IF;
 
-  -- Check if profile exists
+  -- Check if profile exists, create if it doesn't
   SELECT EXISTS(SELECT 1 FROM public.profiles WHERE auth_id = user_id) INTO profile_exists;
 
   IF NOT profile_exists THEN
-    RAISE EXCEPTION 'Profile not found for user %', user_id;
+    -- Create profile for new user
+    INSERT INTO public.profiles (auth_id, role, created_at, updated_at)
+    VALUES (user_id, new_role, NOW(), NOW());
+
+    -- Create mechanic profile if needed
+    IF new_role = 'mechanic' THEN
+      INSERT INTO public.mechanic_profiles (id, created_at, updated_at)
+      VALUES (user_id, NOW(), NOW())
+      ON CONFLICT (id) DO NOTHING;
+    END IF;
+
+    RETURN;
   END IF;
 
   -- Get current role, casting to text to handle enum types

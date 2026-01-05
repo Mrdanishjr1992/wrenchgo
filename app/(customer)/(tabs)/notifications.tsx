@@ -57,7 +57,6 @@ type MessageRow = {
   content: string | null;
   created_at: string | null;
   sender_id: string | null;
-  recipient_id: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -162,16 +161,6 @@ export default function Notifications() {
   }, []);
 
   const loadGenerated = useCallback(async (userId: string) => {
-    // Quotes
-    const { data: qr, error: qrErr } = await supabase
-      .from("quote_requests")
-      .select("id,job_id,status,created_at,accepted_at,rejected_at,mechanic_id,price_cents")
-      .eq("customer_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (qrErr) throw qrErr;
-
     // Jobs
     const { data: jobs, error: jErr } = await supabase
       .from("jobs")
@@ -182,19 +171,36 @@ export default function Notifications() {
 
     if (jErr) throw jErr;
 
+    const jobRows = (jobs as JobRow[]) ?? [];
+    const jobIds = jobRows.map((j) => j.id);
+
+    // Quotes
+    const { data: qr, error: qrErr } = jobIds.length > 0
+      ? await supabase
+          .from("quote_requests")
+          .select("id,job_id,status,created_at,accepted_at,rejected_at,mechanic_id,price_cents")
+          .in("job_id", jobIds)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: [], error: null };
+
+    if (qrErr) throw qrErr;
+
     // Messages (only those addressed to the customer via recipient_id)
-    const { data: msgs, error: mErr } = await supabase
-      .from("messages")
-      .select("id,job_id,content,created_at,sender_id,recipient_id")
-      .eq("recipient_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(50);
+    const { data: msgs, error: mErr } = jobIds.length > 0
+      ? await supabase
+          .from("messages")
+          .select("id,job_id,content,created_at,sender_id")
+          .in("job_id", jobIds)
+          .neq("sender_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(50)
+      : { data: [], error: null };
 
     // If you don't use recipient_id yet, don’t hard-fail alerts—just skip messages.
     const messagesRows = mErr ? ([] as MessageRow[]) : ((msgs as MessageRow[]) ?? []);
 
     const quoteRows = (qr as QuoteRequestRow[]) ?? [];
-    const jobRows = (jobs as JobRow[]) ?? [];
 
     const jobTitleById = new Map<string, string>();
     jobRows.forEach((j) => jobTitleById.set(j.id, j.title?.trim() ? j.title : "Job"));
@@ -399,9 +405,7 @@ export default function Notifications() {
 
         // Route based on entity_type/id
         if (n.entity_type === "job" && n.entity_id) {
-          // You used `/job/:id` in your original file, but many of your routes are `/(customer)/job/...`
-          // Keep your original route here to avoid breaking your navigation; adjust if your app differs.
-          router.push(`/job/${n.entity_id}` as any);
+          router.push(`/(customer)/job/${n.entity_id}` as any);
         }
       } catch (e: any) {
         Alert.alert("Error", e?.message || "Failed to open notification.");

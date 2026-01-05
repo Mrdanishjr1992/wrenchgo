@@ -201,7 +201,7 @@ export default function QuoteReview() {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("id_status")
-        .eq("id", userData.user.id)
+        .eq("auth_id", userData.user.id)
         .single();
 
       if (profileError) {

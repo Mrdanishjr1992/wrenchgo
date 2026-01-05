@@ -62,14 +62,24 @@ export default function Messages() {
           id,
           title,
           customer_id,
-          created_at,
-          profiles!jobs_customer_id_fkey(full_name)
+          created_at
         `)
         .eq("accepted_mechanic_id", userId)
         .in("status", ["accepted", "work_in_progress", "completed"])
         .order("created_at", { ascending: false });
 
       if (jobsError) throw jobsError;
+
+      // Fetch customer profiles separately
+      const customerIds = [...new Set((jobs || []).map((j: any) => j.customer_id))];
+      const { data: profiles } = await supabase
+        .from("profiles")
+        .select("auth_id, full_name")
+        .in("auth_id", customerIds);
+
+      const profileMap = new Map(
+        (profiles || []).map((p: any) => [p.auth_id, p.full_name])
+      );
 
       const conversations: Msg[] = await Promise.all(
         (jobs || []).map(async (job: any) => {
@@ -93,7 +103,7 @@ export default function Messages() {
             id: job.id,
             job_id: job.id,
             title: job.title || "Untitled Job",
-            customer_name: job.profiles?.full_name || "Customer",
+            customer_name: profileMap.get(job.customer_id) || "Customer",
             last_message: lastMsg?.body || "No messages yet",
             last_message_time: lastMsg?.created_at || job.created_at,
             unread_count: count || 0,

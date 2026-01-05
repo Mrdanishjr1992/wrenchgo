@@ -23,7 +23,7 @@ import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-import { uploadIDPhoto, deleteIDPhoto, getIDPhotoUrl } from "../../../src/lib/verification";
+
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 async function uriToArrayBuffer(uri: string) {
@@ -80,11 +80,6 @@ export default function MechanicProfile() {
   const [safetyExpanded, setSafetyExpanded] = useState(false);
 
   const [payoutAccount, setPayoutAccount] = useState<any>(null);
-  const [idPhotoUrl, setIdPhotoUrl] = useState<string | null>(null);
-  const [uploadingID, setUploadingID] = useState(false);
-  const [idStatus, setIdStatus] = useState<"pending" | "verified" | "rejected" | null>(null);
-  const [idRejectedReason, setIdRejectedReason] = useState<string | null>(null);
-  const [idExpanded, setIdExpanded] = useState(false);
   const [loadingPayout, setLoadingPayout] = useState(false);
 
   const load = useCallback(async () => {
@@ -101,23 +96,15 @@ export default function MechanicProfile() {
           full_name,
           phone,
           avatar_url,
-          id_photo_path,
-          id_status,
-          id_rejected_reason
+          id_verified,
+          id_verified_at
         `)
         .eq("auth_id", userId)
         .single();
 
       if (error) throw error;
 
-      if (data.id_photo_path) {
-        const url = await getIDPhotoUrl(data.id_photo_path);
-        setIdPhotoUrl(url);
-      } else {
-        setIdPhotoUrl(null);
-      }
-      setIdStatus(data.id_status);
-      setIdRejectedReason(data.id_rejected_reason);
+      setProfile(data);
 
       const { data: mechProfile } = await supabase
         .from("mechanic_profiles")
@@ -125,9 +112,9 @@ export default function MechanicProfile() {
         .eq("id", userId)
         .maybeSingle();
 
-      const { data: toolsData } = await supabase.from("tools").select("key,label,category").order("label");
+      const { data: toolsData } = await supabase.from("tools").select("id,key,label,category").order("label");
       const { data: skillsData } = await supabase.from("skills").select("id,key,category").order("key");
-      const { data: safetyData } = await supabase.from("safety_measures").select("key,label").order("label");
+      const { data: safetyData } = await supabase.from("safety_measures").select("id,key,label").order("label");
 
       const { data: mechSkills } = await supabase
         .from("mechanic_skills")
@@ -174,7 +161,11 @@ export default function MechanicProfile() {
     }
   }, [router]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [load])
+  );
 
   const changePhoto = useCallback(async () => {
     try {
@@ -237,26 +228,40 @@ export default function MechanicProfile() {
         return;
       }
 
-      await supabase
-        .from("profiles")
-        .update({
-          full_name: fullName.trim() || null,
-          phone: phone.trim() || null,
-        })
-        .eq("auth_id", userId);
+      console.log("Saving profile data for user:", userId);
 
-      await supabase
-        .from("mechanic_profiles")
-        .upsert({
-          id: userId,
-          business_name: shopName.trim() || null,
-          bio: bio.trim() || null,
-          service_radius_km: parseFloat(serviceRadius) || 50,
-          is_available: availableNow,
-          years_experience: yearsExperience ? parseInt(yearsExperience) : null,
-          base_location_lat: lat,
-          base_location_lng: lng,
-        });
+      try {
+        await supabase
+          .from("profiles")
+          .update({
+            full_name: fullName.trim() || null,
+            phone: phone.trim() || null,
+          })
+          .eq("auth_id", userId);
+        console.log("Profile updated successfully");
+      } catch (error) {
+        console.error("Error updating profile:", error);
+        throw error;
+      }
+
+      try {
+        await supabase
+          .from("mechanic_profiles")
+          .upsert({
+            id: userId,
+            business_name: shopName.trim() || null,
+            bio: bio.trim() || null,
+            service_radius_km: parseFloat(serviceRadius) || 50,
+            is_available: availableNow,
+            years_experience: yearsExperience ? parseInt(yearsExperience) : null,
+            base_location_lat: lat,
+            base_location_lng: lng,
+          });
+        console.log("Mechanic profile upserted successfully");
+      } catch (error) {
+        console.error("Error upserting mechanic profile:", error);
+        throw error;
+      }
 
       await supabase.from("mechanic_skills").delete().eq("mechanic_id", userId);
       if (selectedSkills.size > 0) {
@@ -280,6 +285,57 @@ export default function MechanicProfile() {
     }
   };
 
+  const setupPayoutAccount = async () => {
+    try {
+      console.log("[SETUP] Starting payout account setup...");
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        Alert.alert("Error", "Not authenticated");
+        return;
+      }
+
+      console.log("[SETUP] Got session, calling edge function...");
+
+      const apiResponse = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-connect-create-account-link`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
+          },
+        }
+      );
+
+      console.log("[SETUP] Response status:", apiResponse.status);
+
+      const jsonData = await apiResponse.json();
+      console.log("[SETUP] Response data:", jsonData);
+
+      if (!apiResponse.ok) {
+        throw new Error(jsonData.error || "Failed to create account link");
+      }
+
+      const onboardingUrl = jsonData.url;
+      console.log("[SETUP] Extracted URL:", onboardingUrl);
+      console.log("[SETUP] URL type:", typeof onboardingUrl);
+      console.log("[SETUP] URL length:", onboardingUrl?.length);
+
+      if (onboardingUrl) {
+        console.log("[SETUP] Attempting to open URL...");
+        const opened = await Linking.openURL(onboardingUrl);
+        console.log("[SETUP] URL opened successfully:", opened);
+      } else {
+        console.error("[SETUP] URL is falsy:", onboardingUrl);
+        Alert.alert("Error", "No URL received from server");
+      }
+    } catch (e: any) {
+      console.error("[SETUP] Error:", e);
+      Alert.alert("Setup failed", e.message ?? "Could not setup payout account.");
+    }
+  };
+
   const signOut = useCallback(async () => {
     try {
       const { error } = await supabase.auth.signOut();
@@ -291,133 +347,7 @@ router.replace("/(auth)/sign-in");
     }
   }, [router]);
 
-  const handleUploadID = useCallback(async () => {
-    try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission needed", "Please allow access to your photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        quality: 0.9,
-      });
-
-      if (result.canceled) return;
-
-      const { data: sessionData } = await supabase.auth.getSession();
-      const userId = sessionData.session?.user?.id;
-
-      if (!userId) {
-        Alert.alert("Error", "Session expired. Please sign in again.");
-        router.replace("/(auth)/sign-in");
-        return;
-      }
-
-      setUploadingID(true);
-      const uploadResult = await uploadIDPhoto(result.assets[0].uri, userId);
-
-      if (uploadResult.success) {
-        Alert.alert("Success", "ID photo uploaded! Verification in progress...");
-        load();
-      } else {
-        Alert.alert("Upload failed", uploadResult.error || "Failed to upload ID photo");
-      }
-    } catch (e: any) {
-      Alert.alert("Upload error", e.message ?? "Failed to upload ID photo");
-    } finally {
-      setUploadingID(false);
-    }
-  }, [load, router]);
-
-  const handleDeleteID = useCallback(async () => {
-    Alert.alert(
-      "Delete ID Photo",
-      "Are you sure you want to delete your ID photo? You'll need to upload a new one to accept quotes.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              const { data: sessionData } = await supabase.auth.getSession();
-              const userId = sessionData.session?.user?.id;
-
-              if (!userId) {
-                Alert.alert("Error", "Session expired. Please sign in again.");
-                router.replace("/(auth)/sign-in");
-                return;
-              }
-
-              setUploadingID(true);
-              const result = await deleteIDPhoto(userId);
-
-              if (result.success) {
-                Alert.alert("Deleted", "ID photo deleted successfully");
-                load();
-              } else {
-                Alert.alert("Delete failed", result.error || "Failed to delete ID photo");
-              }
-            } catch (e: any) {
-              Alert.alert("Delete error", e.message ?? "Failed to delete ID photo");
-            } finally {
-              setUploadingID(false);
-            }
-          },
-        },
-      ]
-    );
-  }, [load, router]);
-
-  const setupPayoutAccount = useCallback(async () => {
-    try {
-      setLoadingPayout(true);
-      const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        Alert.alert("Error", "Please sign in to continue");
-        return;
-      }
-
-      console.log("Calling Edge Function with token:", session.access_token.substring(0, 20) + "...");
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-connect-create-account-link`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      console.log("Response status:", response.status);
-      const data = await response.json();
-      console.log("Response data:", data);
-
-      if (!response.ok) {
-        throw new Error(data.error || `Failed to create account link (${response.status})`);
-      }
-
-      if (data.onboardingUrl) {
-        console.log("Opening onboarding URL:", data.onboardingUrl);
-        await Linking.openURL(data.onboardingUrl);
-      } else {
-        throw new Error("No onboarding URL returned");
-      }
-    } catch (e: any) {
-      console.error("Payout setup error:", e);
-      Alert.alert("Payout Setup Error", e.message ?? "Failed to setup payout account");
-    } finally {
-      setLoadingPayout(false);
-    }
-  }, []);
-
-  const refreshPayoutStatus = useCallback(async () => {
+  const refreshPayoutStatus = useCallback(async (silent = false) => {
     try {
       setLoadingPayout(true);
       const { data: { session } } = await supabase.auth.getSession();
@@ -429,6 +359,7 @@ router.replace("/(auth)/sign-in");
           method: "POST",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
+            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
             "Content-Type": "application/json",
           },
         }
@@ -438,12 +369,16 @@ router.replace("/(auth)/sign-in");
 
       if (response.ok) {
         await load();
-        Alert.alert("Success", "Payout account status updated");
+        if (!silent) {
+          Alert.alert("Success", "Payout account status updated");
+        }
       } else {
         throw new Error(data.error || "Failed to refresh status");
       }
     } catch (e: any) {
-      Alert.alert("Refresh Error", e.message ?? "Failed to refresh payout status");
+      if (!silent) {
+        Alert.alert("Refresh Error", e.message ?? "Failed to refresh payout status");
+      }
     } finally {
       setLoadingPayout(false);
     }
@@ -453,7 +388,7 @@ router.replace("/(auth)/sign-in");
     useCallback(() => {
       const handleDeepLink = (event: { url: string }) => {
         if (event.url.includes("stripe-connect-return") || event.url.includes("stripe-connect-refresh")) {
-          refreshPayoutStatus();
+          refreshPayoutStatus(true);
         }
       };
 
@@ -461,7 +396,7 @@ router.replace("/(auth)/sign-in");
 
       Linking.getInitialURL().then((url) => {
         if (url && (url.includes("stripe-connect-return") || url.includes("stripe-connect-refresh"))) {
-          refreshPayoutStatus();
+          refreshPayoutStatus(true);
         }
       });
 
@@ -691,7 +626,7 @@ router.replace("/(auth)/sign-in");
               <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
                 <Text style={text.section}>Payout Account</Text>
                 {payoutAccount && (
-                  <Pressable onPress={refreshPayoutStatus} disabled={loadingPayout}>
+                  <Pressable onPress={() => refreshPayoutStatus()} disabled={loadingPayout}>
                     <Ionicons
                       name="refresh"
                       size={20}
@@ -937,106 +872,25 @@ router.replace("/(auth)/sign-in");
             </View>
 
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>ID Verification</Text>
+              <Text style={text.section}>Verification</Text>
 
-              {idStatus === "verified" && (
-                <View style={{ borderWidth: 1, borderColor: "#10b981", borderRadius: radius.md, padding: spacing.md, backgroundColor: `#10b98110`, gap: spacing.sm }}>
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#10b981", backgroundColor: "#10b98120" }}>
-                      <Ionicons name="checkmark-circle" size={20} color="#10b981" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#10b981" }}>Verified</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>Your ID has been verified</Text>
-                    </View>
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#10b981" />
-                  </Pressable>
-                  {idExpanded && (
-                    <>
-                      {idPhotoUrl && <Image source={{ uri: idPhotoUrl }} style={{ width: "100%", height: 150, borderRadius: radius.md, backgroundColor: colors.surface }} resizeMode="contain" />}
-                      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                        <Pressable onPress={handleUploadID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: colors.bg, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ ...text.body, fontWeight: "900", fontSize: 12 }}>{uploadingID ? "Uploading..." : "Re-upload"}</Text>
-                        </Pressable>
-                        <Pressable onPress={handleDeleteID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: "#ef4444", borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: `#ef444410`, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ fontWeight: "900", fontSize: 12, color: "#ef4444" }}>Delete</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {idStatus === "pending" && (
-                <View style={{ borderWidth: 1, borderColor: "#f59e0b", borderRadius: radius.md, padding: spacing.md, backgroundColor: `#f59e0b10`, gap: spacing.sm }}>
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#f59e0b", backgroundColor: "#f59e0b20" }}>
-                      <Ionicons name="time-outline" size={20} color="#f59e0b" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#f59e0b" }}>Pending Verification</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>Your ID is being verified</Text>
-                    </View>
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#f59e0b" />
-                  </Pressable>
-                  {idExpanded && (
-                    <>
-                      {idPhotoUrl && <Image source={{ uri: idPhotoUrl }} style={{ width: "100%", height: 150, borderRadius: radius.md, backgroundColor: colors.surface }} resizeMode="contain" />}
-                      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                        <Pressable onPress={handleUploadID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: colors.bg, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ ...text.body, fontWeight: "900", fontSize: 12 }}>{uploadingID ? "Uploading..." : "Re-upload"}</Text>
-                        </Pressable>
-                        <Pressable onPress={handleDeleteID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: "#ef4444", borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: `#ef444410`, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ fontWeight: "900", fontSize: 12, color: "#ef4444" }}>Delete</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {idStatus === "rejected" && (
-                <View style={{ borderWidth: 1, borderColor: "#ef4444", borderRadius: radius.md, padding: spacing.md, backgroundColor: `#ef444410`, gap: spacing.sm }}>
-                  <Pressable onPress={() => setIdExpanded(!idExpanded)} style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: "#ef4444", backgroundColor: "#ef444420" }}>
-                      <Ionicons name="close-circle" size={20} color="#ef4444" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: "#ef4444" }}>Verification Failed</Text>
-                      <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>{idRejectedReason || "Please upload a valid ID"}</Text>
-                    </View>
-                    <Ionicons name={idExpanded ? "chevron-up" : "chevron-down"} size={20} color="#ef4444" />
-                  </Pressable>
-                  {idExpanded && (
-                    <>
-                      {idPhotoUrl && <Image source={{ uri: idPhotoUrl }} style={{ width: "100%", height: 150, borderRadius: radius.md, backgroundColor: colors.surface }} resizeMode="contain" />}
-                      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                        <Pressable onPress={handleUploadID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: colors.accent, borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: colors.accent, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ fontWeight: "900", fontSize: 12, color: colors.black }}>{uploadingID ? "Uploading..." : "Upload New ID"}</Text>
-                        </Pressable>
-                        <Pressable onPress={handleDeleteID} disabled={uploadingID} style={{ flex: 1, borderWidth: 1, borderColor: "#ef4444", borderRadius: radius.md, padding: spacing.sm, alignItems: "center", backgroundColor: `#ef444410`, opacity: uploadingID ? 0.7 : 1 }}>
-                          <Text style={{ fontWeight: "900", fontSize: 12, color: "#ef4444" }}>Delete</Text>
-                        </Pressable>
-                      </View>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {!idStatus && (
-                <Pressable onPress={handleUploadID} disabled={uploadingID} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: colors.bg, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md, opacity: uploadingID ? 0.7 : 1 }}>
-                  <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
-                      <Ionicons name="card-outline" size={18} color={colors.textPrimary} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>{uploadingID ? "Uploading..." : "Upload Photo ID"}</Text>
-                      <Text style={{ ...text.muted, marginTop: 3 }}>Required to accept quotes</Text>
-                    </View>
+              <View style={{ borderWidth: 1, borderColor: profile?.id_verified ? "#10b981" : colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: profile?.id_verified ? `#10b98110` : colors.bg, gap: spacing.sm }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: profile?.id_verified ? "#10b981" : colors.border, backgroundColor: profile?.id_verified ? "#10b98120" : colors.surface }}>
+                    <Ionicons name={profile?.id_verified ? "checkmark-circle" : "time-outline"} size={20} color={profile?.id_verified ? "#10b981" : colors.textPrimary} />
                   </View>
-                  <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
-                </Pressable>
-              )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...text.body, fontWeight: "900", color: profile?.id_verified ? "#10b981" : colors.textPrimary }}>
+                      {profile?.id_verified ? "Identity Verified" : "Identity Not Verified"}
+                    </Text>
+                    <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>
+                      {profile?.id_verified
+                        ? `Verified on ${new Date(profile.id_verified_at).toLocaleDateString()}`
+                        : "Complete verification to accept quotes"}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </View>
 
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
@@ -1476,7 +1330,7 @@ router.replace("/(auth)/sign-in");
                         >
                           {isSelected && <Text style={{ color: "#fff", fontWeight: "900" }}>✓</Text>}
                         </View>
-                        <Text style={[text.body, { flex: 1 }]}>{skill.label}</Text>
+                        <Text style={[text.body, { flex: 1 }]}>{skill.key}</Text>
                       </Pressable>
                     );
                   })}

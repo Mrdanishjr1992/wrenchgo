@@ -170,6 +170,9 @@ export default function CustomerHome() {
       if (eduRes.error) throw eduRes.error;
       if (symRes.error) throw symRes.error;
 
+      console.log("Home: Education cards loaded:", eduRes.data?.length ?? 0);
+      console.log("Home: Symptoms loaded:", symRes.data?.length ?? 0);
+
       setJobs((jobsRes.data as Job[]) ?? []);
       setVehicles((vehiclesRes.data as Vehicle[]) ?? []);
       setFullName(profileRes.data?.full_name ?? "");
@@ -211,7 +214,15 @@ export default function CustomerHome() {
       colors={[colors.accent, colors.accent + "58"]}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 1 }}
-      style={[card, styles.header, { paddingTop: insets.top }]}
+      style={[
+        card,
+        styles.header,
+        {
+          paddingTop: insets.top + 16,
+          paddingLeft: 16 + insets.left,
+          paddingRight: 16 + insets.right,
+        },
+      ]}
     >
       <View style={styles.headerContent}>
         <View style={styles.headerTitleRow}>
@@ -391,7 +402,7 @@ export default function CustomerHome() {
     return (
       <View style={[styles.container, { backgroundColor: colors.bg }]}>
         {renderHeader()}
-        <View style={{ padding: 16 }}>
+        <View style={{ padding: 16, paddingLeft: 16 + insets.left, paddingRight: 16 + insets.right }}>
           <View style={[styles.section, { backgroundColor: colors.surface }]}>
             <Text style={{ color: colors.textPrimary, fontWeight: "800" }}>Loading…</Text>
             <Text style={{ color: colors.textMuted, marginTop: 6 }}>
@@ -406,7 +417,15 @@ export default function CustomerHome() {
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          {
+            padding: 16,
+            paddingLeft: 16 + insets.left,
+            paddingRight: 16 + insets.right,
+            paddingBottom: 32 + insets.bottom,
+          },
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -654,7 +673,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
 
   header: {
-    paddingHorizontal: 16,
     paddingBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
@@ -668,7 +686,7 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 28, fontWeight: "700", color: "#fff" },
   headerSubtitle: { fontSize: 14, color: "#fff", opacity: 0.9, marginLeft: 44 },
 
-  scrollContent: { padding: 16, paddingBottom: 32 },
+  scrollContent: { paddingBottom: 32 },
 
   section: {
     borderRadius: 22,

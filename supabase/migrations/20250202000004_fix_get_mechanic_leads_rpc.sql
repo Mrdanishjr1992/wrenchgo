@@ -79,8 +79,8 @@ BEGIN
     j.deleted_at IS NULL
     AND p.deleted_at IS NULL
     AND (
-      (p_filter = 'all' AND j.status IN ('pending', 'quoted'))
-      OR (p_filter = 'new' AND j.status = 'pending' AND NOT EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))
+      (p_filter = 'all' AND j.status IN ('searching', 'quoted'))
+      OR (p_filter = 'new' AND j.status = 'searching' AND NOT EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))
       OR (p_filter = 'quoted' AND EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))
     )
     AND (
@@ -156,14 +156,14 @@ BEGIN
   RETURN QUERY
   SELECT
     COUNT(*)::integer AS total_leads,
-    COUNT(*) FILTER (WHERE j.status = 'pending' AND NOT EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))::integer AS new_leads,
+    COUNT(*) FILTER (WHERE j.status = 'searching' AND NOT EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))::integer AS new_leads,
     COUNT(*) FILTER (WHERE EXISTS(SELECT 1 FROM quote_requests WHERE job_id = j.id AND mechanic_id = p_mechanic_id))::integer AS quoted_leads
   FROM jobs j
   INNER JOIN profiles p ON p.auth_id = j.customer_id
   WHERE
     j.deleted_at IS NULL
     AND p.deleted_at IS NULL
-    AND j.status IN ('pending', 'quoted')
+    AND j.status IN ('searching', 'quoted')
     AND (
       p_mechanic_lat IS NULL
       OR p_mechanic_lng IS NULL
