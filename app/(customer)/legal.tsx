@@ -1,4 +1,4 @@
-﻿import React, { useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,6 @@ import {
   TERMS_OF_SERVICE,
   PRIVACY_POLICY,
   REFUND_POLICY,
-  VERIFICATION_DISCLAIMER,
   PAYMENTS_DISCLOSURE,
 } from "../../src/legal";
 
@@ -32,7 +31,6 @@ const legalDocuments: LegalDocument[] = [
   { id: "privacy", title: "Privacy Policy", content: PRIVACY_POLICY, icon: "shield-checkmark-outline" },
   { id: "refund", title: "Refund & Cancellation Policy", content: REFUND_POLICY, icon: "cash-outline" },
   { id: "payments", title: "Payments & Fees", content: PAYMENTS_DISCLOSURE, icon: "card-outline" },
-  { id: "verification", title: "Photo ID & Background Checks", content: VERIFICATION_DISCLAIMER, icon: "id-card-outline" },
 ];
 
 export default function LegalScreen() {

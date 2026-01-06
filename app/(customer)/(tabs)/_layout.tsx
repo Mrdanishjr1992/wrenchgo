@@ -45,7 +45,7 @@ export default function CustomerLayout() {
       const { data, error } = await supabase
         .from("profiles")
         .select("avatar_url")
-        .eq("auth_id", userId)
+        .eq("id", userId)
         .maybeSingle();
 
       if (error) return;

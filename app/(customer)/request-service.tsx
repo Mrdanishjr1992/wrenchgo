@@ -343,35 +343,6 @@ export default function RequestService() {
     setLoadingSubmit(true);
 
     try {
-      const { data: eligibilityData, error: eligibilityError } = await supabase.rpc(
-        "check_customer_eligibility",
-        { customer_auth_id: userId }
-      );
-
-      if (eligibilityError) throw eligibilityError;
-
-      if (!eligibilityData?.eligible) {
-        const missing = eligibilityData?.missing || [];
-        let message = "Before requesting quotes, you need to:\n\n";
-
-        if (missing.includes("id_verification")) {
-          message += "• Verify your identity\n";
-        }
-        if (missing.includes("payment_method")) {
-          message += "• Add a payment method\n";
-        }
-
-        Alert.alert(
-          "Action Required",
-          message + "\nPlease complete these steps in your account settings.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Go to Account", onPress: () => router.push("/(customer)/(tabs)/account") },
-          ]
-        );
-        setLoadingSubmit(false);
-        return;
-      }
       const description = generateProblemDescription();
 
       // Keep your existing table name to avoid breaking anything

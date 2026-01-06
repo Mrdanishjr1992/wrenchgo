@@ -26,7 +26,7 @@ export default function Index() {
         const { data: p } = await supabase
           .from("profiles")
           .select("role")
-          .eq("auth_id", userId)
+          .eq("id", userId)
           .maybeSingle();
 
         const role = p?.role;

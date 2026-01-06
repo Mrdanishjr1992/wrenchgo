@@ -35,7 +35,7 @@ export default function Index() {
         const { data: p, error: pErr } = await supabase
           .from("profiles")
           .select("role")
-          .eq("auth_id", authId)
+          .eq("id", authId)
           .maybeSingle();
 
         if (pErr && __DEV__) {

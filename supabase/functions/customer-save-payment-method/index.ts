@@ -51,7 +51,7 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id")
-      .eq("auth_id", user.id)
+      .eq("id", user.id)
       .single();
 
     if (profileError || !profile) {

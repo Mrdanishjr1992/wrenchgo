@@ -55,7 +55,7 @@ export default function ChooseRole() {
         const { data: profile, error: pErr } = await supabase
           .from("profiles")
           .select("role")
-          .eq("auth_id", user.id)
+          .eq("id", user.id)
           .maybeSingle();
 
         if (pErr) {

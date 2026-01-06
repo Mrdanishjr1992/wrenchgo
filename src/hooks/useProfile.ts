@@ -22,7 +22,7 @@ export function useProfile(router: any) {
       const { data, error } = await supabase
         .from("profiles")
         .select("id, full_name, phone, avatar_url, role")
-        .eq("auth_id", userId)
+        .eq("id", userId)
 
         .single();
 
@@ -51,7 +51,7 @@ export function useProfile(router: any) {
       const { data, error } = await supabase
         .from("profiles")
         .update(payload)
-        .eq("auth_id", userId)
+        .eq("id", userId)
 
         .select()
         .single();

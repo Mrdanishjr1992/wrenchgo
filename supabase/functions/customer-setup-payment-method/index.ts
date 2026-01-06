@@ -71,7 +71,7 @@ serve(async (req) => {
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, email")
-      .eq("auth_id", user.id)
+      .eq("id", user.id)
       .single();
 
     console.log("Profile result:", { profile: !!profile, error: profileError?.message });

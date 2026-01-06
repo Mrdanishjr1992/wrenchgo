@@ -65,7 +65,7 @@ serve(async (req) => {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("id, full_name, email")
-      .eq("auth_id", user.id)
+      .eq("id", user.id)
       .single();
 
     if (!profile) {

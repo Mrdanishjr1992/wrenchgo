@@ -386,34 +386,7 @@ export default function CustomerJobDetails() {
                   return;
                 }
 
-                const { data: eligibilityData, error: eligibilityError } = await supabase.rpc(
-                  "check_customer_eligibility",
-                  { customer_auth_id: customerId }
-                );
 
-                if (eligibilityError) throw eligibilityError;
-
-                if (!eligibilityData?.eligible) {
-                  const missing = eligibilityData?.missing || [];
-                  let message = "Before accepting quotes, you need to:\n\n";
-
-                  if (missing.includes("id_verification")) {
-                    message += "• Verify your identity\n";
-                  }
-                  if (missing.includes("payment_method")) {
-                    message += "• Add a payment method\n";
-                  }
-
-                  Alert.alert(
-                    "Action Required",
-                    message + "\nPlease complete these steps in your account settings.",
-                    [
-                      { text: "Cancel", style: "cancel" },
-                      { text: "Go to Account", onPress: () => router.push("/(customer)/(tabs)/account") },
-                    ]
-                  );
-                  return;
-                }
 
                 const { data: accepted, error: qAccErr } = await supabase
                   .from("quote_requests")

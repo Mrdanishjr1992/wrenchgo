@@ -74,11 +74,11 @@ export default function Messages() {
       const customerIds = [...new Set((jobs || []).map((j: any) => j.customer_id))];
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("auth_id, full_name")
-        .in("auth_id", customerIds);
+        .select("id, full_name")
+        .in("id", customerIds);
 
       const profileMap = new Map(
-        (profiles || []).map((p: any) => [p.auth_id, p.full_name])
+        (profiles || []).map((p: any) => [p.id, p.full_name])
       );
 
       const conversations: Msg[] = await Promise.all(

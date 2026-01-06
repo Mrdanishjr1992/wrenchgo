@@ -197,43 +197,6 @@ export default function QuoteReview() {
         return;
       }
 
-      // Check ID verification status
-      const { data: profileData, error: profileError } = await supabase
-        .from("profiles")
-        .select("id_status")
-        .eq("auth_id", userData.user.id)
-        .single();
-
-      if (profileError) {
-        Alert.alert("Error", "Failed to verify your account status. Please try again.");
-        setSubmitting(false);
-        return;
-      }
-
-      if (profileData.id_status !== "verified") {
-        Alert.alert(
-          "ID Verification Required",
-          "You need to verify your photo ID before sending quotes. This helps ensure safety and trust for all users.",
-          [
-            {
-              text: "Verify Now",
-              onPress: () => {
-                setSubmitting(false);
-                router.push("/(auth)/photo-id");
-              },
-            },
-            {
-              text: "Cancel",
-              style: "cancel",
-              onPress: () => {
-                setSubmitting(false);
-              },
-            },
-          ]
-        );
-        return;
-      }
-
       const arrivalTimeStr =
         params.arrivalDate && params.arrivalTime
           ? `${params.arrivalDate} ${params.arrivalTime}`

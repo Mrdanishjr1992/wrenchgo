@@ -42,6 +42,15 @@ function contentTypeFromExt(ext: string) {
   return "image/jpeg";
 }
 
+function toTitleCase(str: string): string {
+  return str
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default function MechanicProfile() {
   const router = useRouter();
   const { mode, toggle, colors, spacing, radius, text } = useTheme();
@@ -57,17 +66,19 @@ export default function MechanicProfile() {
   const [bio, setBio] = useState("");
   const [serviceRadius, setServiceRadius] = useState("15");
   const [availableNow, setAvailableNow] = useState(true);
-  const [zipCode, setZipCode] = useState("");
   const [yearsExperience, setYearsExperience] = useState("");
-  const [hourlyRate, setHourlyRate] = useState("");
-  const [isMobile, setIsMobile] = useState(true);
-  const [isAvailable, setIsAvailable] = useState(false);
   const [rating, setRating] = useState(0);
   const [jobsCompleted, setJobsCompleted] = useState(0);
-  const [backgroundCheckStatus, setBackgroundCheckStatus] = useState("pending");
-  const [nextAvailableAt, setNextAvailableAt] = useState("");
   const [homeLatitude, setHomeLatitude] = useState("");
   const [homeLongitude, setHomeLongitude] = useState("");
+  const [homeCity, setHomeCity] = useState("");
+  const [homeState, setHomeState] = useState("");
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+  const [zipCode, setZipCode] = useState("");
+  const [hourlyRate, setHourlyRate] = useState("");
+  const [isMobile, setIsMobile] = useState(true);
+  const [backgroundCheckStatus, setBackgroundCheckStatus] = useState("");
 
   const [allTools, setAllTools] = useState<any[]>([]);
   const [allSkills, setAllSkills] = useState<any[]>([]);
@@ -96,10 +107,13 @@ export default function MechanicProfile() {
           full_name,
           phone,
           avatar_url,
-          id_verified,
-          id_verified_at
+          home_lat,
+          home_lng,
+          city,
+          state,
+          theme_preference
         `)
-        .eq("auth_id", userId)
+        .eq("id", userId)
         .single();
 
       if (error) throw error;
@@ -129,8 +143,21 @@ export default function MechanicProfile() {
       setSelectedSafety(new Set());
 
       setProfile(data);
-      setFullName(data.full_name ?? "");
+      setFullName(data.full_name ? toTitleCase(data.full_name) : "");
       setPhone(data.phone ?? "");
+      setHomeCity(data.city ?? "");
+      setHomeState(data.state ?? "");
+
+      if (data.home_lat !== null && data.home_lng !== null) {
+        setHomeLatitude(data.home_lat.toString());
+        setHomeLongitude(data.home_lng.toString());
+      } else if (mechProfile?.base_location_lat !== null && mechProfile?.base_location_lng !== null) {
+        setHomeLatitude(mechProfile.base_location_lat.toString());
+        setHomeLongitude(mechProfile.base_location_lng.toString());
+      } else {
+        setHomeLatitude("");
+        setHomeLongitude("");
+      }
 
       if (mechProfile) {
         setShopName(mechProfile.business_name ?? "");
@@ -140,8 +167,6 @@ export default function MechanicProfile() {
         setYearsExperience(String(mechProfile.years_experience ?? ""));
         setRating(mechProfile.average_rating ?? 0);
         setJobsCompleted(mechProfile.jobs_completed ?? 0);
-        setHomeLatitude(mechProfile.base_location_lat?.toString() ?? "");
-        setHomeLongitude(mechProfile.base_location_lng?.toString() ?? "");
       }
 
       const { data: payoutData } = await supabase
@@ -151,6 +176,7 @@ export default function MechanicProfile() {
         .maybeSingle();
 
       setPayoutAccount(payoutData);
+      setIsDirty(false);
     } catch (e: any) {
       console.error("Profile load error:", e);
       if (e?.message) {
@@ -200,7 +226,7 @@ export default function MechanicProfile() {
       await supabase
         .from("profiles")
         .update({ avatar_url:  `${pub.publicUrl}?t=${Date.now()}` })
-        .eq("auth_id", userId)
+        .eq("id", userId)
 ;
 
       Alert.alert("Success", "Profile photo updated.");
@@ -230,14 +256,24 @@ export default function MechanicProfile() {
 
       console.log("Saving profile data for user:", userId);
 
+      const normalizedName = fullName.trim() ? toTitleCase(fullName) : null;
+      const normalizedPhone = phone.trim() || null;
+      const normalizedCity = homeCity.trim() ? toTitleCase(homeCity) : null;
+      const normalizedState = homeState.trim() ? toTitleCase(homeState) : null;
+
       try {
         await supabase
           .from("profiles")
           .update({
-            full_name: fullName.trim() || null,
-            phone: phone.trim() || null,
+            full_name: normalizedName,
+            phone: normalizedPhone,
+            home_lat: lat,
+            home_lng: lng,
+            city: normalizedCity,
+            state: normalizedState,
+            updated_at: new Date().toISOString(),
           })
-          .eq("auth_id", userId);
+          .eq("id", userId);
         console.log("Profile updated successfully");
       } catch (error) {
         console.error("Error updating profile:", error);
@@ -249,13 +285,14 @@ export default function MechanicProfile() {
           .from("mechanic_profiles")
           .upsert({
             id: userId,
-            business_name: shopName.trim() || null,
+            business_name: shopName.trim() ? toTitleCase(shopName) : null,
             bio: bio.trim() || null,
             service_radius_km: parseFloat(serviceRadius) || 50,
             is_available: availableNow,
             years_experience: yearsExperience ? parseInt(yearsExperience) : null,
             base_location_lat: lat,
             base_location_lng: lng,
+            updated_at: new Date().toISOString(),
           });
         console.log("Mechanic profile upserted successfully");
       } catch (error) {
@@ -276,6 +313,7 @@ export default function MechanicProfile() {
 
       Alert.alert("Saved", "Profile updated successfully.");
       setEditing(false);
+      setIsDirty(false);
       load();
     } catch (e: any) {
       console.error("Save error:", e);
@@ -284,6 +322,42 @@ export default function MechanicProfile() {
       setSaving(false);
     }
   };
+
+  const fetchCurrentLocation = useCallback(async () => {
+    try {
+      setLoadingLocation(true);
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Please allow location access to use this feature.');
+        return;
+      }
+
+      const location = await Location.getCurrentPositionAsync({});
+      const lat = location.coords.latitude;
+      const lng = location.coords.longitude;
+
+      setHomeLatitude(lat.toString());
+      setHomeLongitude(lng.toString());
+      setIsDirty(true);
+
+      try {
+        const [geocode] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+        if (geocode) {
+          setHomeCity(geocode.city || "");
+          setHomeState(geocode.region || "");
+        }
+      } catch (geoErr) {
+        console.warn("Geocoding failed:", geoErr);
+      }
+
+      Alert.alert('Success', 'Location captured. Save your profile to persist.');
+    } catch (error: any) {
+      console.error('Location error:', error);
+      Alert.alert('Error', error.message || 'Failed to get location');
+    } finally {
+      setLoadingLocation(false);
+    }
+  }, []);
 
   const setupPayoutAccount = async () => {
     try {
@@ -341,11 +415,50 @@ export default function MechanicProfile() {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       try { await GoogleSignin.signOut(); } catch {}
-router.replace("/(auth)/sign-in");
+      router.replace("/(auth)/sign-in");
     } catch (e: any) {
       Alert.alert("Sign out failed", e.message ?? "Could not sign out.");
     }
   }, [router]);
+
+  const handleCancelEditing = useCallback(() => {
+    if (isDirty) {
+      Alert.alert(
+        "Discard changes?",
+        "You have unsaved changes. Are you sure you want to discard them?",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => {
+              setEditing(false);
+              setIsDirty(false);
+              load();
+            },
+          },
+        ]
+      );
+    } else {
+      setEditing(false);
+    }
+  }, [isDirty, load]);
+
+  const handleFieldChange = useCallback((setter: (val: any) => void, value: any) => {
+    setter(value);
+    setIsDirty(true);
+  }, []);
+
+  const locationDisplay = useMemo(() => {
+    if (homeCity && homeState) {
+      return `${homeCity}, ${homeState}`;
+    } else if (homeCity) {
+      return homeCity;
+    } else if (homeLatitude && homeLongitude) {
+      return "Location set";
+    }
+    return "Not set";
+  }, [homeCity, homeState, homeLatitude, homeLongitude]);
 
   const refreshPayoutStatus = useCallback(async (silent = false) => {
     try {
@@ -560,7 +673,7 @@ router.replace("/(auth)/sign-in");
             </View>
 
             <Pressable
-              onPress={() => setEditing(!editing)}
+              onPress={() => editing ? handleCancelEditing() : setEditing(true)}
               style={({ pressed }) => [
                 {
                   paddingVertical: 12,
@@ -872,28 +985,6 @@ router.replace("/(auth)/sign-in");
             </View>
 
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Verification</Text>
-
-              <View style={{ borderWidth: 1, borderColor: profile?.id_verified ? "#10b981" : colors.border, borderRadius: radius.md, padding: spacing.md, backgroundColor: profile?.id_verified ? `#10b98110` : colors.bg, gap: spacing.sm }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View style={{ width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: profile?.id_verified ? "#10b981" : colors.border, backgroundColor: profile?.id_verified ? "#10b98120" : colors.surface }}>
-                    <Ionicons name={profile?.id_verified ? "checkmark-circle" : "time-outline"} size={20} color={profile?.id_verified ? "#10b981" : colors.textPrimary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...text.body, fontWeight: "900", color: profile?.id_verified ? "#10b981" : colors.textPrimary }}>
-                      {profile?.id_verified ? "Identity Verified" : "Identity Not Verified"}
-                    </Text>
-                    <Text style={{ ...text.muted, marginTop: 3, fontSize: 12 }}>
-                      {profile?.id_verified
-                        ? `Verified on ${new Date(profile.id_verified_at).toLocaleDateString()}`
-                        : "Complete verification to accept quotes"}
-                    </Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
               <Text style={text.section}>Security</Text>
 
               <Pressable
@@ -950,7 +1041,7 @@ router.replace("/(auth)/sign-in");
               <Text style={text.muted}>Full name</Text>
               <TextInput
                 value={fullName}
-                onChangeText={setFullName}
+                onChangeText={(val) => handleFieldChange(setFullName, val)}
                 placeholder="Enter your name"
                 placeholderTextColor={colors.textMuted}
                 style={{
@@ -966,7 +1057,7 @@ router.replace("/(auth)/sign-in");
               <Text style={text.muted}>Phone</Text>
               <TextInput
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(val) => handleFieldChange(setPhone, val)}
                 placeholder="Enter your phone number"
                 keyboardType="phone-pad"
                 placeholderTextColor={colors.textMuted}
@@ -985,23 +1076,17 @@ router.replace("/(auth)/sign-in");
                 Set your home location for faster service requests
               </Text>
 
-              <Pressable
-                onPress={async () => {
-                  try {
-                    const { status } = await Location.requestForegroundPermissionsAsync();
-                    if (status !== 'granted') {
-                      Alert.alert('Permission denied', 'Please allow location access to use this feature.');
-                      return;
-                    }
+              {(homeLatitude && homeLongitude) && (
+                <View style={{ marginTop: spacing.xs, marginBottom: spacing.xs }}>
+                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
+                    {locationDisplay}
+                  </Text>
+                </View>
+              )}
 
-                    const location = await Location.getCurrentPositionAsync({});
-                    setHomeLatitude(location.coords.latitude.toString());
-                    setHomeLongitude(location.coords.longitude.toString());
-                    Alert.alert('Success', 'Current location captured');
-                  } catch (error: any) {
-                    Alert.alert('Error', error.message || 'Failed to get location');
-                  }
-                }}
+              <Pressable
+                onPress={fetchCurrentLocation}
+                disabled={loadingLocation}
                 style={{
                   backgroundColor: colors.surface,
                   paddingVertical: 12,
@@ -1013,46 +1098,18 @@ router.replace("/(auth)/sign-in");
                 }}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Ionicons name="location" size={20} color={colors.accent} />
-                  <Text style={{ fontWeight: "600", color: colors.textPrimary }}>
-                    Use Current Location
-                  </Text>
+                  {loadingLocation ? (
+                    <ActivityIndicator color={colors.accent} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="location" size={20} color={colors.accent} />
+                      <Text style={{ fontWeight: "600", color: colors.textPrimary }}>
+                        Use Current Location
+                      </Text>
+                    </>
+                  )}
                 </View>
               </Pressable>
-
-              <Text style={[text.muted, { marginTop: spacing.sm }]}>Latitude</Text>
-              <TextInput
-                value={homeLatitude}
-                onChangeText={setHomeLatitude}
-                placeholder="e.g., 37.7749"
-                keyboardType="numeric"
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: 12,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.bg,
-                }}
-              />
-
-              <Text style={text.muted}>Longitude</Text>
-              <TextInput
-                value={homeLongitude}
-                onChangeText={setHomeLongitude}
-                placeholder="e.g., -122.4194"
-                keyboardType="numeric"
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: 12,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.bg,
-                }}
-              />
             </View>
 
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
@@ -1061,7 +1118,7 @@ router.replace("/(auth)/sign-in");
               <Text style={text.muted}>Shop name</Text>
               <TextInput
                 value={shopName}
-                onChangeText={setShopName}
+                onChangeText={(val) => handleFieldChange(setShopName, val)}
                 placeholder="Your shop or business name"
                 placeholderTextColor={colors.textMuted}
                 style={{
@@ -1077,7 +1134,7 @@ router.replace("/(auth)/sign-in");
               <Text style={text.muted}>Bio</Text>
               <TextInput
                 value={bio}
-                onChangeText={setBio}
+                onChangeText={(val) => handleFieldChange(setBio, val)}
                 placeholder="Tell customers about yourself"
                 placeholderTextColor={colors.textMuted}
                 multiline
@@ -1097,9 +1154,26 @@ router.replace("/(auth)/sign-in");
               <Text style={text.muted}>Service radius (miles)</Text>
               <TextInput
                 value={serviceRadius}
-                onChangeText={setServiceRadius}
+                onChangeText={(val) => handleFieldChange(setServiceRadius, val)}
                 keyboardType="numeric"
                 placeholder="15"
+                placeholderTextColor={colors.textMuted}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 12,
+                  padding: 12,
+                  color: colors.textPrimary,
+                  backgroundColor: colors.bg,
+                }}
+              />
+
+              <Text style={text.muted}>Years of experience</Text>
+              <TextInput
+                value={yearsExperience}
+                onChangeText={(val) => handleFieldChange(setYearsExperience, val)}
+                keyboardType="numeric"
+                placeholder="5"
                 placeholderTextColor={colors.textMuted}
                 style={{
                   borderWidth: 1,
@@ -1126,11 +1200,13 @@ router.replace("/(auth)/sign-in");
               >
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...text.body, fontWeight: "900" }}>Available now</Text>
-                  <Text style={{ ...text.muted, marginTop: 3 }}>Show as available to customers</Text>
+                  <Text style={{ ...text.muted, marginTop: 3 }}>
+                    Show as available for new jobs
+                  </Text>
                 </View>
                 <Switch
                   value={availableNow}
-                  onValueChange={setAvailableNow}
+                  onValueChange={(val) => handleFieldChange(setAvailableNow, val)}
                   trackColor={{ false: colors.border, true: colors.accent }}
                   thumbColor={colors.textPrimary}
                 />
@@ -1140,27 +1216,10 @@ router.replace("/(auth)/sign-in");
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
               <Text style={text.section}>Professional Info</Text>
 
-              <Text style={text.muted}>Years of experience</Text>
-              <TextInput
-                value={yearsExperience}
-                onChangeText={setYearsExperience}
-                keyboardType="numeric"
-                placeholder="5"
-                placeholderTextColor={colors.textMuted}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: 12,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.bg,
-                }}
-              />
-
               <Text style={text.muted}>Hourly rate ($)</Text>
               <TextInput
                 value={hourlyRate}
-                onChangeText={setHourlyRate}
+                onChangeText={(val) => handleFieldChange(setHourlyRate, val)}
                 keyboardType="numeric"
                 placeholder="75"
                 placeholderTextColor={colors.textMuted}
@@ -1193,7 +1252,7 @@ router.replace("/(auth)/sign-in");
                 </View>
                 <Switch
                   value={isMobile}
-                  onValueChange={setIsMobile}
+                  onValueChange={(val) => handleFieldChange(setIsMobile, val)}
                   trackColor={{ false: colors.border, true: colors.accent }}
                   thumbColor={colors.textPrimary}
                 />
@@ -1234,7 +1293,7 @@ router.replace("/(auth)/sign-in");
                           } else {
                             newSet.add(tool.id);
                           }
-                          setSelectedTools(newSet);
+                          handleFieldChange(setSelectedTools, newSet);
                         }}
                         style={{
                           flexDirection: "row",
@@ -1303,7 +1362,7 @@ router.replace("/(auth)/sign-in");
                           } else {
                             newSet.add(skill.id);
                           }
-                          setSelectedSkills(newSet);
+                          handleFieldChange(setSelectedSkills, newSet);
                         }}
                         style={{
                           flexDirection: "row",
@@ -1372,7 +1431,7 @@ router.replace("/(auth)/sign-in");
                           } else {
                             newSet.add(safety.id);
                           }
-                          setSelectedSafety(newSet);
+                          handleFieldChange(setSelectedSafety, newSet);
                         }}
                         style={{
                           flexDirection: "row",

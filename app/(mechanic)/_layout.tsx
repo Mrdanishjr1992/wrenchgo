@@ -24,7 +24,7 @@ export default function MechanicLayout() {
       const { data: profile, error: profileError } = await supabase
         .from("profiles")
         .select("role")
-        .eq("auth_id", session.user.id)
+        .eq("id", session.user.id)
         .single();
 
       if (profileError) {

@@ -10,7 +10,6 @@ import {
   PRIVACY_POLICY,
   REFUND_POLICY,
   CONTRACTOR_DISCLAIMER,
-  VERIFICATION_DISCLAIMER,
   PAYMENTS_DISCLOSURE,
 } from "../../src/legal";
 
@@ -45,12 +44,6 @@ const legalDocuments: LegalDocument[] = [
     title: "Payments & Fees",
     content: PAYMENTS_DISCLOSURE,
     icon: "card",
-  },
-  {
-    id: "verification",
-    title: "Photo ID & Background Checks",
-    content: VERIFICATION_DISCLAIMER,
-    icon: "id-card",
   },
   {
     id: "contractor",

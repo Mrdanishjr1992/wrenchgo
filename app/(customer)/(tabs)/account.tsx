@@ -42,6 +42,15 @@ function contentTypeFromExt(ext: string) {
   return "image/jpeg";
 }
 
+function toTitleCase(str: string): string {
+  return str
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
 export default function CustomerAccount() {
   const router = useRouter();
   const { mode, toggle, colors, spacing, radius, text } = useTheme();
@@ -55,14 +64,15 @@ export default function CustomerAccount() {
   const [profile, setProfile] = useState<any>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [city, setCity] = useState("");
-  const [locationLat, setLocationLat] = useState("");
-  const [locationLng, setLocationLng] = useState("");
+  const [homeCity, setHomeCity] = useState("");
+  const [homeState, setHomeState] = useState("");
+  const [homeLat, setHomeLat] = useState<number | null>(null);
+  const [homeLng, setHomeLng] = useState<number | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<any>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
-  const [loadingReviews, setLoadingReviews] = useState(false);
   const [settingUpPayment, setSettingUpPayment] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -82,11 +92,13 @@ export default function CustomerAccount() {
           email,
           phone,
           avatar_url,
+          home_lat,
+          home_lng,
           city,
-          id_verified,
-          id_verified_at
+          state,
+          theme_preference
         `)
-        .eq("auth_id", userId)
+        .eq("id", userId)
         .single();
 
       if (error) throw error;
@@ -94,7 +106,10 @@ export default function CustomerAccount() {
       setProfile(data);
       setFullName(data.full_name ?? "");
       setPhone(data.phone ?? "");
-      setCity(data.city ?? "");
+      setHomeLat(data.home_lat ?? null);
+      setHomeLng(data.home_lng ?? null);
+      setHomeCity(data.city ?? "");
+      setHomeState(data.state ?? "");
 
       const { data: paymentData } = await supabase
         .from("customer_payment_methods")
@@ -121,6 +136,7 @@ export default function CustomerAccount() {
         .limit(10);
 
       setReviews(reviewsData || []);
+      setIsDirty(false);
     } catch (e: any) {
       console.error("Profile load error:", e);
       if (e?.message) {
@@ -169,7 +185,7 @@ export default function CustomerAccount() {
       const { data: pub } = supabase.storage.from("avatars").getPublicUrl(path);
       const url = `${pub.publicUrl}?t=${Date.now()}`;
 
-      const upd = await supabase.from("profiles").update({ avatar_url: url }).eq("auth_id", userId);
+      const upd = await supabase.from("profiles").update({ avatar_url: url }).eq("id", userId);
       if (upd.error) throw upd.error;
 
       Alert.alert("Success", "Profile photo updated.");
@@ -185,12 +201,18 @@ export default function CustomerAccount() {
     try {
       setSaving(true);
 
+      const normalizedName = fullName.trim() ? toTitleCase(fullName) : null;
+      const normalizedPhone = phone.trim() || null;
+
       const { error } = await supabase
         .from("profiles")
         .update({
-          full_name: fullName.trim() || null,
-          phone: phone.trim() || null,
-          city: city.trim() || null,
+          full_name: normalizedName,
+          phone: normalizedPhone,
+          home_lat: homeLat,
+          home_lng: homeLng,
+          city: homeCity.trim() || null,
+          state: homeState.trim() || null,
           updated_at: new Date().toISOString(),
         })
         .eq("id", profile.id);
@@ -199,6 +221,7 @@ export default function CustomerAccount() {
 
       Alert.alert("Success", "Profile updated successfully");
       setEditing(false);
+      setIsDirty(false);
       await load();
     } catch (e: any) {
       console.error("Save error:", e);
@@ -206,7 +229,7 @@ export default function CustomerAccount() {
     } finally {
       setSaving(false);
     }
-  }, [profile, fullName, phone, city, load]);
+  }, [profile, fullName, phone, homeLat, homeLng, homeCity, homeState, load]);
 
   const fetchCurrentLocation = useCallback(async () => {
     try {
@@ -218,17 +241,30 @@ export default function CustomerAccount() {
       }
 
       const location = await Location.getCurrentPositionAsync({});
-      const lat = location.coords.latitude.toFixed(6);
-      const lng = location.coords.longitude.toFixed(6);
+      const lat = location.coords.latitude;
+      const lng = location.coords.longitude;
 
-      setLocationLat(lat);
-      setLocationLng(lng);
+      setHomeLat(lat);
+      setHomeLng(lng);
+
+      try {
+        const [geocode] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
+        if (geocode) {
+          setHomeCity(geocode.city || "");
+          setHomeState(geocode.region || "");
+        }
+      } catch (geoErr) {
+        console.warn("Geocoding failed:", geoErr);
+      }
 
       if (profile?.id) {
         const { error } = await supabase
           .from("profiles")
           .update({
-            city: `${lat}, ${lng}`,
+            home_lat: lat,
+            home_lng: lng,
+            city: homeCity || null,
+            state: homeState || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", profile.id);
@@ -244,7 +280,7 @@ export default function CustomerAccount() {
     } finally {
       setLoadingLocation(false);
     }
-  }, [profile, load]);
+  }, [profile, homeCity, homeState, load]);
 
   const setupPaymentMethod = useCallback(async () => {
     try {
@@ -334,12 +370,51 @@ export default function CustomerAccount() {
     }
   }, [router]);
 
+  const handleCancelEditing = useCallback(() => {
+    if (isDirty) {
+      Alert.alert(
+        "Discard changes?",
+        "You have unsaved changes. Are you sure you want to discard them?",
+        [
+          { text: "Keep Editing", style: "cancel" },
+          {
+            text: "Discard",
+            style: "destructive",
+            onPress: () => {
+              setEditing(false);
+              setIsDirty(false);
+              load();
+            },
+          },
+        ]
+      );
+    } else {
+      setEditing(false);
+    }
+  }, [isDirty, load]);
+
+  const handleFieldChange = useCallback((setter: (val: string) => void, value: string) => {
+    setter(value);
+    setIsDirty(true);
+  }, []);
+
   const avatarSource = profile?.avatar_url
     ? { uri: profile.avatar_url }
     : require("../../../assets/profile.png");
 
   const displayName = fullName && fullName.trim().length > 0 ? fullName : "Customer Account";
   const subtitle = profile?.email ? profile.email : "Customer";
+
+  const locationDisplay = useMemo(() => {
+    if (homeCity && homeState) {
+      return `${homeCity}, ${homeState}`;
+    } else if (homeCity) {
+      return homeCity;
+    } else if (homeLat && homeLng) {
+      return "Location set";
+    }
+    return "Not set";
+  }, [homeCity, homeState, homeLat, homeLng]);
 
   if (loading) {
     return (
@@ -470,7 +545,7 @@ export default function CustomerAccount() {
             </View>
 
             <Pressable
-              onPress={() => setEditing(!editing)}
+              onPress={() => editing ? handleCancelEditing() : setEditing(true)}
               style={({ pressed }) => [
                 {
                   paddingVertical: 12,
@@ -512,12 +587,10 @@ export default function CustomerAccount() {
                   <Text style={text.muted}>Phone</Text>
                   <Text style={{ ...text.body, fontWeight: "700" }}>{phone || "Not set"}</Text>
                 </View>
-                {city && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={text.muted}>City</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>{city}</Text>
-                  </View>
-                )}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                  <Text style={text.muted}>Home Location</Text>
+                  <Text style={{ ...text.body, fontWeight: "700" }}>{locationDisplay}</Text>
+                </View>
               </View>
             </View>
 
@@ -559,80 +632,6 @@ export default function CustomerAccount() {
                   trackColor={{ false: colors.border, true: colors.accent }}
                 />
               </View>
-
-            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Identity Verification</Text>
-              {profile?.id_verified ? (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View
-                    style={{
-                      width: 44,
-                      height: 44,
-                      borderRadius: radius.md,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      backgroundColor: "#10b98120",
-                      borderWidth: 1,
-                      borderColor: "#10b98130",
-                    }}
-                  >
-                    <Ionicons name="checkmark-circle" size={22} color="#10b981" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-                      Verified
-                    </Text>
-                    <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-                      Identity verified on {new Date(profile.id_verified_at).toLocaleDateString()}
-                    </Text>
-                  </View>
-                </View>
-              ) : (
-                <View style={{ gap: spacing.sm }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                    <View
-                      style={{
-                        width: 44,
-                        height: 44,
-                        borderRadius: radius.md,
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: colors.accent + "20",
-                        borderWidth: 1,
-                        borderColor: colors.accent + "30",
-                      }}
-                    >
-                      <Ionicons name="shield-checkmark" size={22} color={colors.accent} />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ fontSize: 16, fontWeight: "700", color: colors.textPrimary }}>
-                        Not Verified
-                      </Text>
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-                        Required to request and accept quotes
-                      </Text>
-                    </View>
-                  </View>
-                  <Pressable
-                    onPress={() => router.push("/(customer)/verify-identity")}
-                    style={({ pressed }) => [
-                      {
-                        paddingVertical: 12,
-                        paddingHorizontal: 16,
-                        borderRadius: radius.md,
-                        backgroundColor: colors.accent,
-                        opacity: pressed ? 0.9 : 1,
-                        alignItems: "center",
-                      },
-                    ]}
-                  >
-                    <Text style={{ fontWeight: "900", color: colors.black }}>
-                      VERIFY IDENTITY
-                    </Text>
-                  </Pressable>
-                </View>
-              )}
-            </View>
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
@@ -729,10 +728,17 @@ export default function CustomerAccount() {
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Current Location</Text>
+              <Text style={text.section}>Home Location</Text>
               <Text style={{ ...text.muted, fontSize: 13, marginBottom: spacing.xs }}>
-                Save your current location for faster service requests
+                Set your home location for faster service requests
               </Text>
+              {homeLat && homeLng && (
+                <View style={{ marginBottom: spacing.xs }}>
+                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
+                    {locationDisplay}
+                  </Text>
+                </View>
+              )}
               <Pressable
                 onPress={fetchCurrentLocation}
                 disabled={loadingLocation}
@@ -847,7 +853,7 @@ export default function CustomerAccount() {
               <Text style={{ ...text.muted, fontSize: 13 }}>Full name</Text>
               <TextInput
                 value={fullName}
-                onChangeText={setFullName}
+                onChangeText={(val) => handleFieldChange(setFullName, val)}
                 placeholder="Enter your name"
                 placeholderTextColor={colors.textMuted}
                 style={{
@@ -866,29 +872,10 @@ export default function CustomerAccount() {
               <Text style={{ ...text.muted, fontSize: 13 }}>Phone</Text>
               <TextInput
                 value={phone}
-                onChangeText={setPhone}
+                onChangeText={(val) => handleFieldChange(setPhone, val)}
                 placeholder="(555) 555-5555"
                 placeholderTextColor={colors.textMuted}
                 keyboardType="phone-pad"
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: radius.md,
-                  padding: 12,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.bg,
-                  fontSize: 15,
-                }}
-              />
-            </View>
-
-            <View style={{ gap: spacing.xs }}>
-              <Text style={{ ...text.muted, fontSize: 13 }}>City</Text>
-              <TextInput
-                value={city}
-                onChangeText={setCity}
-                placeholder="Enter your city"
-                placeholderTextColor={colors.textMuted}
                 style={{
                   borderWidth: 1,
                   borderColor: colors.border,

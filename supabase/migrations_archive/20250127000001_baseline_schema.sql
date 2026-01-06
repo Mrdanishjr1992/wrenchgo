@@ -64,12 +64,6 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   deletion_requested_by uuid,
   can_reapply boolean DEFAULT false,
   reapplication_notes text,
-  id_photo_path text,
-  id_status text DEFAULT 'none' CHECK (id_status = ANY (ARRAY['none'::text, 'pending'::text, 'verified'::text, 'rejected'::text])),
-  id_uploaded_at timestamptz,
-  id_verified_at timestamptz,
-  id_rejected_reason text,
-  id_verified_by uuid,
   CONSTRAINT profiles_pkey PRIMARY KEY (id)
 );
 

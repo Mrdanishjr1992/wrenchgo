@@ -124,11 +124,11 @@ export default function CustomerHome() {
         .eq("customer_id", customerId)
         .order("created_at", { ascending: true });
 
-      // ✅ profiles uses auth_id in your schema
+      // ✅ profiles uses id in your schema
       const profileQ = supabase
         .from("profiles")
         .select("full_name")
-        .eq("auth_id", customerId)
+        .eq("id", customerId)
         .maybeSingle();
 
       // Messages: Get unread count for jobs where user is customer

@@ -1,335 +1,372 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import Stripe from 'https://esm.sh/stripe@14.11.0?target=deno'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-  apiVersion: "2023-10-16",
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
+  apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
-});
+})
 
-const webhookSecret = Deno.env.get("STRIPE_WEBHOOK_SECRET")!;
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!
+
+const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
 serve(async (req) => {
-  const signature = req.headers.get("stripe-signature");
-
+  const signature = req.headers.get('stripe-signature')
   if (!signature) {
-    return new Response("No signature", { status: 400 });
+    return new Response(JSON.stringify({ error: 'Missing signature' }), { status: 400 })
+  }
+
+  let event: Stripe.Event
+
+  try {
+    const body = await req.text()
+    event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
+  } catch (err) {
+    console.error('Webhook signature verification failed:', err.message)
+    return new Response(JSON.stringify({ error: 'Invalid signature' }), { status: 400 })
+  }
+
+  const { data: existingEvent } = await supabase
+    .from('stripe_webhook_events')
+    .select('id')
+    .eq('stripe_event_id', event.id)
+    .single()
+
+  if (existingEvent) {
+    console.log(`Event ${event.id} already processed`)
+    return new Response(JSON.stringify({ received: true, already_processed: true }), { status: 200 })
   }
 
   try {
-    const body = await req.text();
-    const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        await handlePaymentIntentSucceeded(event.data.object as Stripe.PaymentIntent)
+        break
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      case 'payment_intent.payment_failed':
+        await handlePaymentIntentFailed(event.data.object as Stripe.PaymentIntent)
+        break
 
-    console.log(`Processing webhook event: ${event.type}`);
+      case 'payment_intent.canceled':
+        await handlePaymentIntentCanceled(event.data.object as Stripe.PaymentIntent)
+        break
 
-    // Log the webhook event for debugging
-    await supabase.from("webhook_events").insert({
+      case 'payment_intent.requires_action':
+        await handlePaymentIntentRequiresAction(event.data.object as Stripe.PaymentIntent)
+        break
+
+      case 'account.updated':
+        await handleAccountUpdated(event.data.object as Stripe.Account)
+        break
+
+      case 'charge.refunded':
+        await handleChargeRefunded(event.data.object as Stripe.Charge)
+        break
+
+      case 'charge.dispute.created':
+        await handleDisputeCreated(event.data.object as Stripe.Dispute)
+        break
+
+      case 'transfer.created':
+        await handleTransferCreated(event.data.object as Stripe.Transfer)
+        break
+
+      case 'transfer.failed':
+        await handleTransferFailed(event.data.object as Stripe.Transfer)
+        break
+
+      case 'payout.paid':
+        await handlePayoutPaid(event.data.object as Stripe.Payout)
+        break
+
+      default:
+        console.log(`Unhandled event type: ${event.type}`)
+    }
+
+    await supabase.from('stripe_webhook_events').insert({
       stripe_event_id: event.id,
       event_type: event.type,
-      event_data: event.data.object,
-      processed: false,
-    });
+      metadata: { processed: true },
+    })
 
-    try {
-      switch (event.type) {
-        case "payment_intent.succeeded": {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          await handlePaymentIntentSucceeded(supabase, paymentIntent);
-          break;
-        }
-
-        case "payment_intent.payment_failed": {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          await handlePaymentIntentFailed(supabase, paymentIntent);
-          break;
-        }
-
-        case "payment_intent.canceled": {
-          const paymentIntent = event.data.object as Stripe.PaymentIntent;
-          await handlePaymentIntentCanceled(supabase, paymentIntent);
-          break;
-        }
-
-        case "charge.refunded": {
-          const charge = event.data.object as Stripe.Charge;
-          await handleChargeRefunded(supabase, charge);
-          break;
-        }
-
-        case "account.updated": {
-          const account = event.data.object as Stripe.Account;
-          await handleAccountUpdated(supabase, account);
-          break;
-        }
-
-        case "setup_intent.succeeded": {
-          const setupIntent = event.data.object as Stripe.SetupIntent;
-          await handleSetupIntentSucceeded(supabase, setupIntent, stripe);
-          break;
-        }
-
-        default:
-          console.log(`Unhandled event type: ${event.type}`);
-      }
-
-      // Mark event as processed
-      await supabase
-        .from("webhook_events")
-        .update({ processed: true, processed_at: new Date().toISOString() })
-        .eq("stripe_event_id", event.id);
-
-    } catch (handlerError: any) {
-      console.error("Handler error:", handlerError);
-
-      // Log the error
-      await supabase
-        .from("webhook_events")
-        .update({
-          processing_error: handlerError.message || "Unknown error",
-          processed_at: new Date().toISOString()
-        })
-        .eq("stripe_event_id", event.id);
-
-      throw handlerError;
-    }
-
-    return new Response(JSON.stringify({ received: true }), {
-      headers: { "Content-Type": "application/json" },
-      status: 200,
-    });
+    return new Response(JSON.stringify({ received: true }), { status: 200 })
   } catch (error) {
-    console.error("Webhook error:", error);
-    return new Response(
-      JSON.stringify({
-        error: error.message,
-      }),
-      {
-        headers: { "Content-Type": "application/json" },
-        status: 400,
-      }
-    );
+    console.error(`Error processing event ${event.id}:`, error)
+    return new Response(JSON.stringify({ error: error.message }), { status: 500 })
   }
-});
+})
 
-async function handlePaymentIntentSucceeded(
-  supabase: any,
-  paymentIntent: Stripe.PaymentIntent
-) {
-  console.log(`Payment succeeded: ${paymentIntent.id}`);
+async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent) {
+  const jobId = paymentIntent.metadata.job_id
+  const mechanicId = paymentIntent.metadata.mechanic_id
+  const mechanicStripeAccountId = paymentIntent.metadata.mechanic_stripe_account_id
+  const mechanicNetCents = parseInt(paymentIntent.metadata.mechanic_net_cents)
 
-  const { data: payment, error: fetchError } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("stripe_payment_intent_id", paymentIntent.id)
-    .single();
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .single()
 
-  if (fetchError || !payment) {
-    console.error("Payment record not found:", fetchError);
-    return;
+  if (!payment) {
+    console.error(`Payment not found for PI ${paymentIntent.id}`)
+    return
   }
 
-  const charge = paymentIntent.charges?.data[0];
-
-  const { error: updateError } = await supabase
-    .from("payments")
+  await supabase
+    .from('payments')
     .update({
-      status: "paid",
+      status: 'succeeded',
+      stripe_charge_id: paymentIntent.latest_charge as string,
+    })
+    .eq('id', payment.id)
+
+  await supabase
+    .from('job_invoices')
+    .update({
+      status: 'paid',
       paid_at: new Date().toISOString(),
-      stripe_charge_id: charge?.id,
-      payment_method_type: paymentIntent.payment_method_types?.[0],
-      receipt_url: charge?.receipt_url,
     })
-    .eq("id", payment.id);
+    .eq('id', payment.invoice_id)
 
-  if (updateError) {
-    console.error("Failed to update payment:", updateError);
-    return;
-  }
-
-  const { error: jobError } = await supabase
-    .from("jobs")
+  await supabase
+    .from('jobs')
     .update({
-      status: "in_progress",
-      updated_at: new Date().toISOString(),
+      status: 'paid',
+      paid_at: new Date().toISOString(),
     })
-    .eq("id", payment.job_id);
+    .eq('id', jobId)
 
-  if (jobError) {
-    console.error("Failed to update job status:", jobError);
-  }
+  const nextMonday = getNextMonday()
 
-  console.log(`Payment ${payment.id} marked as paid`);
+  await supabase.from('mechanic_ledger').insert({
+    mechanic_id: mechanicId,
+    payment_id: payment.id,
+    job_id: jobId,
+    stripe_account_id: mechanicStripeAccountId,
+    amount_cents: mechanicNetCents,
+    status: 'available_for_transfer',
+    available_for_transfer_at: nextMonday.toISOString(),
+  })
+
+  await supabase.from('notifications').insert([
+    {
+      user_id: payment.customer_id,
+      type: 'payment_succeeded',
+      title: 'Payment Successful',
+      body: 'Your payment has been processed successfully.',
+      data: { job_id: jobId, payment_id: payment.id },
+    },
+    {
+      user_id: mechanicId,
+      type: 'payment_succeeded',
+      title: 'Payment Received',
+      body: 'Customer payment received. Funds will be transferred on next payout.',
+      data: { job_id: jobId, payment_id: payment.id },
+    },
+  ])
 }
 
-async function handlePaymentIntentFailed(
-  supabase: any,
-  paymentIntent: Stripe.PaymentIntent
-) {
-  console.log(`Payment failed: ${paymentIntent.id}`);
-
-  const { error } = await supabase
-    .from("payments")
+async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
+  await supabase
+    .from('payments')
     .update({
-      status: "failed",
-      failure_reason: paymentIntent.last_payment_error?.message || "Payment failed",
+      status: 'failed',
+      error_message: paymentIntent.last_payment_error?.message || 'Payment failed',
     })
-    .eq("stripe_payment_intent_id", paymentIntent.id);
+    .eq('stripe_payment_intent_id', paymentIntent.id)
 
-  if (error) {
-    console.error("Failed to update payment:", error);
-  }
-}
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('customer_id, job_id')
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+    .single()
 
-async function handlePaymentIntentCanceled(
-  supabase: any,
-  paymentIntent: Stripe.PaymentIntent
-) {
-  console.log(`Payment canceled: ${paymentIntent.id}`);
-
-  const { error } = await supabase
-    .from("payments")
-    .update({
-      status: "cancelled",
+  if (payment) {
+    await supabase.from('notifications').insert({
+      user_id: payment.customer_id,
+      type: 'payment_failed',
+      title: 'Payment Failed',
+      body: 'Your payment could not be processed. Please try again.',
+      data: { job_id: payment.job_id },
     })
-    .eq("stripe_payment_intent_id", paymentIntent.id);
-
-  if (error) {
-    console.error("Failed to update payment:", error);
-  }
-}
-
-async function handleChargeRefunded(supabase: any, charge: Stripe.Charge) {
-  console.log(`Charge refunded: ${charge.id}`);
-
-  const { data: payment, error: fetchError } = await supabase
-    .from("payments")
-    .select("*")
-    .eq("stripe_charge_id", charge.id)
-    .single();
-
-  if (fetchError || !payment) {
-    console.error("Payment record not found:", fetchError);
-    return;
-  }
-
-  const refundAmount = charge.amount_refunded;
-  const isFullRefund = refundAmount === charge.amount;
-
-  const { error: updateError } = await supabase
-    .from("payments")
-    .update({
-      status: isFullRefund ? "refunded" : "partially_refunded",
-      refund_amount_cents: refundAmount,
-      refunded_at: new Date().toISOString(),
-    })
-    .eq("id", payment.id);
-
-  if (updateError) {
-    console.error("Failed to update payment:", updateError);
-    return;
-  }
-
-  if (isFullRefund) {
-    const { error: jobError } = await supabase
-      .from("jobs")
-      .update({
-        status: "cancelled",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", payment.job_id);
-
-    if (jobError) {
-      console.error("Failed to update job status:", jobError);
-    }
-  }
-
-  console.log(`Payment ${payment.id} marked as ${isFullRefund ? "refunded" : "partially_refunded"}`);
-}
-
-async function handleAccountUpdated(supabase: any, account: Stripe.Account) {
-  console.log(`Account updated: ${account.id}`);
-
-  const { error } = await supabase
-    .from("mechanic_stripe_accounts")
-    .update({
-      charges_enabled: account.charges_enabled,
-      payouts_enabled: account.payouts_enabled,
-      details_submitted: account.details_submitted,
-      status: account.charges_enabled && account.payouts_enabled ? "active" : "pending",
-    })
-    .eq("stripe_account_id", account.id);
-
-  if (error) {
-    console.error("Failed to update mechanic Stripe account:", error);
   }
 }
 
-async function handleSetupIntentSucceeded(
-  supabase: any,
-  setupIntent: Stripe.SetupIntent,
-  stripe: Stripe
-) {
-  console.log(`Setup intent succeeded: ${setupIntent.id}`);
+async function handlePaymentIntentCanceled(paymentIntent: Stripe.PaymentIntent) {
+  await supabase
+    .from('payments')
+    .update({ status: 'cancelled' })
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+}
 
-  const paymentMethodId = setupIntent.payment_method as string;
-  const customerId = setupIntent.customer as string;
-  const userId = setupIntent.metadata?.user_id;
-  const profileId = setupIntent.metadata?.profile_id;
+async function handlePaymentIntentRequiresAction(paymentIntent: Stripe.PaymentIntent) {
+  await supabase
+    .from('payments')
+    .update({ status: 'requires_action' })
+    .eq('stripe_payment_intent_id', paymentIntent.id)
+}
 
-  if (!paymentMethodId || !customerId || !profileId) {
-    console.error("Missing required data in setup intent");
-    return;
-  }
+async function handleAccountUpdated(account: Stripe.Account) {
+  await supabase
+    .from('mechanic_stripe_accounts')
+    .update({
+      onboarding_completed: account.details_submitted || false,
+      charges_enabled: account.charges_enabled || false,
+      payouts_enabled: account.payouts_enabled || false,
+      details_submitted: account.details_submitted || false,
+    })
+    .eq('stripe_account_id', account.id)
+}
 
-  try {
-    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+async function handleChargeRefunded(charge: Stripe.Charge) {
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('stripe_charge_id', charge.id)
+    .single()
 
-    if (!paymentMethod.card) {
-      console.error("Payment method is not a card");
-      return;
-    }
+  if (!payment) return
 
-    const { data: existingMethod } = await supabase
-      .from("customer_payment_methods")
-      .select("id")
-      .eq("customer_id", profileId)
-      .eq("stripe_payment_method_id", paymentMethodId)
-      .maybeSingle();
+  await supabase
+    .from('payments')
+    .update({ status: 'refunded' })
+    .eq('id', payment.id)
 
-    if (existingMethod) {
-      console.log("Payment method already saved");
-      return;
-    }
+  await supabase
+    .from('job_invoices')
+    .update({ status: 'refunded' })
+    .eq('id', payment.invoice_id)
 
-    await supabase
-      .from("customer_payment_methods")
-      .update({ is_default: false })
-      .eq("customer_id", profileId);
+  await supabase
+    .from('mechanic_ledger')
+    .update({ status: 'refunded' })
+    .eq('payment_id', payment.id)
 
-    const { error: insertError } = await supabase
-      .from("customer_payment_methods")
-      .insert({
-        customer_id: profileId,
-        stripe_customer_id: customerId,
-        stripe_payment_method_id: paymentMethodId,
-        card_brand: paymentMethod.card.brand,
-        card_last4: paymentMethod.card.last4,
-        card_exp_month: paymentMethod.card.exp_month,
-        card_exp_year: paymentMethod.card.exp_year,
-        is_default: true,
-      });
+  await supabase.from('notifications').insert([
+    {
+      user_id: payment.customer_id,
+      type: 'refund_issued',
+      title: 'Refund Issued',
+      body: 'Your payment has been refunded.',
+      data: { job_id: payment.job_id, payment_id: payment.id },
+    },
+    {
+      user_id: payment.mechanic_id,
+      type: 'refund_issued',
+      title: 'Payment Refunded',
+      body: 'A payment has been refunded.',
+      data: { job_id: payment.job_id, payment_id: payment.id },
+    },
+  ])
+}
 
-    if (insertError) {
-      console.error("Failed to save payment method:", insertError);
-      return;
-    }
+async function handleDisputeCreated(dispute: Stripe.Dispute) {
+  const { data: payment } = await supabase
+    .from('payments')
+    .select('*')
+    .eq('stripe_charge_id', dispute.charge as string)
+    .single()
 
-    console.log(`Payment method ${paymentMethodId} saved successfully`);
-  } catch (error) {
-    console.error("Error handling setup intent:", error);
-  }
+  if (!payment) return
+
+  await supabase
+    .from('jobs')
+    .update({ status: 'disputed' })
+    .eq('id', payment.job_id)
+
+  await supabase
+    .from('job_invoices')
+    .update({ status: 'disputed' })
+    .eq('id', payment.invoice_id)
+
+  await supabase.from('notifications').insert([
+    {
+      user_id: payment.customer_id,
+      type: 'dispute_created',
+      title: 'Dispute Created',
+      body: 'A dispute has been filed for this payment.',
+      data: { job_id: payment.job_id, payment_id: payment.id },
+    },
+    {
+      user_id: payment.mechanic_id,
+      type: 'dispute_created',
+      title: 'Dispute Created',
+      body: 'A dispute has been filed for this payment.',
+      data: { job_id: payment.job_id, payment_id: payment.id },
+    },
+  ])
+}
+
+async function handleTransferCreated(transfer: Stripe.Transfer) {
+  await supabase
+    .from('transfers')
+    .update({ status: 'succeeded' })
+    .eq('stripe_transfer_id', transfer.id)
+}
+
+async function handleTransferFailed(transfer: Stripe.Transfer) {
+  const { data: transferRecord } = await supabase
+    .from('transfers')
+    .select('*')
+    .eq('stripe_transfer_id', transfer.id)
+    .single()
+
+  if (!transferRecord) return
+
+  await supabase
+    .from('transfers')
+    .update({
+      status: 'failed',
+      error_message: 'Transfer failed',
+    })
+    .eq('id', transferRecord.id)
+
+  await supabase
+    .from('mechanic_ledger')
+    .update({ status: 'available_for_transfer' })
+    .in('id', transferRecord.ledger_item_ids)
+}
+
+async function handlePayoutPaid(payout: Stripe.Payout) {
+  const { data: ledgerItems } = await supabase
+    .from('mechanic_ledger')
+    .select('*')
+    .eq('stripe_account_id', payout.destination)
+    .eq('status', 'transferred')
+    .is('paid_out_at', null)
+
+  if (!ledgerItems || ledgerItems.length === 0) return
+
+  await supabase
+    .from('mechanic_ledger')
+    .update({
+      status: 'paid_out',
+      stripe_payout_id: payout.id,
+      paid_out_at: new Date(payout.arrival_date * 1000).toISOString(),
+    })
+    .in('id', ledgerItems.map(item => item.id))
+
+  const mechanicId = ledgerItems[0].mechanic_id
+
+  await supabase.from('notifications').insert({
+    user_id: mechanicId,
+    type: 'payout_completed',
+    title: 'Payout Completed',
+    body: `Your payout of $${(payout.amount / 100).toFixed(2)} has been sent to your bank.`,
+    data: { payout_id: payout.id, amount_cents: payout.amount },
+  })
+}
+
+function getNextMonday(): Date {
+  const now = new Date()
+  const dayOfWeek = now.getDay()
+  const daysUntilMonday = dayOfWeek === 0 ? 1 : 8 - dayOfWeek
+  const nextMonday = new Date(now)
+  nextMonday.setDate(now.getDate() + daysUntilMonday)
+  nextMonday.setHours(0, 0, 0, 0)
+  return nextMonday
 }

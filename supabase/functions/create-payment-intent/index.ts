@@ -1,280 +1,162 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
+import Stripe from 'https://esm.sh/stripe@14.11.0?target=deno'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3'
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-  apiVersion: "2023-10-16",
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
+  apiVersion: '2023-10-16',
   httpClient: Stripe.createFetchHttpClient(),
-});
+})
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-interface PaymentIntentRequest {
-  jobId: string;
-  quoteId: string;
-  promotionCode?: string;
-}
-
-interface PaymentBreakdown {
-  quoteAmountCents: number;
-  customerPlatformFeeCents: number;
-  customerDiscountCents: number;
-  customerTotalCents: number;
-  mechanicPlatformCommissionCents: number;
-  mechanicPayoutCents: number;
-  platformRevenueCents: number;
-  promotionApplied?: {
-    code: string;
-    type: string;
-    discountCents: number;
-  };
-}
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-
   try {
-    const authHeader = req.headers.get("Authorization");
+    const authHeader = req.headers.get('Authorization')
     if (!authHeader) {
-      throw new Error("Missing authorization header");
+      return new Response(JSON.stringify({ error: 'Missing authorization' }), { status: 401 })
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      global: {
-        headers: { Authorization: authHeader },
-      },
-    });
+      global: { headers: { Authorization: authHeader } },
+    })
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
+    const { data: { user }, error: userError } = await supabase.auth.getUser()
     if (userError || !user) {
-      throw new Error("Unauthorized");
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
     }
 
-    const { jobId, quoteId, promotionCode }: PaymentIntentRequest = await req.json();
+    const { job_id } = await req.json()
 
-    if (!jobId || !quoteId) {
-      throw new Error("Missing required fields: jobId, quoteId");
+    if (!job_id) {
+      return new Response(JSON.stringify({ error: 'Missing job_id' }), { status: 400 })
     }
 
-    const { data: quote, error: quoteError } = await supabase
-      .from("quotes")
-      .select("*, jobs!inner(customer_id, mechanic_id, status)")
-      .eq("id", quoteId)
-      .eq("job_id", jobId)
-      .single();
+    const { data: job, error: jobError } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('id', job_id)
+      .single()
 
-    if (quoteError || !quote) {
-      throw new Error("Quote not found");
+    if (jobError || !job) {
+      return new Response(JSON.stringify({ error: 'Job not found' }), { status: 404 })
     }
 
-    if (quote.jobs.customer_id !== user.id) {
-      throw new Error("Unauthorized: You are not the customer for this job");
+    if (job.customer_id !== user.id) {
+      return new Response(JSON.stringify({ error: 'Only customer can initiate payment' }), { status: 403 })
     }
 
-    if (quote.jobs.status !== "accepted") {
-      throw new Error("Quote must be accepted before payment");
+    if (job.status !== 'completed') {
+      return new Response(JSON.stringify({ error: 'Job not completed yet' }), { status: 400 })
+    }
+
+    if (!job.mechanic_verified_at || !job.customer_verified_at) {
+      return new Response(JSON.stringify({ error: 'Both parties must verify completion' }), { status: 400 })
+    }
+
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('job_invoices')
+      .select('*')
+      .eq('job_id', job_id)
+      .single()
+
+    if (invoiceError || !invoice) {
+      return new Response(JSON.stringify({ error: 'Invoice not found or not locked' }), { status: 404 })
+    }
+
+    if (invoice.status !== 'locked') {
+      return new Response(JSON.stringify({ error: 'Invoice not locked' }), { status: 400 })
     }
 
     const { data: existingPayment } = await supabase
-      .from("payments")
-      .select("id, status")
-      .eq("job_id", jobId)
-      .eq("quote_id", quoteId)
-      .in("status", ["paid", "processing"])
-      .single();
+      .from('payments')
+      .select('*')
+      .eq('job_id', job_id)
+      .in('status', ['pending', 'processing', 'requires_action', 'succeeded'])
+      .single()
 
     if (existingPayment) {
-      throw new Error("Payment already exists for this job");
+      return new Response(
+        JSON.stringify({
+          success: true,
+          payment_id: existingPayment.id,
+          client_secret: existingPayment.client_secret,
+          status: existingPayment.status,
+          already_exists: true,
+        }),
+        { status: 200 }
+      )
     }
 
-    const quoteAmountCents = Math.round(quote.amount * 100);
-    const customerPlatformFeeCents = 1500;
-    let customerDiscountCents = 0;
-    let promotionApplied: PaymentBreakdown["promotionApplied"];
+    const { data: mechanicAccount, error: mechanicAccountError } = await supabase
+      .from('mechanic_stripe_accounts')
+      .select('*')
+      .eq('mechanic_id', job.mechanic_id)
+      .single()
 
-    if (promotionCode) {
-      const { data: promotion, error: promoError } = await supabase
-        .from("promotions")
-        .select("*")
-        .eq("code", promotionCode.toUpperCase())
-        .eq("active", true)
-        .single();
-
-      if (promotion && !promoError) {
-        const now = new Date();
-        const startDate = new Date(promotion.start_date);
-        const endDate = promotion.end_date ? new Date(promotion.end_date) : null;
-
-        if (now >= startDate && (!endDate || now <= endDate)) {
-          if (
-            !promotion.max_redemptions ||
-            promotion.current_redemptions < promotion.max_redemptions
-          ) {
-            const { data: userRedemptions } = await supabase
-              .from("promotion_redemptions")
-              .select("id")
-              .eq("promotion_id", promotion.id)
-              .eq("user_id", user.id);
-
-            const userRedemptionCount = userRedemptions?.length || 0;
-
-            if (userRedemptionCount < (promotion.max_redemptions_per_user || 1)) {
-              if (
-                !promotion.minimum_amount_cents ||
-                quoteAmountCents >= promotion.minimum_amount_cents
-              ) {
-                if (promotion.type === "percent_discount" && promotion.percent_off) {
-                  customerDiscountCents = Math.round(
-                    (quoteAmountCents + customerPlatformFeeCents) * (promotion.percent_off / 100)
-                  );
-                } else if (promotion.type === "fixed_discount" && promotion.amount_cents) {
-                  customerDiscountCents = promotion.amount_cents;
-                } else if (promotion.type === "waive_platform_fee") {
-                  customerDiscountCents = customerPlatformFeeCents;
-                }
-
-                promotionApplied = {
-                  code: promotion.code,
-                  type: promotion.type,
-                  discountCents: customerDiscountCents,
-                };
-              }
-            }
-          }
-        }
-      }
+    if (mechanicAccountError || !mechanicAccount || !mechanicAccount.onboarding_completed) {
+      return new Response(JSON.stringify({ error: 'Mechanic not onboarded' }), { status: 400 })
     }
 
-    const customerTotalCents = Math.max(
-      0,
-      quoteAmountCents + customerPlatformFeeCents - customerDiscountCents
-    );
-
-    const mechanicPlatformCommissionCents = Math.min(
-      Math.round(quoteAmountCents * 0.12),
-      5000
-    );
-    const mechanicPayoutCents = quoteAmountCents - mechanicPlatformCommissionCents;
-    const platformRevenueCents =
-      customerPlatformFeeCents + mechanicPlatformCommissionCents - customerDiscountCents;
-
-    const { data: mechanicStripeAccount } = await supabase
-      .from("mechanic_stripe_accounts")
-      .select("stripe_account_id, charges_enabled")
-      .eq("mechanic_id", quote.jobs.mechanic_id)
-      .single();
-
-    if (!mechanicStripeAccount || !mechanicStripeAccount.charges_enabled) {
-      throw new Error("Mechanic has not completed Stripe onboarding");
-    }
-
-    const idempotencyKey = `payment_${jobId}_${quoteId}_${Date.now()}`;
+    const idempotencyKey = `payment_${job_id}_${Date.now()}`
 
     const paymentIntent = await stripe.paymentIntents.create(
       {
-        amount: customerTotalCents,
-        currency: "usd",
-        application_fee_amount: platformRevenueCents,
-        transfer_data: {
-          destination: mechanicStripeAccount.stripe_account_id,
-        },
+        amount: invoice.total_cents,
+        currency: 'usd',
+        automatic_payment_methods: { enabled: true },
         metadata: {
-          job_id: jobId,
-          quote_id: quoteId,
-          customer_id: user.id,
-          mechanic_id: quote.jobs.mechanic_id,
-          promotion_code: promotionCode || "",
+          job_id,
+          invoice_id: invoice.id,
+          customer_id: job.customer_id,
+          mechanic_id: job.mechanic_id,
+          mechanic_stripe_account_id: mechanicAccount.stripe_account_id,
+          mechanic_net_cents: invoice.mechanic_net_cents.toString(),
+          platform_fee_cents: invoice.platform_fee_cents.toString(),
         },
-        description: `WrenchGo Job Payment - Job ${jobId}`,
+        description: `WrenchGo Job: ${job.title}`,
       },
-      {
-        idempotencyKey,
-      }
-    );
+      { idempotencyKey }
+    )
 
-    const { data: payment, error: paymentError } = await supabase
-      .from("payments")
+    const { data: payment, error: paymentInsertError } = await supabase
+      .from('payments')
       .insert({
-        job_id: jobId,
-        quote_id: quoteId,
-        customer_id: user.id,
-        mechanic_id: quote.jobs.mechanic_id,
-        quote_amount_cents: quoteAmountCents,
-        customer_platform_fee_cents: customerPlatformFeeCents,
-        customer_discount_cents: customerDiscountCents,
-        customer_total_cents: customerTotalCents,
-        mechanic_platform_commission_cents: mechanicPlatformCommissionCents,
-        mechanic_discount_cents: 0,
-        mechanic_payout_cents: mechanicPayoutCents,
-        platform_revenue_cents: platformRevenueCents,
+        job_id,
+        invoice_id: invoice.id,
+        customer_id: job.customer_id,
+        mechanic_id: job.mechanic_id,
         stripe_payment_intent_id: paymentIntent.id,
-        stripe_connected_account_id: mechanicStripeAccount.stripe_account_id,
-        status: "processing",
-        promotion_codes: promotionCode ? [promotionCode.toUpperCase()] : [],
+        amount_cents: invoice.total_cents,
+        status: 'pending',
+        client_secret: paymentIntent.client_secret,
+        metadata: {
+          mechanic_stripe_account_id: mechanicAccount.stripe_account_id,
+          mechanic_net_cents: invoice.mechanic_net_cents,
+          platform_fee_cents: invoice.platform_fee_cents,
+        },
       })
       .select()
-      .single();
+      .single()
 
-    if (paymentError) {
-      console.error("Failed to create payment record:", paymentError);
-      throw new Error("Failed to create payment record");
+    if (paymentInsertError) {
+      throw paymentInsertError
     }
 
-    if (promotionApplied) {
-      await supabase.from("promotion_redemptions").insert({
-        promotion_id: promotionApplied.code,
-        user_id: user.id,
-        job_id: jobId,
+    return new Response(
+      JSON.stringify({
+        success: true,
         payment_id: payment.id,
-        discount_amount_cents: customerDiscountCents,
-      });
-    }
-
-    const breakdown: PaymentBreakdown = {
-      quoteAmountCents,
-      customerPlatformFeeCents,
-      customerDiscountCents,
-      customerTotalCents,
-      mechanicPlatformCommissionCents,
-      mechanicPayoutCents,
-      platformRevenueCents,
-      promotionApplied,
-    };
-
-    return new Response(
-      JSON.stringify({
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        paymentId: payment.id,
-        breakdown,
+        client_secret: paymentIntent.client_secret,
+        amount_cents: invoice.total_cents,
       }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      }
-    );
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    )
   } catch (error) {
-    console.error("Error creating payment intent:", error);
+    console.error('Error creating payment intent:', error)
     return new Response(
-      JSON.stringify({
-        error: error.message || "Internal server error",
-      }),
-      {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 400,
-      }
-    );
+      JSON.stringify({ error: error.message }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    )
   }
-});
+})

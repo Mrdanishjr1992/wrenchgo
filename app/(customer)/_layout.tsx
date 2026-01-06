@@ -26,7 +26,7 @@ export default function CustomerLayout() {
         const { data: profile } = await supabase
           .from("profiles")
           .select("role")
-          .eq("auth_id", user.id)
+          .eq("id", user.id)
           .maybeSingle();
 
         if (!profile) {

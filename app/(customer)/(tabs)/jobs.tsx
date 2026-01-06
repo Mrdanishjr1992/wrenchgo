@@ -51,7 +51,7 @@ type QuoteRequest = {
 };
 
 type ProfileName = {
-  auth_id: string;
+  id: string;
   full_name: string | null;
 };
 
@@ -209,7 +209,7 @@ export default function CustomerJobs() {
 
       const quotes = (quoteRows as QuoteRequest[]) ?? [];
 
-      // 3) Load mechanic names from profiles by auth_id
+      // 3) Load mechanic names from profiles by id
       const mechanicIds = Array.from(new Set(quotes.map((q) => q.mechanic_id).filter(Boolean)));
       const acceptedMechanicIds = Array.from(
         new Set(jobsData.map((j) => j.accepted_mechanic_id).filter((x): x is string => !!x))
@@ -217,17 +217,17 @@ export default function CustomerJobs() {
 
       const allMechanicIds = Array.from(new Set([...mechanicIds, ...acceptedMechanicIds]));
 
-      let nameByAuthId = new Map<string, string>();
+      let nameById = new Map<string, string>();
       if (allMechanicIds.length > 0) {
         const { data: profRows, error: profErr } = await supabase
           .from("profiles")
-          .select("auth_id,full_name")
-          .in("auth_id", allMechanicIds);
+          .select("id,full_name")
+          .in("id", allMechanicIds);
 
         if (profErr) throw profErr;
 
         ((profRows as ProfileName[]) ?? []).forEach((p) => {
-          if (p.auth_id) nameByAuthId.set(p.auth_id, p.full_name?.trim() || "Mechanic");
+          if (p.id) nameById.set(p.id, p.full_name?.trim() || "Mechanic");
         });
       }
 
@@ -241,8 +241,8 @@ export default function CustomerJobs() {
         const prices = jobQuotes.map((q) => q.price_cents).filter((p) => typeof p === "number");
 
         const acceptedMechanicName =
-          (job.accepted_mechanic_id && nameByAuthId.get(job.accepted_mechanic_id)) ||
-          (acceptedQuote?.mechanic_id && nameByAuthId.get(acceptedQuote.mechanic_id)) ||
+          (job.accepted_mechanic_id && nameById.get(job.accepted_mechanic_id)) ||
+          (acceptedQuote?.mechanic_id && nameById.get(acceptedQuote.mechanic_id)) ||
           null;
 
         const quoteSummary: QuoteSummary = {

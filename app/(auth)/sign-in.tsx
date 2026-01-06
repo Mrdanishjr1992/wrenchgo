@@ -52,7 +52,7 @@ export default function SignIn() {
   const { data: profile, error } = await supabase
     .from("profiles")
     .select("role")
-    .eq("auth_id", authId)
+    .eq("id", authId)
     .maybeSingle();
 
   if (error) throw new Error(error.message);
@@ -85,8 +85,8 @@ export default function SignIn() {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const { data: profile, error } = await supabase
         .from("profiles")
-        .select("auth_id, role")
-        .eq("auth_id", authId)
+        .select("id, role")
+        .eq("id", authId)
         .maybeSingle();
 
       console.log(`[AUTH] profile attempt ${attempt}`, { profile, error });
@@ -112,7 +112,7 @@ export default function SignIn() {
       (user.email ? user.email.split("@")[0] : "User");
 
     const { error: insErr } = await supabase.from("profiles").insert({
-      auth_id: authId,
+      id: authId,
       email: user.email ?? null,
       full_name: fullName,
       role: null,
