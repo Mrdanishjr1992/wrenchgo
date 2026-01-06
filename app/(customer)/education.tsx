@@ -453,7 +453,7 @@ export default function EducationPage() {
                       }}
                     >
                       <Text style={{ ...textStyles.caption }}>
-                        Detailed guide coming soon
+                        Request a quote for expert advice
                       </Text>
                     </View>
                   )}

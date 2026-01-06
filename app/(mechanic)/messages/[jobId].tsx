@@ -22,7 +22,7 @@ type Msg = {
   id: string;
   job_id: string;
   sender_id: string;
-  content: string;
+  body: string;
   created_at: string;
 };
 
@@ -83,7 +83,7 @@ export default function JobChat() {
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,job_id,sender_id,content,created_at")
+        .select("id,job_id,sender_id,body,created_at")
         .eq("job_id", jobId)
         .order("created_at", { ascending: true });
 
@@ -187,9 +187,9 @@ export default function JobChat() {
             },
           ]}
         >
-          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>{item.content}</Text>
+          <Text style={{ ...text.body, color: colors.textPrimary, lineHeight: 20 }}>{item.body}</Text>
 
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end", gap: 6, marginTop: 8 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", justifybody: "flex-end", gap: 6, marginTop: 8 }}>
             <Ionicons name={mine ? "checkmark-done" : "time-outline"} size={14} color={colors.textMuted} />
             <Text style={{ ...text.muted, fontSize: 12 }}>{fmtTime(item.created_at)}</Text>
           </View>
@@ -200,7 +200,7 @@ export default function JobChat() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifybody: "center" }}>
         <ActivityIndicator color={colors.accent} />
         <Text style={{ marginTop: 10, ...text.muted }}>Opening chat…</Text>
       </View>
@@ -236,7 +236,7 @@ export default function JobChat() {
           <Text style={{ color: "#fff", fontWeight: "900" }}>Back</Text>
         </Pressable>
 
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 }}>
+        <View style={{ flexDirection: "row", alignItems: "center", justifybody: "space-between", marginTop: 10 }}>
           <View style={{ flex: 1 }}>
             <Text style={{ ...text.title, color: "#fff" }}>Chat</Text>
             <Text style={{ ...text.muted, color: "rgba(255,255,255,0.8)", marginTop: 4 }}>Fast updates with your customer.</Text>
@@ -279,7 +279,7 @@ export default function JobChat() {
                 borderWidth: 1,
                 borderColor: colors.accent + "33",
                 alignItems: "center",
-                justifyContent: "center",
+                justifybody: "center",
               }}
             >
               <Ionicons name="chatbubble-ellipses-outline" size={22} color={colors.accent} />
@@ -342,7 +342,7 @@ export default function JobChat() {
               height: 48,
               borderRadius: 16,
               alignItems: "center",
-              justifyContent: "center",
+              justifybody: "center",
               opacity: !canSend ? 0.55 : pressed ? 0.85 : 1,
               transform: [{ scale: pressed ? 0.98 : 1 }],
             })}

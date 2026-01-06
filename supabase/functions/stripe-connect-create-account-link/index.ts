@@ -20,6 +20,30 @@ serve(async (req) => {
   try {
     console.log("=== Stripe Connect Account Link Request ===");
 
+    // Check required environment variables
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+
+    console.log("Environment check:", {
+      hasSupabaseUrl: !!supabaseUrl,
+      hasServiceRoleKey: !!serviceRoleKey,
+      serviceRoleKeyPrefix: serviceRoleKey?.substring(0, 10),
+      serviceRoleKeyPrefix: serviceRoleKey?.substring(0, 10),
+      hasStripeKey: !!stripeKey,
+    });
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      console.error("Missing required environment variables");
+      return new Response(JSON.stringify({
+        error: "Server configuration error",
+        details: "Missing Supabase credentials"
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const authHeader = req.headers.get("Authorization");
     console.log("Auth header present:", !!authHeader);
 
@@ -36,10 +60,12 @@ serve(async (req) => {
     console.log("Token extracted, length:", token.length);
 
     // Create Supabase client with service role for admin operations
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    );
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     // Verify the user's JWT token
     console.log("Verifying user token...");
@@ -62,27 +88,31 @@ serve(async (req) => {
 
     console.log("User authenticated:", user.id);
 
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("id, full_name, email")
-      .eq("id", user.id)
-      .single();
+    // Use RPC function to bypass RLS
+    const { data: profileData, error: profileError } = await supabaseAdmin
+      .rpc("get_profile_for_stripe", { p_user_id: user.id });
 
-    if (!profile) {
-      console.error("Profile not found for user:", user.id);
+    const profile = profileData?.[0];
+    console.log("Profile query result:", { profile: !!profile, error: profileError?.message });
+
+    if (profileError || !profile) {
+      console.error("Profile not found for user:", user.id, "Error:", profileError?.message);
       return new Response(JSON.stringify({
-        error: "Profile not found"
+        error: "Profile not found",
+        details: profileError?.message || "No profile record exists"
       }), {
         status: 404,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const { data: existingAccount } = await supabaseAdmin
+    const { data: existingAccount, error: existingError } = await supabaseAdmin
       .from("mechanic_stripe_accounts")
-      .select("stripe_account_id, status")
+      .select("stripe_account_id")
       .eq("mechanic_id", user.id)
       .maybeSingle();
+
+    console.log("Existing account query:", { data: existingAccount, error: existingError?.message });
 
     let stripeAccountId = existingAccount?.stripe_account_id;
 
@@ -105,22 +135,47 @@ serve(async (req) => {
       stripeAccountId = account.id;
       console.log("Created Stripe account:", stripeAccountId);
 
-      await supabaseAdmin.from("mechanic_stripe_accounts").insert({
+      console.log("Inserting into mechanic_stripe_accounts...");
+      const { data: insertData, error: insertError } = await supabaseAdmin.from("mechanic_stripe_accounts").insert({
         mechanic_id: user.id,
         stripe_account_id: stripeAccountId,
-        status: "pending",
+        onboarding_complete: false,
         charges_enabled: false,
         payouts_enabled: false,
-        details_submitted: false,
-      });
+      }).select();
+
+      console.log("Insert result:", { data: insertData, error: insertError?.message, code: insertError?.code });
+
+      if (insertError) {
+        console.error("Error inserting mechanic_stripe_accounts:", JSON.stringify(insertError));
+        throw new Error(`Failed to save Stripe account: ${insertError.message}`);
+      }
+
+      // Also update mechanic_profiles with the stripe_account_id
+      const { error: updateError } = await supabaseAdmin.from("mechanic_profiles").update({
+        stripe_account_id: stripeAccountId,
+        updated_at: new Date().toISOString(),
+      }).eq("id", user.id);
+
+      if (updateError) {
+        console.error("Error updating mechanic_profiles:", updateError);
+      }
     } else {
       console.log("Using existing Stripe account:", stripeAccountId);
+      // Ensure mechanic_profiles has the stripe_account_id (in case it was missed before)
+      const { error: updateError } = await supabaseAdmin.from("mechanic_profiles").update({
+        stripe_account_id: stripeAccountId,
+        updated_at: new Date().toISOString(),
+      }).eq("id", user.id);
+
+      if (updateError) {
+        console.error("Error updating mechanic_profiles:", updateError);
+      }
     }
 
     // Stripe requires HTTPS URLs, not deep links
     // We'll use a web redirect that then opens the app
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-    const returnUrl = `${supabaseUrl}/functions/v1/stipe-connect-return`;
+    const returnUrl = `${supabaseUrl}/functions/v1/stripe-connect-return`;
     const refreshUrl = `${supabaseUrl}/functions/v1/stripe-connect-refresh`;
 
     console.log("Return URL:", returnUrl);
@@ -144,16 +199,10 @@ serve(async (req) => {
     await supabaseAdmin
       .from("mechanic_stripe_accounts")
       .update({
-        status: accountData.details_submitted
-          ? accountData.charges_enabled && accountData.payouts_enabled
-            ? "active"
-            : "pending"
-          : "pending",
+        onboarding_complete: accountData.details_submitted || false,
         charges_enabled: accountData.charges_enabled || false,
         payouts_enabled: accountData.payouts_enabled || false,
-        details_submitted: accountData.details_submitted || false,
-        onboarding_url: accountLink.url,
-        onboarding_expires_at: expiresAt.toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq("mechanic_id", user.id);
 

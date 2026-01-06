@@ -50,19 +50,14 @@ export default function ChooseRole() {
         const user = await requireUser();
         if (!user) return;
 
-        // If profile already has role, skip.
-        // For brand-new users, profile might not exist yet; treat that as "needs role".
-        const { data: profile, error: pErr } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", user.id)
-          .maybeSingle();
+        // Use RPC to check role (bypasses RLS)
+        const { data: existingRole, error: roleErr } = await supabase.rpc("get_my_role");
 
-        if (pErr) {
-          console.log("choose-role: profile fetch error:", pErr.message);
+        if (roleErr) {
+          console.log("choose-role: get_my_role error:", roleErr.message);
         }
 
-        if (profile?.role) {
+        if (existingRole) {
           router.replace("/");
           return;
         }

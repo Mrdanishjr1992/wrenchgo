@@ -70,7 +70,6 @@ export function useMechanicLeads(
 
       const { data, error: rpcError } = await supabase.rpc('get_mechanic_leads', {
         p_mechanic_id: mechanicId,
-        p_filter: filter,
         p_mechanic_lat: mechanicLat,
         p_mechanic_lng: mechanicLng,
         p_radius_miles: radiusMiles,
@@ -137,7 +136,6 @@ export function useMechanicLeads(
       const [leadsResult, summaryResult] = await Promise.all([
         supabase.rpc('get_mechanic_leads', {
           p_mechanic_id: mechanicId,
-          p_filter: filter,
           p_mechanic_lat: mechanicLat,
           p_mechanic_lng: mechanicLng,
           p_radius_miles: radiusMiles,

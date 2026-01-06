@@ -211,9 +211,14 @@ export default function RequestService() {
             }
           }
 
-          // question_type in DB might be "single_choice" / "multi_choice" / "text"
+          // question_type in DB might be "single_choice" / "multi_choice" / "text" / "yes_no"
           const t = String(q.question_type ?? "").toLowerCase();
           const type: "choice" | "text" = t.includes("text") ? "text" : "choice";
+
+          // Handle yes_no questions
+          if (t === "yes_no" && (!opts || opts.length === 0)) {
+            opts = ["Yes", "No"];
+          }
 
           return {
             id: String(q.question_key),

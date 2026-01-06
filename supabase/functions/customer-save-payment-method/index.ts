@@ -1,10 +1,9 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@14.11.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
   apiVersion: "2023-10-16",
-  httpClient: Stripe.createFetchHttpClient(),
 });
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -48,14 +47,29 @@ serve(async (req) => {
       throw new Error("Missing required field: setupIntentId");
     }
 
-    const { data: profile, error: profileError } = await supabase
+    let { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id")
       .eq("id", user.id)
       .single();
 
+    // Create profile if it doesn't exist
     if (profileError || !profile) {
-      throw new Error("Profile not found");
+      const { data: newProfile, error: createError } = await supabase
+        .from("profiles")
+        .insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || "",
+          role: "customer",
+        })
+        .select("id")
+        .single();
+
+      if (createError || !newProfile) {
+        throw new Error("Profile not found and could not be created");
+      }
+      profile = newProfile;
     }
 
     const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);

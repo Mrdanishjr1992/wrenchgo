@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -61,6 +62,7 @@ export default function CustomerAccount() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [profile, setProfile] = useState<any>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -73,6 +75,8 @@ export default function CustomerAccount() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [settingUpPayment, setSettingUpPayment] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [jobStats, setJobStats] = useState({ active: 0, completed: 0 });
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -96,7 +100,8 @@ export default function CustomerAccount() {
           home_lng,
           city,
           state,
-          theme_preference
+          theme_preference,
+          created_at
         `)
         .eq("id", userId)
         .single();
@@ -118,6 +123,31 @@ export default function CustomerAccount() {
         .maybeSingle();
 
       setPaymentMethod(paymentData);
+
+      const { data: vehiclesData } = await supabase
+        .from("vehicles")
+        .select("id, year, make, model")
+        .eq("customer_id", userId)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false });
+
+      setVehicles(vehiclesData || []);
+
+      const { count: activeCount } = await supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("customer_id", userId)
+        .not("status", "in", '("completed","cancelled")')
+        .is("deleted_at", null);
+
+      const { count: completedCount } = await supabase
+        .from("jobs")
+        .select("*", { count: "exact", head: true })
+        .eq("customer_id", userId)
+        .eq("status", "completed")
+        .is("deleted_at", null);
+
+      setJobStats({ active: activeCount || 0, completed: completedCount || 0 });
 
       const { data: reviewsData } = await supabase
         .from("reviews")
@@ -148,6 +178,12 @@ export default function CustomerAccount() {
   }, [router]);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   const changePhoto = useCallback(async () => {
     try {
@@ -189,8 +225,9 @@ export default function CustomerAccount() {
       if (upd.error) throw upd.error;
 
       Alert.alert("Success", "Profile photo updated.");
-      load();
+      await load();
     } catch (e: any) {
+      console.error("Photo error:", e);
       Alert.alert("Photo error", e?.message ?? "Failed to update photo.");
     }
   }, [load, router]);
@@ -247,11 +284,15 @@ export default function CustomerAccount() {
       setHomeLat(lat);
       setHomeLng(lng);
 
+      let city = "";
+      let region = "";
       try {
         const [geocode] = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
         if (geocode) {
-          setHomeCity(geocode.city || "");
-          setHomeState(geocode.region || "");
+          city = geocode.city || "";
+          region = geocode.region || "";
+          setHomeCity(city);
+          setHomeState(region);
         }
       } catch (geoErr) {
         console.warn("Geocoding failed:", geoErr);
@@ -263,8 +304,8 @@ export default function CustomerAccount() {
           .update({
             home_lat: lat,
             home_lng: lng,
-            city: homeCity || null,
-            state: homeState || null,
+            city: city || null,
+            state: region || null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", profile.id);
@@ -280,7 +321,7 @@ export default function CustomerAccount() {
     } finally {
       setLoadingLocation(false);
     }
-  }, [profile, homeCity, homeState, load]);
+  }, [profile, load]);
 
   const setupPaymentMethod = useCallback(async () => {
     try {
@@ -402,8 +443,8 @@ export default function CustomerAccount() {
     ? { uri: profile.avatar_url }
     : require("../../../assets/profile.png");
 
-  const displayName = fullName && fullName.trim().length > 0 ? fullName : "Customer Account";
-  const subtitle = profile?.email ? profile.email : "Customer";
+  const displayName = fullName && fullName.trim().length > 0 ? fullName : "Customer";
+  const subtitle = profile?.email ? profile.email : "";
 
   const locationDisplay = useMemo(() => {
     if (homeCity && homeState) {
@@ -415,6 +456,16 @@ export default function CustomerAccount() {
     }
     return "Not set";
   }, [homeCity, homeState, homeLat, homeLng]);
+
+  const memberSince = useMemo(() => {
+    if (!profile?.created_at) return "";
+    return new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+  }, [profile?.created_at]);
+
+  const initials = useMemo(() => {
+    if (!displayName || displayName === "Customer") return "C";
+    return displayName.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  }, [displayName]);
 
   if (loading) {
     return (
@@ -438,6 +489,9 @@ export default function CustomerAccount() {
           paddingBottom: spacing.xl + insets.bottom,
           gap: spacing.md,
         }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        }
       >
         <LinearGradient
           colors={[colors.surface, colors.bg]}
@@ -481,16 +535,22 @@ export default function CustomerAccount() {
               <Pressable
                 onPress={changePhoto}
                 style={{
-                  width: 66,
-                  height: 66,
-                  borderRadius: 22,
+                  width: 72,
+                  height: 72,
+                  borderRadius: 24,
                   overflow: "hidden",
-                  borderWidth: 1,
-                  borderColor: colors.border,
+                  borderWidth: 2,
+                  borderColor: colors.accent + "40",
                   backgroundColor: colors.surface,
                 }}
               >
-                <Image source={avatarSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                {profile?.avatar_url ? (
+                  <Image key={profile.avatar_url} source={avatarSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
+                ) : (
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.accent + "20" }}>
+                    <Text style={{ fontSize: 24, fontWeight: "700", color: colors.accent }}>{initials}</Text>
+                  </View>
+                )}
                 <View
                   style={{
                     position: "absolute",
@@ -499,7 +559,7 @@ export default function CustomerAccount() {
                     right: 0,
                     backgroundColor: "rgba(0,0,0,0.6)",
                     alignItems: "center",
-                    paddingVertical: 2,
+                    paddingVertical: 3,
                   }}
                 >
                   <Ionicons name="camera" size={12} color="#fff" />
@@ -508,41 +568,54 @@ export default function CustomerAccount() {
 
               <View style={{ flex: 1 }}>
                 <Text style={{ ...text.title, fontSize: 20 }}>{displayName}</Text>
-                <Text style={{ ...text.muted, marginTop: 2 }}>{subtitle}</Text>
+                {subtitle ? <Text style={{ ...text.muted, marginTop: 2 }} numberOfLines={1}>{subtitle}</Text> : null}
 
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
                   <View
                     style={{
+                      flexDirection: "row",
+                      alignItems: "center",
                       paddingHorizontal: 10,
-                      paddingVertical: 6,
+                      paddingVertical: 5,
                       borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.bg,
+                      backgroundColor: colors.accent + "20",
+                      gap: 4,
                     }}
                   >
-                    <Text style={{ fontWeight: "900", color: colors.textPrimary, fontSize: 11 }}>
-                      CUSTOMER
-                    </Text>
+                    <Ionicons name="person" size={12} color={colors.accent} />
+                    <Text style={{ fontWeight: "800", color: colors.accent, fontSize: 11 }}>CUSTOMER</Text>
                   </View>
-
-                  <View
-                    style={{
-                      paddingHorizontal: 10,
-                      paddingVertical: 6,
-                      borderRadius: 999,
-                      borderWidth: 1,
-                      borderColor: `${colors.accent}55`,
-                      backgroundColor: `${colors.accent}18`,
-                    }}
-                  >
-                    <Text style={{ fontWeight: "900", color: colors.accent, fontSize: 11 }}>
-                      {isDark ? "DARK" : "LIGHT"}
-                    </Text>
-                  </View>
+                  {memberSince && (
+                    <Text style={{ ...text.muted, fontSize: 12 }}>Since {memberSince}</Text>
+                  )}
                 </View>
               </View>
             </View>
+
+            {(jobStats.active > 0 || jobStats.completed > 0) && (
+              <View style={{
+                flexDirection: "row",
+                gap: spacing.md,
+                paddingTop: spacing.sm,
+                borderTopWidth: 1,
+                borderTopColor: colors.border + "40",
+              }}>
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.accent }}>{jobStats.active}</Text>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Active Jobs</Text>
+                </View>
+                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: "#10b981" }}>{jobStats.completed}</Text>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
+                </View>
+                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ alignItems: "center", flex: 1 }}>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textPrimary }}>{vehicles.length}</Text>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Vehicles</Text>
+                </View>
+              </View>
+            )}
 
             <Pressable
               onPress={() => editing ? handleCancelEditing() : setEditing(true)}
@@ -552,7 +625,7 @@ export default function CustomerAccount() {
                   paddingHorizontal: 16,
                   borderRadius: radius.md,
                   borderWidth: 1,
-                  borderColor: colors.border,
+                  borderColor: editing ? colors.accent : colors.border,
                   backgroundColor: editing ? colors.accent : colors.surface,
                   opacity: pressed ? 0.9 : 1,
                   flexDirection: "row",
@@ -567,7 +640,7 @@ export default function CustomerAccount() {
                 size={18}
                 color={editing ? colors.black : colors.textPrimary}
               />
-              <Text style={{ fontWeight: "900", color: editing ? colors.black  : colors.textPrimary }}>
+              <Text style={{ fontWeight: "800", color: editing ? colors.black : colors.textPrimary }}>
                 {editing ? "CANCEL EDITING" : "EDIT PROFILE"}
               </Text>
             </Pressable>
@@ -577,54 +650,145 @@ export default function CustomerAccount() {
         {!editing && (
           <>
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Contact Information</Text>
-              <View style={{ gap: spacing.xs }}>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={text.muted}>Email</Text>
-                  <Text style={{ ...text.body, fontWeight: "700" }}>{profile?.email || "Not set"}</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="person-outline" size={16} color={colors.accent} />
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={text.muted}>Phone</Text>
-                  <Text style={{ ...text.body, fontWeight: "700" }}>{phone || "Not set"}</Text>
+                <Text style={text.section}>Contact Information</Text>
+              </View>
+              <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="mail-outline" size={16} color={colors.textMuted} />
+                    <Text style={text.muted}>Email</Text>
+                  </View>
+                  <Text style={{ ...text.body, fontWeight: "600" }}>{profile?.email || "Not set"}</Text>
                 </View>
-                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                  <Text style={text.muted}>Home Location</Text>
-                  <Text style={{ ...text.body, fontWeight: "700" }}>{locationDisplay}</Text>
+                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="call-outline" size={16} color={colors.textMuted} />
+                    <Text style={text.muted}>Phone</Text>
+                  </View>
+                  <Text style={{ ...text.body, fontWeight: "600", color: phone ? colors.textPrimary : colors.textMuted }}>
+                    {phone || "Not set"}
+                  </Text>
+                </View>
+                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <Ionicons name="location-outline" size={16} color={colors.textMuted} />
+                    <Text style={text.muted}>Location</Text>
+                  </View>
+                  <Text style={{ ...text.body, fontWeight: "600", color: locationDisplay !== "Not set" ? colors.textPrimary : colors.textMuted }}>
+                    {locationDisplay}
+                  </Text>
                 </View>
               </View>
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Appearance</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#3b82f6" + "20", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="car-sport-outline" size={16} color="#3b82f6" />
+                  </View>
+                  <Text style={text.section}>My Vehicles</Text>
+                </View>
+                {vehicles.length > 0 && (
+                  <Pressable
+                    onPress={() => router.push("/(customer)/garage/new")}
+                    style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
+                    <Text style={{ fontWeight: "700", color: colors.accent, fontSize: 13 }}>Add</Text>
+                  </Pressable>
+                )}
+              </View>
+              {vehicles.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+                  <Ionicons name="car-outline" size={40} color={colors.textMuted} />
+                  <Text style={{ ...text.body, fontWeight: "600", marginTop: spacing.sm }}>No vehicles added</Text>
+                  <Text style={{ ...text.muted, fontSize: 13, textAlign: "center", marginTop: 4 }}>
+                    Add your vehicles for faster service requests
+                  </Text>
+                  <Pressable
+                    onPress={() => router.push("/(customer)/garage/new")}
+                    style={({ pressed }) => ({
+                      marginTop: spacing.md,
+                      paddingVertical: 10,
+                      paddingHorizontal: 20,
+                      borderRadius: radius.md,
+                      backgroundColor: colors.accent,
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <Text style={{ fontWeight: "700", color: colors.black }}>Add Vehicle</Text>
+                  </Pressable>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.xs, marginTop: spacing.xs }}>
+                  {vehicles.slice(0, 3).map((vehicle, index) => (
+                    <Pressable
+                      key={vehicle.id}
+                      onPress={() => router.push(`/(customer)/garage/${vehicle.id}`)}
+                      style={({ pressed }) => ({
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 12,
+                        paddingVertical: 10,
+                        borderTopWidth: index > 0 ? 1 : 0,
+                        borderTopColor: colors.border + "40",
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
+                        <Ionicons name="car-sport" size={20} color={colors.accent} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ ...text.body, fontWeight: "700" }}>
+                          {[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(" ") || "Unknown Vehicle"}
+                        </Text>
+                        {vehicle.make && <Text style={{ ...text.muted, fontSize: 12 }}>{vehicle.make}</Text>}
+                      </View>
+                      <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+                    </Pressable>
+                  ))}
+                  {vehicles.length > 3 && (
+                    <Pressable
+                      onPress={() => router.push("/(customer)/garage")}
+                      style={{ alignItems: "center", paddingVertical: 8 }}
+                    >
+                      <Text style={{ fontWeight: "600", color: colors.accent, fontSize: 13 }}>
+                        View all {vehicles.length} vehicles
+                      </Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            </View>
+
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#8b5cf6" + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color="#8b5cf6" />
+                </View>
+                <Text style={text.section}>Appearance</Text>
+              </View>
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
                   paddingVertical: spacing.xs,
+                  marginTop: spacing.xs,
                 }}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                  <View
-                    style={{
-                      width: 42,
-                      height: 42,
-                      borderRadius: 14,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      backgroundColor: colors.surface,
-                    }}
-                  >
-                    <Ionicons name={isDark ? "moon" : "sunny"} size={18} color={colors.textPrimary} />
-                  </View>
-                  <View>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>Dark mode</Text>
-                    <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>
-                      Currently: {mode.toUpperCase()}
-                    </Text>
-                  </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...text.body, fontWeight: "700" }}>Dark mode</Text>
+                  <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>
+                    Currently: {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                  </Text>
                 </View>
                 <Switch
                   value={isDark}
@@ -635,7 +799,12 @@ export default function CustomerAccount() {
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Payment Method</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.xs }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#10b981" + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="card-outline" size={16} color="#10b981" />
+                </View>
+                <Text style={text.section}>Payment Method</Text>
+              </View>
               {paymentMethod?.stripe_payment_method_id ? (
                 <View style={{ gap: spacing.sm }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
@@ -646,9 +815,9 @@ export default function CustomerAccount() {
                         borderRadius: radius.md,
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: colors.accent + "20",
+                        backgroundColor: colors.surface,
                         borderWidth: 1,
-                        borderColor: colors.accent + "30",
+                        borderColor: colors.border,
                       }}
                     >
                       <Ionicons name="card" size={22} color={colors.accent} />
@@ -661,79 +830,87 @@ export default function CustomerAccount() {
                         Expires {paymentMethod.card_exp_month}/{paymentMethod.card_exp_year}
                       </Text>
                     </View>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "#10b981" + "20", borderRadius: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#10b981" }}>DEFAULT</Text>
+                    </View>
                   </View>
                   <Pressable
                     onPress={setupPaymentMethod}
                     disabled={settingUpPayment}
-                    style={({ pressed }) => [
-                      {
-                        paddingVertical: 10,
-                        paddingHorizontal: 14,
-                        borderRadius: radius.md,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surface,
-                        opacity: pressed || settingUpPayment ? 0.7 : 1,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 8,
-                      },
-                    ]}
+                    style={({ pressed }) => ({
+                      paddingVertical: 10,
+                      paddingHorizontal: 14,
+                      borderRadius: radius.md,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                      opacity: pressed || settingUpPayment ? 0.7 : 1,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    })}
                   >
                     {settingUpPayment ? (
                       <ActivityIndicator color={colors.textPrimary} size="small" />
                     ) : (
                       <>
-                        <Ionicons name="create-outline" size={16} color={colors.textPrimary} />
+                        <Ionicons name="swap-horizontal-outline" size={16} color={colors.textPrimary} />
                         <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
-                          Update Payment Method
+                          Change Card
                         </Text>
                       </>
                     )}
                   </Pressable>
                 </View>
               ) : (
-                <Pressable
-                  onPress={setupPaymentMethod}
-                  disabled={settingUpPayment}
-                  style={({ pressed }) => [
-                    {
-                      paddingVertical: 14,
-                      paddingHorizontal: 16,
+                <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+                  <Ionicons name="card-outline" size={36} color={colors.textMuted} />
+                  <Text style={{ ...text.body, fontWeight: "600", marginTop: spacing.sm }}>No payment method</Text>
+                  <Text style={{ ...text.muted, fontSize: 13, textAlign: "center", marginTop: 4 }}>
+                    Add a card for quick checkout
+                  </Text>
+                  <Pressable
+                    onPress={setupPaymentMethod}
+                    disabled={settingUpPayment}
+                    style={({ pressed }) => ({
+                      marginTop: spacing.md,
+                      paddingVertical: 12,
+                      paddingHorizontal: 20,
                       borderRadius: radius.md,
-                      borderWidth: 1,
-                      borderColor: colors.accent,
-                      backgroundColor: colors.accent + "10",
-                      opacity: pressed || settingUpPayment ? 0.7 : 1,
+                      backgroundColor: colors.accent,
+                      opacity: pressed || settingUpPayment ? 0.8 : 1,
                       flexDirection: "row",
                       alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                    },
-                  ]}
-                >
-                  {settingUpPayment ? (
-                    <ActivityIndicator color={colors.accent} size="small" />
-                  ) : (
-                    <>
-                      <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
-                      <Text style={{ fontWeight: "800", color: colors.accent }}>
-                        ADD PAYMENT METHOD
-                      </Text>
-                    </>
-                  )}
-                </Pressable>
+                      gap: 6,
+                    })}
+                  >
+                    {settingUpPayment ? (
+                      <ActivityIndicator color={colors.black} size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="add" size={18} color={colors.black} />
+                        <Text style={{ fontWeight: "700", color: colors.black }}>Add Card</Text>
+                      </>
+                    )}
+                  </Pressable>
+                </View>
               )}
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <Text style={text.section}>Home Location</Text>
-              <Text style={{ ...text.muted, fontSize: 13, marginBottom: spacing.xs }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="location-outline" size={16} color="#f59e0b" />
+                </View>
+                <Text style={text.section}>Home Location</Text>
+              </View>
+              <Text style={{ ...text.muted, fontSize: 13 }}>
                 Set your home location for faster service requests
               </Text>
               {homeLat && homeLng && (
-                <View style={{ marginBottom: spacing.xs }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
                   <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
                     {locationDisplay}
                   </Text>
@@ -742,29 +919,28 @@ export default function CustomerAccount() {
               <Pressable
                 onPress={fetchCurrentLocation}
                 disabled={loadingLocation}
-                style={({ pressed }) => [
-                  {
-                    paddingVertical: 14,
-                    paddingHorizontal: 16,
-                    borderRadius: radius.md,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                    opacity: pressed || loadingLocation ? 0.7 : 1,
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 8,
-                  },
-                ]}
+                style={({ pressed }) => ({
+                  marginTop: spacing.xs,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  opacity: pressed || loadingLocation ? 0.7 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                })}
               >
                 {loadingLocation ? (
                   <ActivityIndicator color={colors.accent} size="small" />
                 ) : (
                   <>
-                    <Ionicons name="location" size={18} color={colors.accent} />
+                    <Ionicons name="navigate" size={18} color={colors.accent} />
                     <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
-                      Use Current Location
+                      {homeLat && homeLng ? "Update Location" : "Use Current Location"}
                     </Text>
                   </>
                 )}

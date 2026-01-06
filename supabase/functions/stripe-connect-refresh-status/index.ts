@@ -18,8 +18,12 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+    // Client for auth verification
     const supabaseClient = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
+      supabaseUrl,
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
       {
         global: {
@@ -27,6 +31,14 @@ serve(async (req) => {
         },
       }
     );
+
+    // Admin client for database updates (bypasses RLS)
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false,
+      },
+    });
 
     const {
       data: { user },
@@ -40,8 +52,8 @@ serve(async (req) => {
       });
     }
 
-    const { data: payoutAccount } = await supabaseClient
-      .from("mechanic_payout_accounts")
+    const { data: payoutAccount } = await supabaseAdmin
+      .from("mechanic_stripe_accounts")
       .select("stripe_account_id")
       .eq("mechanic_id", user.id)
       .maybeSingle();
@@ -58,33 +70,50 @@ serve(async (req) => {
 
     const account = await stripe.accounts.retrieve(payoutAccount.stripe_account_id);
 
-    const onboardingStatus = account.details_submitted
-      ? "complete"
-      : account.requirements?.disabled_reason
-      ? "restricted"
-      : account.requirements?.currently_due && account.requirements.currently_due.length > 0
-      ? "pending"
-      : "incomplete";
+    console.log("Stripe account status:", {
+      id: account.id,
+      details_submitted: account.details_submitted,
+      charges_enabled: account.charges_enabled,
+      payouts_enabled: account.payouts_enabled,
+    });
 
-    await supabaseClient
-      .from("mechanic_payout_accounts")
+    // Update mechanic_stripe_accounts
+    const { error: stripeAccountError } = await supabaseAdmin
+      .from("mechanic_stripe_accounts")
       .update({
-        onboarding_status: onboardingStatus,
+        onboarding_complete: account.details_submitted || false,
         charges_enabled: account.charges_enabled || false,
         payouts_enabled: account.payouts_enabled || false,
-        requirements_due: account.requirements?.currently_due || [],
         updated_at: new Date().toISOString(),
       })
       .eq("mechanic_id", user.id);
 
+    if (stripeAccountError) {
+      console.error("Error updating mechanic_stripe_accounts:", stripeAccountError);
+    }
+
+    // Update mechanic_profiles
+    const { error: profileError } = await supabaseAdmin
+      .from("mechanic_profiles")
+      .update({
+        stripe_account_id: payoutAccount.stripe_account_id,
+        stripe_onboarding_complete: account.details_submitted || false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (profileError) {
+      console.error("Error updating mechanic_profiles:", profileError);
+    }
+
+    console.log("Updated mechanic profile for user:", user.id);
+
     return new Response(
       JSON.stringify({
         stripeAccountId: account.id,
-        onboardingStatus,
+        onboardingComplete: account.details_submitted,
         chargesEnabled: account.charges_enabled,
         payoutsEnabled: account.payouts_enabled,
-        requirementsDue: account.requirements?.currently_due || [],
-        detailsSubmitted: account.details_submitted,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -13,7 +13,7 @@ type Message = {
   job_id: string;
   sender_id: string;
   recipient_id: string;
-  content: string;
+  body: string;
   created_at: string;
 };
 
@@ -107,7 +107,7 @@ export default function JobMessages() {
 
       const { data: job } = await supabase
         .from("jobs")
-        .select("customer_id, mechanic_id")
+        .select("customer_id, accepted_mechanic_id")
         .eq("id", jobId)
         .maybeSingle();
 
@@ -116,7 +116,7 @@ export default function JobMessages() {
         return;
       }
 
-      const recipientId = job.customer_id === userId ? job.mechanic_id : job.customer_id;
+      const recipientId = job.customer_id === userId ? job.accepted_mechanic_id : job.customer_id;
 
       if (!recipientId) {
         Alert.alert("Error", "No recipient found for this job.");
@@ -127,7 +127,7 @@ export default function JobMessages() {
         job_id: jobId,
         sender_id: userId,
         recipient_id: recipientId,
-        content: newMessage.trim(),
+        body: newMessage.trim(),
       });
 
       if (error) {
@@ -147,7 +147,7 @@ export default function JobMessages() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifybody: "center" }}>
         <ActivityIndicator color={colors.accent} />
       </View>
     );
@@ -193,7 +193,7 @@ export default function JobMessages() {
                       },
                     ]}
                   >
-                    <Text style={text.body}>{msg.content}</Text>
+                    <Text style={text.body}>{msg.body}</Text>
                     <Text style={[text.muted, { fontSize: 12, marginTop: spacing.xs }]}>
                       {new Date(msg.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                     </Text>

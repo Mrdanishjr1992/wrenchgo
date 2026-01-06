@@ -1,10 +1,9 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
+import { serve } from "https://deno.land/std@0.208.0/http/server.ts";
+import Stripe from "https://esm.sh/stripe@14.11.0?target=deno&no-check";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
   apiVersion: "2023-10-16",
-  httpClient: Stripe.createFetchHttpClient(),
 });
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -68,7 +67,7 @@ serve(async (req) => {
 
     console.log("User authenticated:", user.id);
 
-    const { data: profile, error: profileError } = await supabase
+    let { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, email")
       .eq("id", user.id)
@@ -76,15 +75,31 @@ serve(async (req) => {
 
     console.log("Profile result:", { profile: !!profile, error: profileError?.message });
 
+    // Create profile if it doesn't exist
     if (profileError || !profile) {
-      console.error("Profile not found for user:", user.id);
-      return new Response(JSON.stringify({
-        error: "Profile not found",
-        details: profileError?.message
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.log("Creating profile for user:", user.id);
+      const { data: newProfile, error: createError } = await supabase
+        .from("profiles")
+        .insert({
+          id: user.id,
+          email: user.email,
+          full_name: user.user_metadata?.full_name || "",
+          role: "customer",
+        })
+        .select("id, full_name, email")
+        .single();
+
+      if (createError || !newProfile) {
+        console.error("Failed to create profile:", createError?.message);
+        return new Response(JSON.stringify({
+          error: "Profile not found",
+          details: createError?.message || profileError?.message
+        }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      profile = newProfile;
     }
 
     console.log("Profile found:", profile.id);
