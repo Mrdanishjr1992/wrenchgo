@@ -437,42 +437,8 @@ export default function CustomerJobDetails() {
 
 
 
-                const { data: accepted, error: qAccErr } = await supabase
-                  .from("quotes")
-                  .update({ status: "accepted", updated_at: new Date().toISOString() })
-                  .eq("id", quoteId)
-                  .select("id,mechanic_id,job_id")
-                  .single();
-                if (qAccErr) throw qAccErr;
-
-                // Update job FIRST (critical)
-                const { error: jErr } = await supabase
-                  .from("jobs")
-                  .update({
-                    accepted_mechanic_id: accepted.mechanic_id,
-                    status: "accepted",
-                    updated_at: new Date().toISOString(),
-                  })
-                  .eq("id", id);
-                if (jErr) throw jErr;
-
-                // Decline other quotes (non-critical)
-                await supabase
-                  .from("quotes")
-                  .update({ status: "declined", updated_at: new Date().toISOString() })
-                  .eq("job_id", id)
-                  .neq("id", quoteId);
-
-                // Send notification (non-critical, don't block on failure)
-                notifyUser({
-                  userId: accepted.mechanic_id,
-                  title: "Quote accepted 🎉",
-                  body: "Your quote was accepted. Waiting for customer payment.",
-                  type: "quote_accepted",
-                  entityType: "job",
-                  entityId: id as any,
-                }).catch(() => {});
-
+                // Don't update quote status here - let the payment flow handle it via RPC
+                // Just navigate to payment screen
                 router.push(`/(customer)/payment/${id}?quoteId=${quoteId}` as any);
               } catch (e: any) {
                 Alert.alert("Accept error", e?.message ?? "Failed to accept quote.");
@@ -1109,6 +1075,29 @@ export default function CustomerJobDetails() {
         {/* Assigned mechanic */}
         {job.accepted_mechanic_id && acceptedQuote ? (
           <>
+            {/* Payment Pending - show when accepted but no contract */}
+            {!contract && (
+              <SectionCard title="Payment Required" icon="card-outline">
+                <Text style={{ color: colors.textSecondary, marginBottom: spacing.md }}>
+                  Your quote has been accepted. Please complete payment so your mechanic can begin work.
+                </Text>
+                <Pressable
+                  onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${acceptedQuote.id}` as any)}
+                  style={({ pressed }) => [
+                    {
+                      paddingVertical: 14,
+                      backgroundColor: colors.primary,
+                      borderRadius: 14,
+                      alignItems: "center",
+                    },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={{ fontWeight: "900", color: "#fff" }}>Complete Payment</Text>
+                </Pressable>
+              </SectionCard>
+            )}
+
             {/* Progress Tracker */}
             {contract && (
               <SectionCard title="Job Progress" icon="trending-up-outline">
