@@ -5,17 +5,15 @@ import {
   FlatList,
   ActivityIndicator,
   Pressable,
-  Image,
   Alert,
   RefreshControl,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../../../src/lib/supabase";
 import { createCard, cardPressed } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
-
+import { Ionicons } from "@expo/vector-icons";
 
 type Job = {
   id: string;
@@ -23,31 +21,7 @@ type Job = {
   status: string;
   preferred_time: string | null;
   created_at: string;
-};
-
-const statusLabel = (status: string) => {
-  const s = (status || "").toLowerCase();
-  if (s === "accepted") return "Assigned";
-  if (s === "work_in_progress") return "In progress";
-  if (s === "completed") return "Completed";
-  return (status || "unknown").toUpperCase();
-};
-
-const statusHint = (status: string) => {
-  const s = (status || "").toLowerCase();
-  if (s === "accepted") return "Ready to start — open the job for details.";
-  if (s === "work_in_progress") return "Keep the customer updated as you work.";
-  if (s === "completed") return "Job is done — review notes & wrap-up.";
-  return "Tap to open job details.";
-};
-
-const fmtShort = (iso: string) => {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
+  customer_name: string | null;
 };
 
 export default function MechanicJobs() {
@@ -58,22 +32,48 @@ export default function MechanicJobs() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [err, setErr] = useState<string | null>(null);
 
-  const statusColor = useCallback((status: string) => {
+  const statusColor = useCallback(
+    (status: string) => {
+      const s = (status || "").toLowerCase();
+      if (s === "accepted" || s === "work_in_progress") return colors.accent;
+      if (s === "completed") return "#10b981";
+      if (s === "canceled") return "#EF4444";
+      return colors.textMuted;
+    },
+    [colors]
+  );
+
+  const statusLabel = (status: string) => {
     const s = (status || "").toLowerCase();
-    if (s === "accepted") return colors.accent;
-    if (s === "work_in_progress") return colors.accent;
-    if (s === "completed") return "#10b981";
-    return colors.textMuted;
-  }, [colors]);
+    if (s === "accepted") return "ASSIGNED";
+    if (s === "work_in_progress") return "IN PROGRESS";
+    if (s === "completed") return "COMPLETED";
+    return (status || "unknown").toUpperCase();
+  };
+
+  const statusHint = (status: string) => {
+    const s = (status || "").toLowerCase();
+    if (s === "accepted") return "Ready to start";
+    if (s === "work_in_progress") return "Work in progress";
+    if (s === "completed") return "Job completed";
+    if (s === "canceled") return "Canceled";
+    return "Tap to view";
+  };
+
+  const fmtShort = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
 
   const StatusPill = ({ status }: { status: string }) => {
     const c = statusColor(status);
     return (
       <View
         style={{
-          alignSelf: "flex-start",
           paddingHorizontal: 10,
           paddingVertical: 5,
           borderRadius: 999,
@@ -82,22 +82,13 @@ export default function MechanicJobs() {
           borderColor: `${c}55`,
         }}
       >
-        <Text style={{ fontSize: 11, fontWeight: "900", color: c }}>
-          {statusLabel(status)}
-        </Text>
+        <Text style={{ fontSize: 11, fontWeight: "900", color: c }}>{statusLabel(status)}</Text>
       </View>
     );
   };
 
   const SectionHeader = ({ title, count }: { title: string; count: number }) => (
-    <View
-      style={{
-        marginTop: spacing.lg,
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 10,
-      }}
-    >
+    <View style={{ marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: 10 }}>
       <Text style={text.section}>{title}</Text>
       <View
         style={{
@@ -109,18 +100,14 @@ export default function MechanicJobs() {
           borderColor: colors.border,
         }}
       >
-        <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>
-          {count}
-        </Text>
+        <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>{count}</Text>
       </View>
     </View>
   );
 
   const load = useCallback(async () => {
     try {
-      setErr(null);
       setLoading(true);
-
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
 
@@ -132,17 +119,41 @@ export default function MechanicJobs() {
 
       const { data, error } = await supabase
         .from("jobs")
-        .select("id,title,status,preferred_time,created_at")
+        .select("id,title,status,preferred_time,created_at,customer_id")
         .eq("accepted_mechanic_id", mechanicId)
         .in("status", ["accepted", "work_in_progress", "completed"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setJobs((data as Job[]) ?? []);
+
+      const jobsData = (data ?? []) as any[];
+      const customerIds = Array.from(new Set(jobsData.map((j) => j.customer_id).filter(Boolean)));
+
+      let nameById = new Map<string, string>();
+      if (customerIds.length > 0) {
+        const { data: profRows } = await supabase
+          .from("profiles")
+          .select("id,full_name")
+          .in("id", customerIds);
+
+        ((profRows ?? []) as any[]).forEach((p) => {
+          if (p.id) nameById.set(p.id, p.full_name?.trim() || "Customer");
+        });
+      }
+
+      setJobs(
+        jobsData.map((j) => ({
+          id: j.id,
+          title: j.title || "Job",
+          status: j.status,
+          preferred_time: j.preferred_time,
+          created_at: j.created_at,
+          customer_name: nameById.get(j.customer_id) || null,
+        }))
+      );
     } catch (e: any) {
-      setErr(e?.message ?? "Failed to load jobs.");
+      Alert.alert("Error", e?.message ?? "Failed to load jobs.");
       setJobs([]);
-      Alert.alert("Jobs error", e?.message ?? "Failed to load jobs.");
     } finally {
       setLoading(false);
     }
@@ -151,6 +162,22 @@ export default function MechanicJobs() {
   useFocusEffect(
     useCallback(() => {
       load();
+      let channel: any;
+
+      (async () => {
+        const { data: userData } = await supabase.auth.getUser();
+        const mechanicId = userData.user?.id;
+        if (!mechanicId) return;
+
+        channel = supabase
+          .channel("mechanic-jobs-" + mechanicId)
+          .on("postgres_changes", { event: "*", schema: "public", table: "jobs", filter: `accepted_mechanic_id=eq.${mechanicId}` }, () => load())
+          .subscribe();
+      })();
+
+      return () => {
+        if (channel) supabase.removeChannel(channel);
+      };
     }, [load])
   );
 
@@ -160,15 +187,12 @@ export default function MechanicJobs() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try {
-      await load();
-    } finally {
-      setRefreshing(false);
-    }
+    await load();
+    setRefreshing(false);
   }, [load]);
 
   const active = useMemo(
-    () => jobs.filter((j) => (j.status || "").toLowerCase() !== "completed"),
+    () => jobs.filter((j) => ["accepted", "work_in_progress"].includes((j.status || "").toLowerCase())),
     [jobs]
   );
   const completed = useMemo(
@@ -181,7 +205,7 @@ export default function MechanicJobs() {
 
     return (
       <Pressable
-        onPress={() => router.push(`/(mechanic)/job/${item.id}` as any)}
+        onPress={() => router.push(`/(mechanic)/job-details/${item.id}` as any)}
         style={({ pressed }) => [
           card,
           pressed && cardPressed,
@@ -190,19 +214,15 @@ export default function MechanicJobs() {
             borderRadius: radius.lg,
             gap: spacing.sm,
             borderWidth: 1,
-            borderColor: pressed ? `${c}66` : colors.border,
+            borderColor: pressed ? colors.accent : colors.border,
             backgroundColor: colors.surface,
           },
         ]}
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={text.section} numberOfLines={1}>
-              {item.title || "Job"}
-            </Text>
-            <Text style={{ ...text.muted, marginTop: 4 }} numberOfLines={1}>
-              {statusHint(item.status)}
-            </Text>
+            <Text style={text.section} numberOfLines={1}>{item.title || "Job"}</Text>
+            <Text style={{ ...text.muted, marginTop: 4 }} numberOfLines={1}>{statusHint(item.status)}</Text>
           </View>
           <View style={{ alignItems: "flex-end", gap: 8 }}>
             <Text style={text.muted}>{fmtShort(item.created_at)}</Text>
@@ -210,17 +230,20 @@ export default function MechanicJobs() {
           </View>
         </View>
 
-        <View
-          style={{
-            height: 1,
-            backgroundColor: colors.border,
-            opacity: 0.7,
-            marginTop: 2,
-          }}
-        />
+        {item.customer_name && (
+          <View style={{ backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
+              👤 {item.customer_name}
+            </Text>
+          </View>
+        )}
+
+        <View style={{ height: 1, backgroundColor: colors.border, opacity: 0.5 }} />
 
         <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={text.body}>Preferred: {item.preferred_time ?? "—"}</Text>
+          <Text style={text.body}>
+            {item.preferred_time ? `Preferred: ${item.preferred_time}` : "No time preference"}
+          </Text>
           <Text style={{ color: colors.accent, fontWeight: "900" }}>Open →</Text>
         </View>
       </Pressable>
@@ -244,165 +267,46 @@ export default function MechanicJobs() {
         data={jobs.length === 0 ? [] : [{ key: "sections" } as any]}
         keyExtractor={(i: any) => i.key}
         ListHeaderComponent={
-          <View>
-            <LinearGradient
-              colors={[colors.accent + "33", colors.accent + "11", colors.bg]}
-              style={{
-                paddingTop: spacing.xl,
-                paddingBottom: spacing.lg,
-                paddingHorizontal: spacing.md,
-                position: "relative",
-                overflow: "hidden",
-              }}
-            >
-              <View
-                style={{
-                  position: "absolute",
-                  top: -40,
-                  right: -40,
-                  width: 180,
-                  height: 180,
-                  borderRadius: 90,
-                  backgroundColor: colors.accent + "22",
-                }}
-              />
-              <View
-                style={{
-                  position: "absolute",
-                  bottom: -60,
-                  left: -60,
-                  width: 200,
-                  height: 200,
-                  borderRadius: 100,
-                  backgroundColor: colors.accent + "15",
-                }}
-              />
+          <View style={{ padding: spacing.md, paddingTop: spacing.xl }}>
+            <Text style={text.title}>My Jobs</Text>
+            <Text style={{ ...text.muted, marginTop: 4 }}>Jobs assigned to you</Text>
 
-              <View style={{ alignItems: "center", zIndex: 1 }}>
-                <View
-                  style={{
-                    width: 120,
-                    height: 120,
-                    borderRadius: radius.lg,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    backgroundColor: colors.surface,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "hidden",
-                  }}
-                >
-                  <Image
-                    source={require("../../../assets/working.png")}
-                    style={{ width: "100%", height: "100%" }}
-                    resizeMode="contain"
-                  />
-                </View>
+            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.accent + "40" }}>
+                <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
+                <Text style={{ ...text.title, fontSize: 22, color: colors.accent }}>{active.length}</Text>
               </View>
-
-              <Text style={[text.title, { marginTop: spacing.md, textAlign: "center" }]}>My Jobs</Text>
-              <Text style={{ marginTop: 6, ...text.muted, textAlign: "center" }}>
-                Your accepted quotes and active work, all in one place.
-              </Text>
-
-              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.lg }}>
-                <View
-                  style={{
-                    flex: 1,
-                    backgroundColor: colors.surface + "dd",
-                    borderRadius: 16,
-                    padding: spacing.md,
-                    borderWidth: 1,
-                    borderColor: colors.accent + "33",
-                    gap: 6,
-                  }}
-                >
-                  <Text style={text.muted}>Active</Text>
-                  <Text style={{ ...text.title, fontSize: 28, color: colors.accent }}>{String(active.length)}</Text>
-                </View>
-
-                <LinearGradient
-                  colors={["#10b98122", "#10b98111"]}
-                  style={{
-                    flex: 1,
-                    borderRadius: 16,
-                    padding: spacing.md,
-                    borderWidth: 1,
-                    borderColor: "#10b98133",
-                    gap: 6,
-                  }}
-                >
-                  <Text style={text.muted}>Completed</Text>
-                  <Text style={{ ...text.title, fontSize: 28, color: "#10b981" }}>{String(completed.length)}</Text>
-                </LinearGradient>
+              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#10b98140" }}>
+                <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
+                <Text style={{ ...text.title, fontSize: 22, color: "#10b981" }}>{completed.length}</Text>
               </View>
-            </LinearGradient>
-
-            <View style={{ padding: spacing.md, gap: spacing.sm }}>
-              {err ? (
-                <View
-                  style={[
-                    card,
-                    {
-                      padding: spacing.md,
-                      borderColor: "rgba(239,68,68,0.35)",
-                      backgroundColor: "rgba(239,68,68,0.08)",
-                    },
-                  ]}
-                >
-                  <Text style={{ color: "#ef4444", fontWeight: "900" }}>Couldn&apos;t refresh</Text>
-                  <Text style={{ marginTop: 6, ...text.body }}>{err}</Text>
-                </View>
-              ) : null}
-
-              {jobs.length === 0 ? (
-                <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-                  <View style={{ width: 90, height: 90, borderRadius: 22, alignItems: "center", justifyContent: "center" }}>
-                    <Image
-                      source={require("../../../assets/sleeping.png")}
-                      style={{ width: "100%", height: "100%" }}
-                      resizeMode="contain"
-                    />
-                  </View>
-
-                  <Text style={text.section}>No assigned jobs yet</Text>
-                  <Text style={{ ...text.body, marginTop: 2 }}>
-                    When a customer accepts your quote, it&apos;ll appear here.
-                  </Text>
-
-                  <View
-                    style={[
-                      card,
-                      {
-                        marginTop: spacing.md,
-                        padding: spacing.md,
-                        borderStyle: "dashed",
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        backgroundColor: colors.surface,
-                      },
-                    ]}
-                  >
-                    <Text style={text.muted}>Tip</Text>
-                    <Text style={{ ...text.body, marginTop: 6 }}>
-                      Respond fast to new quote requests to get more accepts.
-                    </Text>
-                  </View>
-                </View>
-              ) : null}
             </View>
+
+            {jobs.length === 0 && (
+              <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm }}>
+                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
+                  <Ionicons name="construct-outline" size={28} color={colors.textMuted} />
+                </View>
+                <Text style={text.section}>No jobs yet</Text>
+                <Text style={{ ...text.muted, textAlign: "center" }}>When customers accept your quotes, jobs will appear here</Text>
+                <Pressable
+                  onPress={() => router.push("/(mechanic)/(tabs)/leads" as any)}
+                  style={{ marginTop: spacing.sm, backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14 }}
+                >
+                  <Text style={{ fontWeight: "900", color: "#000" }}>VIEW LEADS</Text>
+                </Pressable>
+              </View>
+            )}
           </View>
         }
         renderItem={() => (
-          <View style={{ padding: spacing.md }}>
+          <View style={{ paddingHorizontal: spacing.md }}>
             <SectionHeader title="Active" count={active.length} />
             {active.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>Nothing active right now.</Text>
+              <Text style={{ marginTop: 6, ...text.muted }}>No active jobs right now.</Text>
             ) : (
               <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {active.map((item) => (
-                  <JobCard key={item.id} item={item} />
-                ))}
+                {active.map((item) => <JobCard key={item.id} item={item} />)}
               </View>
             )}
 
@@ -411,9 +315,7 @@ export default function MechanicJobs() {
               <Text style={{ marginTop: 6, ...text.muted }}>No completed jobs yet.</Text>
             ) : (
               <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {completed.map((item) => (
-                  <JobCard key={item.id} item={item} />
-                ))}
+                {completed.map((item) => <JobCard key={item.id} item={item} />)}
               </View>
             )}
 

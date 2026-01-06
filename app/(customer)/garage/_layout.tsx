@@ -1,4 +1,4 @@
-﻿import { Stack } from "expo-router";
+import { Stack } from "expo-router";
 import React from "react";
 import { useTheme } from "../../../src/ui/theme-context";
 
@@ -8,10 +8,8 @@ export default function GarageLayout() {
   return (
     <Stack
       screenOptions={{
-        headerTitle: "My Garage",
-        headerStyle: { backgroundColor: colors.bg },   // ✅ match tabs / app
-        headerTintColor: colors.textPrimary,
-        headerShadowVisible: false,
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.bg },
       }}
     />
   );

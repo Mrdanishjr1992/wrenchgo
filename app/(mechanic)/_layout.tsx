@@ -70,10 +70,12 @@ export default function MechanicLayout() {
   return (
     <Stack>
       <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      <Stack.Screen name="job/[id]" options={{ headerTitle: "" }} />
-      <Stack.Screen name="quote-composer/[id]" options={{ headerTitle: "" }} />
-      <Stack.Screen name="quote-review" options={{ headerTitle: "" }} />
-      <Stack.Screen name="quote-sent/[id]" options={{ headerTitle: "" }} />
+      <Stack.Screen name="job/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="job-details/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="job-detail/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="quote-composer/[id]" options={{ headerShown: false }} />
+      <Stack.Screen name="quote-review" options={{ headerShown: false }} />
+      <Stack.Screen name="quote-sent/[id]" options={{ headerShown: false }} />
       <Stack.Screen name="messages/[jobId]" options={{ headerShown: false }} />
       <Stack.Screen name="earnings/[jobId]" options={{ headerTitle: "Earnings" }} />
       <Stack.Screen name="stripe-onboarding/index" options={{ headerTitle: "Payout Setup" }} />

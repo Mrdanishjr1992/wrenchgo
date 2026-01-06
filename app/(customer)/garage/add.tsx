@@ -11,27 +11,23 @@ import {
   ScrollView,
   Modal,
   FlatList,
-  Image,
 } from "react-native";
-import { useRouter, useLocalSearchParams, Stack } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter, useLocalSearchParams } from "expo-router";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
-import { spacing } from "../../../src/ui/theme";
 import { useTheme } from "../../../src/ui/theme-context";
+import { createCard } from "../../../src/ui/styles";
 
-type VehicleMake = {
-  MakeId: number;
-  MakeName: string;
-};
-
-type VehicleModel = {
-  Model_ID: number;
-  Model_Name: string;
-};
+type VehicleMake = { MakeId: number; MakeName: string };
+type VehicleModel = { Model_ID: number; Model_Name: string };
 
 export default function AddVehicle() {
   const router = useRouter();
   const params = useLocalSearchParams<{ returnTo?: string | string[] }>();
-  const { colors } = useTheme();
+  const { colors, text, spacing } = useTheme();
+  const card = useMemo(() => createCard(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [year, setYear] = useState("");
   const [makeId, setMakeId] = useState<number | null>(null);
@@ -52,23 +48,17 @@ export default function AddVehicle() {
   const normalizeReturnTo = (returnTo: string | string[] | undefined): string => {
     if (!returnTo) return "/(customer)/(tabs)/explore";
     const normalized = Array.isArray(returnTo) ? returnTo[0] : returnTo;
-
     const allowedPaths: Record<string, string> = {
       "explore": "/(customer)/(tabs)/explore",
       "request-service": "/(customer)/request-service",
     };
-
     return allowedPaths[normalized] || "/(customer)/(tabs)/explore";
   };
-
-
 
   const currentYear = new Date().getFullYear();
   const years = useMemo(() => {
     const arr = [];
-    for (let y = currentYear + 1; y >= 1980; y--) {
-      arr.push(y);
-    }
+    for (let y = currentYear + 1; y >= 1980; y--) arr.push(y);
     return arr;
   }, [currentYear]);
 
@@ -76,13 +66,10 @@ export default function AddVehicle() {
     if (!selectedYear) return;
     try {
       setLoadingMakes(true);
-      const response = await fetch(
-        `https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json`
-      );
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json`);
       const data = await response.json();
-      if (data.Results && data.Results.length > 0) {
-        const filtered = data.Results.filter((m: VehicleMake) => m.MakeName);
-        const sorted = filtered.sort((a: VehicleMake, b: VehicleMake) =>
+      if (data.Results?.length > 0) {
+        const sorted = data.Results.filter((m: VehicleMake) => m.MakeName).sort((a: VehicleMake, b: VehicleMake) =>
           a.MakeName.localeCompare(b.MakeName)
         );
         setMakes(sorted);
@@ -90,7 +77,6 @@ export default function AddVehicle() {
         setMakes([]);
       }
     } catch (e) {
-      console.error("Failed to fetch makes:", e);
       Alert.alert("Error", "Failed to load vehicle makes");
     } finally {
       setLoadingMakes(false);
@@ -106,12 +92,13 @@ export default function AddVehicle() {
       );
       const data = await response.json();
       if (data.Results) {
-        setModels(data.Results.filter((m: VehicleModel) => m.Model_Name).sort((a: VehicleModel, b: VehicleModel) =>
-          a.Model_Name.localeCompare(b.Model_Name)
-        ));
+        setModels(
+          data.Results.filter((m: VehicleModel) => m.Model_Name).sort((a: VehicleModel, b: VehicleModel) =>
+            a.Model_Name.localeCompare(b.Model_Name)
+          )
+        );
       }
     } catch (e) {
-      console.error("Failed to fetch models:", e);
       Alert.alert("Error", "Failed to load vehicle models");
     } finally {
       setLoadingModels(false);
@@ -135,14 +122,11 @@ export default function AddVehicle() {
     }
   }, [makeId, year, fetchModels]);
 
-  const canSave = useMemo(() => {
-    return year && makeName && modelName && !loading;
-  }, [year, makeName, modelName, loading]);
+  const canSave = useMemo(() => year && makeName && modelName && !loading, [year, makeName, modelName, loading]);
 
   const save = async () => {
     try {
       setLoading(true);
-
       if (!year || !makeName || !modelName) {
         Alert.alert("Missing info", "Year, make, and model are required.");
         return;
@@ -153,28 +137,23 @@ export default function AddVehicle() {
       const userId = userData.user?.id;
       if (!userId) throw new Error("Not authenticated");
 
-      const { data: newVehicle, error } = await supabase.from("vehicles").insert({
-        customer_id: userId,
-        year: Number(year),
-        make: makeName,
-        model: modelName,
-        nickname: nickname.trim() || null,
-      }).select("id,year,make,model,nickname").single();
+      const { data: newVehicle, error } = await supabase
+        .from("vehicles")
+        .insert({
+          customer_id: userId,
+          year: Number(year),
+          make: makeName,
+          model: modelName,
+          nickname: nickname.trim() || null,
+        })
+        .select("id,year,make,model,nickname")
+        .single();
 
       if (error) throw error;
 
-      Alert.alert("Added ✅", "Vehicle added to your garage.");
+      Alert.alert("Success", "Vehicle added to your garage.");
 
       const returnToPath = normalizeReturnTo(params.returnTo);
-
-      console.log("🚗 Garage/Add: Vehicle created", {
-        vehicleId: newVehicle.id,
-        year: newVehicle.year,
-        make: newVehicle.make,
-        model: newVehicle.model,
-        returnTo: returnToPath,
-      });
-
       if (returnToPath === "/(customer)/(tabs)/explore" || returnToPath === "/(customer)/request-service") {
         router.replace({
           pathname: returnToPath as any,
@@ -187,10 +166,7 @@ export default function AddVehicle() {
           },
         });
       } else {
-        router.push({
-          pathname: "/(customer)/garage/[id]" as any,
-          params: { id: newVehicle.id },
-        });
+        router.back();
       }
     } catch (e: any) {
       Alert.alert("Failed", e?.message ?? "Could not add vehicle.");
@@ -229,21 +205,21 @@ export default function AddVehicle() {
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "center",
-              padding: spacing.lg,
+              padding: spacing.md,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: 18, fontWeight: "900", color: colors.textPrimary }}>{title}</Text>
+            <Text style={{ ...text.section }}>{title}</Text>
             <Pressable onPress={onClose}>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.accent }}>Close</Text>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.accent }}>Done</Text>
             </Pressable>
           </View>
 
           {pickerLoading ? (
             <View style={{ padding: spacing.xl, alignItems: "center" }}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={{ marginTop: spacing.sm, color: colors.textMuted }}>Loading...</Text>
+              <Text style={{ marginTop: spacing.sm, ...text.muted }}>Loading...</Text>
             </View>
           ) : (
             <FlatList
@@ -264,7 +240,7 @@ export default function AddVehicle() {
                       borderBottomColor: colors.border,
                     })}
                   >
-                    <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textPrimary }}>{label}</Text>
+                    <Text style={{ ...text.body, fontWeight: "600" }}>{label}</Text>
                   </Pressable>
                 );
               }}
@@ -275,199 +251,137 @@ export default function AddVehicle() {
     </Modal>
   );
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-    <Stack.Screen
-          options={{
-            title: "Add Vehicle",
-          }}
-        />
+  const SelectField = ({
+    label,
+    value,
+    placeholder,
+    onPress,
+    disabled,
+    isLoading,
+  }: {
+    label: string;
+    value: string;
+    placeholder: string;
+    onPress: () => void;
+    disabled?: boolean;
+    isLoading?: boolean;
+  }) => (
+    <View>
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: 8 }}>{label}</Text>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || isLoading}
+        style={({ pressed }) => [
+          {
+            backgroundColor: colors.bg,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: spacing.md,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            opacity: disabled ? 0.5 : 1,
+          },
+          pressed && { opacity: 0.9 },
+        ]}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <>
+            <Text style={{ ...text.body, fontWeight: "700", color: value ? colors.textPrimary : colors.textMuted }}>
+              {value || placeholder}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+          </>
+        )}
+      </Pressable>
+    </View>
+  );
 
+  return (
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         contentContainerStyle={{
-          padding: spacing.lg,
+          paddingHorizontal: spacing.md,
           paddingBottom: spacing.xl,
-          backgroundColor: colors.bg,
-          gap: spacing.lg,
+          gap: spacing.md,
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={{
-            padding: spacing.lg,
-            paddingRight: 80,
-            borderRadius: 12,
-            backgroundColor: colors.accent + "08",
-            borderWidth: 1,
-            borderColor: colors.accent + "20",
-            position: "relative",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: 14,
-              fontWeight: "600",
-              color: colors.textMuted,
-              lineHeight: 20,
-            }}
+        <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.sm }}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={({ pressed }) => [{ paddingVertical: 8 }, pressed && { opacity: 0.6 }]}
           >
-            Let&apos;s add your car to the garage. This helps mechanics give better quotes.
-          </Text>
-          <Image
-            source={require("../../../assets/peaking.png")}
-            style={{
-              position: "absolute",
-              right: -10,
-              top: "50%",
-              marginTop: -32,
-              width: 64,
-              height: 64,
-            }}
-            resizeMode="contain"
-          />
+            <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 18 }}>Cancel</Text>
+          </Pressable>
+          <Text style={{ ...text.title, fontSize: 28, marginTop: spacing.sm }}>Add Vehicle</Text>
+          <Text style={{ ...text.muted, marginTop: 4 }}>Add your car to get better quotes</Text>
         </View>
 
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.lg,
-            gap: 8,
-          }}
-        >
-          <View style={{ alignItems: "center", marginBottom: spacing.sm }}>
-            <View style={{ width: 200, height: 120, borderRadius: 16, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.border, overflow: "hidden" }}>
-              {year && makeName && modelName ? (
-                <Image
-                  source={require("../../../assets/carimage.jpg")}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={{ fontSize: 64 }}>🚙</Text>
-              )}
-            </View>
-            {year && makeName && modelName && (
-              <Text style={{ marginTop: spacing.sm, fontSize: 16, fontWeight: "800", color: colors.textPrimary, textAlign: "center" }}>
+        <View style={[card, { padding: spacing.md, gap: spacing.md }]}>
+          {year && makeName && modelName && (
+            <View
+              style={{
+                backgroundColor: `${colors.accent}10`,
+                borderWidth: 1,
+                borderColor: `${colors.accent}30`,
+                borderRadius: 12,
+                padding: spacing.md,
+                alignItems: "center",
+              }}
+            >
+              <Ionicons name="car-sport" size={40} color={colors.accent} />
+              <Text style={{ ...text.section, marginTop: spacing.sm, textAlign: "center" }}>
                 {year} {makeName} {modelName}
               </Text>
-            )}
-          </View>
+            </View>
+          )}
 
-          <Text style={{ fontSize: 24, fontWeight: "900", color: colors.textPrimary }}>Add a vehicle</Text>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-            Select your vehicle details from our database.
-          </Text>
+          <SelectField
+            label="Year"
+            value={year}
+            placeholder="Select year"
+            onPress={() => setShowYearPicker(true)}
+          />
 
-          {/* Year Selector */}
-          <View style={{ marginTop: spacing.sm }}>
-            <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Year</Text>
-            <Pressable
-              onPress={() => setShowYearPicker(true)}
-              style={{
-                backgroundColor: colors.bg,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: spacing.md,
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: 16,
-                  fontWeight: "700",
-                  color: year ? colors.textPrimary : colors.textMuted,
-                }}
-              >
-                {year || "Select year"}
-              </Text>
-            </Pressable>
-          </View>
+          <SelectField
+            label="Make"
+            value={makeName}
+            placeholder="Select make"
+            onPress={() => {
+              if (!year) {
+                Alert.alert("Select Year First", "Please select a year before choosing a make.");
+                return;
+              }
+              setShowMakePicker(true);
+            }}
+            disabled={!year}
+            isLoading={loadingMakes}
+          />
 
-          {/* Make Selector */}
-          <View>
-            <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Make</Text>
-            <Pressable
-              onPress={() => {
-                if (!year) {
-                  Alert.alert("Select Year First", "Please select a year before choosing a make.");
-                  return;
-                }
-                setShowMakePicker(true);
-              }}
-              disabled={!year || loadingMakes}
-              style={{
-                backgroundColor: colors.bg,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: spacing.md,
-                opacity: !year ? 0.5 : 1,
-              }}
-            >
-              {loadingMakes ? (
-                <ActivityIndicator size="small" color={colors.accent} />
-              ) : (
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: makeName ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {makeName || "Select make"}
-                </Text>
-              )}
-            </Pressable>
-          </View>
+          <SelectField
+            label="Model"
+            value={modelName}
+            placeholder="Select model"
+            onPress={() => {
+              if (!makeName) {
+                Alert.alert("Select Make First", "Please select a make before choosing a model.");
+                return;
+              }
+              setShowModelPicker(true);
+            }}
+            disabled={!makeName}
+            isLoading={loadingModels}
+          />
 
-          {/* Model Selector */}
-          <View>
-            <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Model</Text>
-            <Pressable
-              onPress={() => {
-                if (!makeName) {
-                  Alert.alert("Select Make First", "Please select a make before choosing a model.");
-                  return;
-                }
-                setShowModelPicker(true);
-              }}
-              disabled={!makeName || loadingModels}
-              style={{
-                backgroundColor: colors.bg,
-                borderRadius: 14,
-                borderWidth: 1,
-                borderColor: colors.border,
-                padding: spacing.md,
-                opacity: !makeName ? 0.5 : 1,
-              }}
-            >
-              {loadingModels ? (
-                <ActivityIndicator size="small" color={colors.accent} />
-              ) : (
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: modelName ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {modelName || "Select model"}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-
-          {/* Nickname */}
           <View>
             <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
-              <Text style={{ fontWeight: "900", color: colors.textPrimary }}>Nickname</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>Optional</Text>
+              <Text style={{ ...text.body, fontWeight: "900" }}>Nickname</Text>
+              <Text style={{ ...text.muted, fontSize: 12 }}>Optional</Text>
             </View>
             <View
               style={{
@@ -481,56 +395,40 @@ export default function AddVehicle() {
               <TextInput
                 value={nickname}
                 onChangeText={setNickname}
-                placeholder="My daily driver"
+                placeholder="e.g. My daily driver"
                 placeholderTextColor={colors.textMuted}
-                style={{
-                  fontSize: 16,
-                  fontWeight: "700",
-                  color: colors.textPrimary,
-                  padding: 0,
-                }}
+                style={{ ...text.body, fontWeight: "700", padding: 0 }}
               />
             </View>
           </View>
-
-          <Pressable
-            onPress={save}
-            disabled={!canSave}
-            style={{
-              marginTop: spacing.md,
-              backgroundColor: canSave ? colors.accent : colors.border,
-              paddingVertical: 14,
-              borderRadius: 14,
-              alignItems: "center",
-            }}
-          >
-            {loading ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={{ fontWeight: "900", color: canSave ? "#000" : colors.textMuted }}>ADD VEHICLE</Text>
-            )}
-          </Pressable>
-
-          {!canSave && !loading ? (
-            <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: 8, textAlign: "center" }}>
-              Select year, make, and model to continue.
-            </Text>
-          ) : null}
-
-          <Pressable
-            onPress={() => router.back()}
-            disabled={loading}
-            style={{
-              marginTop: spacing.sm,
-              paddingVertical: 14,
-              borderRadius: 14,
-              alignItems: "center",
-              opacity: loading ? 0.5 : 1,
-            }}
-          >
-            <Text style={{ fontWeight: "900", color: colors.textMuted }}>CANCEL</Text>
-          </Pressable>
         </View>
+
+        <Pressable
+          onPress={save}
+          disabled={!canSave}
+          style={({ pressed }) => [
+            card,
+            {
+              padding: spacing.md,
+              backgroundColor: canSave ? colors.accent : colors.border,
+              borderColor: canSave ? colors.accent : colors.border,
+              alignItems: "center",
+            },
+            pressed && canSave && { opacity: 0.9 },
+          ]}
+        >
+          {loading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={{ fontWeight: "900", color: canSave ? "#fff" : colors.textMuted, fontSize: 16 }}>
+              Add Vehicle
+            </Text>
+          )}
+        </Pressable>
+
+        {!canSave && !loading && (
+          <Text style={{ ...text.muted, textAlign: "center" }}>Select year, make, and model to continue</Text>
+        )}
       </ScrollView>
 
       <PickerModal
@@ -538,10 +436,7 @@ export default function AddVehicle() {
         onClose={() => setShowYearPicker(false)}
         title="Select Year"
         data={years}
-        onSelect={(y) => {
-          setYear(String(y));
-          setShowYearPicker(false);
-        }}
+        onSelect={(y) => setYear(String(y))}
       />
 
       <PickerModal
@@ -552,7 +447,6 @@ export default function AddVehicle() {
         onSelect={(make: VehicleMake) => {
           setMakeId(make.MakeId);
           setMakeName(make.MakeName);
-          setShowMakePicker(false);
         }}
         loading={loadingMakes}
       />
@@ -562,10 +456,7 @@ export default function AddVehicle() {
         onClose={() => setShowModelPicker(false)}
         title="Select Model"
         data={models}
-        onSelect={(model: VehicleModel) => {
-          setModelName(model.Model_Name);
-          setShowModelPicker(false);
-        }}
+        onSelect={(model: VehicleModel) => setModelName(model.Model_Name)}
         loading={loadingModels}
       />
     </KeyboardAvoidingView>

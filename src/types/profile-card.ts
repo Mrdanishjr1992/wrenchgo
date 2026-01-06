@@ -4,7 +4,11 @@ export interface PublicProfileCardRatings {
   performance_avg: number;
   timing_avg: number;
   cost_avg: number;
+  professionalism_avg: number;
+  communication_avg: number;
   review_count: number;
+  would_recommend_count: number;
+  would_recommend_total: number;
 }
 
 export interface PublicProfileCardBadge {
@@ -16,7 +20,8 @@ export interface PublicProfileCardBadge {
     title: string;
     description: string;
     icon: string;
-    badge_type: 'achievement' | 'certification' | 'verification' | 'milestone';
+    category: 'milestone' | 'quality' | 'reliability' | 'skill' | 'special';
+    tier: number;
   };
 }
 
@@ -25,9 +30,23 @@ export interface PublicProfileCardSkill {
   skill: {
     key: string;
     label: string;
-    name?: string;  // Fallback for compatibility
+    name?: string;
     category: string;
   };
+  is_verified: boolean;
+  verified_job_count: number;
+  avg_job_rating: number | null;
+}
+
+export interface PublicProfileCardTrustScore {
+  overall_score: number;
+  rating_score: number;
+  completion_score: number;
+  reliability_score: number;
+  badge_score: number;
+  tenure_score: number;
+  completed_jobs: number;
+  total_jobs: number;
 }
 
 export interface PublicProfileCard {
@@ -39,6 +58,7 @@ export interface PublicProfileCard {
   ratings: PublicProfileCardRatings;
   badges: PublicProfileCardBadge[];
   skills: PublicProfileCardSkill[];
+  trust_score: PublicProfileCardTrustScore;
 }
 
 export type ProfileCardVariant = 'mini' | 'full';

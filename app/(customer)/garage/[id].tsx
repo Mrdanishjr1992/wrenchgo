@@ -1,4 +1,4 @@
-import React, { useCallback, useState, useMemo, useEffect } from "react";
+import React, { useCallback, useState, useMemo, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -14,12 +14,14 @@ import {
   FlatList,
   RefreshControl,
 } from "react-native";
-import { useRouter, useLocalSearchParams, Stack } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
 import { isValidUUID } from "../../../src/lib/validation";
-import { spacing } from "../../../src/ui/theme";
 import { useTheme } from "../../../src/ui/theme-context";
+import { createCard } from "../../../src/ui/styles";
 
 const normalizeParam = (param: string | string[] | undefined): string | undefined => {
   if (!param) return undefined;
@@ -36,27 +38,21 @@ type Vehicle = {
   customer_id: string;
 };
 
-type VehicleMake = {
-  MakeId: number;
-  MakeName: string;
-};
-
-type VehicleModel = {
-  Model_ID: number;
-  Model_Name: string;
-};
+type VehicleMake = { MakeId: number; MakeName: string };
+type VehicleModel = { Model_ID: number; Model_Name: string };
 
 export default function VehicleDetail() {
   const router = useRouter();
   const rawParams = useLocalSearchParams<{ id: string | string[] }>();
-  const { colors } = useTheme();
+  const { colors, text, spacing } = useTheme();
+  const card = useMemo(() => createCard(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const id = normalizeParam(rawParams.id);
-  const [didRedirect, setDidRedirect] = useState(false);
+  const loadedRef = useRef(false);
 
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [year, setYear] = useState("");
-  const [makeId, setMakeId] = useState<number | null>(null);
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [nickname, setNickname] = useState("");
@@ -74,54 +70,30 @@ export default function VehicleDetail() {
   const [showMakePicker, setShowMakePicker] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
-  const isNewVehicle = id === "new";
-
-  useEffect(() => {
-    if (!didRedirect && !isNewVehicle && (!id || id === "index" || id === "add" || !isValidUUID(id))) {
-      setDidRedirect(true);
-      Alert.alert(
-        "Invalid Vehicle",
-        "The vehicle ID is invalid. Returning to garage.",
-        [
-          {
-            text: "OK",
-            onPress: () => router.replace("/(customer)/garage/index" as any),
-          },
-        ],
-        { cancelable: false }
-      );
-    }
-  }, [id, router, didRedirect, isNewVehicle]);
-
   const currentYear = new Date().getFullYear();
   const years = useMemo(() => {
     const arr = [];
-    for (let y = currentYear + 1; y >= 1980; y--) {
-      arr.push(y);
-    }
+    for (let y = currentYear + 1; y >= 1980; y--) arr.push(y);
     return arr;
   }, [currentYear]);
 
-  const fetchMakes = useCallback(async (selectedYear: string) => {
-    if (!selectedYear) return;
+  const fetchMakes = useCallback(async (selectedYear: string): Promise<VehicleMake[]> => {
+    if (!selectedYear) return [];
     try {
       setLoadingMakes(true);
-      const response = await fetch(
-        `https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json`
-      );
+      const response = await fetch(`https://vpic.nhtsa.dot.gov/api/vehicles/GetMakesForVehicleType/car?format=json`);
       const data = await response.json();
-      if (data.Results && data.Results.length > 0) {
-        const filtered = data.Results.filter((m: VehicleMake) => m.MakeName);
-        const sorted = filtered.sort((a: VehicleMake, b: VehicleMake) =>
+      if (data.Results?.length > 0) {
+        const sorted = data.Results.filter((m: VehicleMake) => m.MakeName).sort((a: VehicleMake, b: VehicleMake) =>
           a.MakeName.localeCompare(b.MakeName)
         );
         setMakes(sorted);
-      } else {
-        setMakes([]);
+        return sorted;
       }
+      setMakes([]);
+      return [];
     } catch (e) {
-      console.error("Failed to fetch makes:", e);
-      Alert.alert("Error", "Failed to load vehicle makes");
+      return [];
     } finally {
       setLoadingMakes(false);
     }
@@ -136,17 +108,199 @@ export default function VehicleDetail() {
       );
       const data = await response.json();
       if (data.Results) {
-        setModels(data.Results.filter((m: VehicleModel) => m.Model_Name).sort((a: VehicleModel, b: VehicleModel) =>
-          a.Model_Name.localeCompare(b.Model_Name)
-        ));
+        setModels(
+          data.Results.filter((m: VehicleModel) => m.Model_Name).sort((a: VehicleModel, b: VehicleModel) =>
+            a.Model_Name.localeCompare(b.Model_Name)
+          )
+        );
       }
     } catch (e) {
-      console.error("Failed to fetch models:", e);
-      Alert.alert("Error", "Failed to load vehicle models");
+      // ignore
     } finally {
       setLoadingModels(false);
     }
   }, []);
+
+  const loadVehicle = useCallback(async () => {
+    if (!id || id === "index" || id === "add" || !isValidUUID(id)) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      router.replace("/(auth)/sign-in");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("vehicles")
+        .select("*")
+        .eq("id", id)
+        .eq("customer_id", userId)
+        .single();
+
+      if (error) throw error;
+      if (!data) throw new Error("Vehicle not found");
+
+      setVehicle(data);
+      setYear(String(data.year));
+      setMake(data.make);
+      setModel(data.model);
+      setNickname(data.nickname || "");
+
+      const fetchedMakes = await fetchMakes(String(data.year));
+      const foundMake = fetchedMakes.find((m) => m.MakeName.toLowerCase() === data.make.toLowerCase());
+      if (foundMake) {
+        await fetchModels(foundMake.MakeId, String(data.year));
+      }
+    } catch (e: any) {
+      Alert.alert("Error", e?.message ?? "Failed to load vehicle");
+      router.back();
+    } finally {
+      setLoading(false);
+    }
+  }, [id, router, fetchMakes, fetchModels]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!loadedRef.current) {
+        loadedRef.current = true;
+        loadVehicle();
+      }
+    }, [loadVehicle])
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadVehicle();
+    setRefreshing(false);
+  }, [loadVehicle]);
+
+  const handleSave = async () => {
+    if (!id || !isValidUUID(id)) {
+      Alert.alert("Error", "Invalid vehicle ID");
+      return;
+    }
+
+    const yr = Number(year);
+    const currentYearPlus1 = new Date().getFullYear() + 1;
+
+    if (!year || yr < 1900 || yr > currentYearPlus1) {
+      Alert.alert("Invalid Year", `Enter a year between 1900 and ${currentYearPlus1}.`);
+      return;
+    }
+    if (!make.trim()) {
+      Alert.alert("Invalid Make", "Enter the vehicle make.");
+      return;
+    }
+    if (!model.trim()) {
+      Alert.alert("Invalid Model", "Enter the vehicle model.");
+      return;
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const userId = userData.user?.id;
+    if (!userId) {
+      router.replace("/(auth)/sign-in");
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const { error } = await supabase
+        .from("vehicles")
+        .update({
+          year: yr,
+          make: make.trim(),
+          model: model.trim(),
+          nickname: nickname.trim() || null,
+        })
+        .eq("id", id)
+        .eq("customer_id", userId);
+
+      if (error) throw error;
+      Alert.alert("Success", "Vehicle updated successfully.");
+      router.back();
+    } catch (e: any) {
+      Alert.alert("Failed", e?.message ?? "Could not update vehicle.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = () => {
+    if (!id || !isValidUUID(id)) {
+      Alert.alert("Error", "Invalid vehicle ID");
+      return;
+    }
+
+    Alert.alert("Delete Vehicle", "Are you sure you want to delete this vehicle? This cannot be undone.", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setDeleting(true);
+            const { error } = await supabase.from("vehicles").delete().eq("id", id);
+            if (error) throw error;
+            Alert.alert("Deleted", "Vehicle removed from your garage.");
+            router.back();
+          } catch (e: any) {
+            Alert.alert("Failed", e?.message ?? "Could not delete vehicle.");
+          } finally {
+            setDeleting(false);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleYearChange = async (newYear: string) => {
+    setYear(newYear);
+    setMake("");
+    setModel("");
+    setModels([]);
+    await fetchMakes(newYear);
+  };
+
+  const handleMakeChange = async (selectedMake: VehicleMake) => {
+    setMake(selectedMake.MakeName);
+    setModel("");
+    await fetchModels(selectedMake.MakeId, year);
+  };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+        <ActivityIndicator color={colors.accent} />
+        <Text style={{ marginTop: 10, ...text.muted }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  if (!vehicle) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+        <Text style={text.muted}>Vehicle not found</Text>
+        <Pressable onPress={() => router.back()} style={{ marginTop: spacing.md }}>
+          <Text style={{ color: colors.accent, fontWeight: "900" }}>Go Back</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  const canSave = year && make.trim() && model.trim();
+
+  const carImageUrl = year && make && model
+    ? `https://cdn.imagin.studio/getimage?customer=hrjavascript-mastery&zoomType=fullscreen&modelFamily=${encodeURIComponent(
+        model.split(" ")[0] || model
+      )}&make=${encodeURIComponent(make)}&modelYear=${encodeURIComponent(year)}&angle=29`
+    : null;
 
   const PickerModal = ({
     visible,
@@ -154,45 +308,38 @@ export default function VehicleDetail() {
     title,
     data,
     onSelect,
-    loading: pickerLoading,
+    isLoading,
   }: {
     visible: boolean;
     onClose: () => void;
     title: string;
     data: any[];
     onSelect: (item: any) => void;
-    loading?: boolean;
+    isLoading?: boolean;
   }) => (
     <Modal visible={visible} transparent animationType="slide">
-      <View style={{ flex: 1, backgroundColor: colors.accent ?? "rgba(0,0,0,0.55)", justifyContent: "flex-end" }}>
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            maxHeight: "70%",
-          }}
-        >
+      <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
+        <View style={{ backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: "70%" }}>
           <View
             style={{
               flexDirection: "row",
               justifyContent: "space-between",
               alignItems: "center",
-              padding: spacing.lg,
+              padding: spacing.md,
               borderBottomWidth: 1,
               borderBottomColor: colors.border,
             }}
           >
-            <Text style={{ fontSize: 18, fontWeight: "900", color: colors.textPrimary }}>{title}</Text>
+            <Text style={{ ...text.section }}>{title}</Text>
             <Pressable onPress={onClose}>
-              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.accent }}>Close</Text>
+              <Text style={{ fontSize: 16, fontWeight: "900", color: colors.accent }}>Done</Text>
             </Pressable>
           </View>
 
-          {pickerLoading ? (
+          {isLoading ? (
             <View style={{ padding: spacing.xl, alignItems: "center" }}>
               <ActivityIndicator size="large" color={colors.accent} />
-              <Text style={{ marginTop: spacing.sm, color: colors.textMuted }}>Loading...</Text>
+              <Text style={{ marginTop: spacing.sm, ...text.muted }}>Loading...</Text>
             </View>
           ) : (
             <FlatList
@@ -213,7 +360,7 @@ export default function VehicleDetail() {
                       borderBottomColor: colors.border,
                     })}
                   >
-                    <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textPrimary }}>{label}</Text>
+                    <Text style={{ ...text.body, fontWeight: "600" }}>{label}</Text>
                   </Pressable>
                 );
               }}
@@ -224,400 +371,204 @@ export default function VehicleDetail() {
     </Modal>
   );
 
-  const loadVehicle = useCallback(async () => {
-    if (!id || id === "index" || id === "add" || id === "new" || !isValidUUID(id)) {
-      setLoading(false);
-      return;
-    }
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) {
-      router.replace("/(auth)/sign-in");
-      return;
-    }
-    try {
-      setLoading(true);
-    const { data, error } = await supabase
-        .from("vehicles")
-        .select("*")
-        .eq("id", id)
-        .eq("customer_id", userId)   // ✅ ownership gate
-        .single();
-
-      if (error) throw error;
-      if (!data) throw new Error("Vehicle not found");
-
-      setVehicle(data);
-      setYear(String(data.year));
-      setMake(data.make);
-      setModel(data.model);
-      setNickname(data.nickname || "");
-
-      await fetchMakes(String(data.year));
-
-const foundMake = makes.find(
-  (m) => m.MakeName.toLowerCase() === data.make.toLowerCase()
-);
-
-if (foundMake) {
-  setMakeId(foundMake.MakeId);
-  await fetchModels(foundMake.MakeId, String(data.year));
-}
-
-    } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to load vehicle");
-      router.back();
-    } finally {
-      setLoading(false);
-    }
-  }, [id, router, fetchMakes, fetchModels]);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadVehicle();
-    }, [loadVehicle])
+  const SelectField = ({
+    label,
+    value,
+    placeholder,
+    onPress,
+    disabled,
+    isLoading,
+  }: {
+    label: string;
+    value: string;
+    placeholder: string;
+    onPress: () => void;
+    disabled?: boolean;
+    isLoading?: boolean;
+  }) => (
+    <View>
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: 8 }}>{label}</Text>
+      <Pressable
+        onPress={onPress}
+        disabled={disabled || isLoading}
+        style={({ pressed }) => [
+          {
+            backgroundColor: colors.bg,
+            borderRadius: 14,
+            borderWidth: 1,
+            borderColor: colors.border,
+            padding: spacing.md,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            opacity: disabled ? 0.5 : 1,
+          },
+          pressed && { opacity: 0.9 },
+        ]}
+      >
+        {isLoading ? (
+          <ActivityIndicator size="small" color={colors.accent} />
+        ) : (
+          <>
+            <Text style={{ ...text.body, fontWeight: "700", color: value ? colors.textPrimary : colors.textMuted }}>
+              {value || placeholder}
+            </Text>
+            <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+          </>
+        )}
+      </Pressable>
+    </View>
   );
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await loadVehicle();
-    setRefreshing(false);
-  }, [loadVehicle]);
-
-  const handleSave = async () => {
-    const isNew = id === "new";
-
-    if (!isNew && (!id || !isValidUUID(id))) {
-      Alert.alert("Error", "Invalid vehicle ID");
-      return;
-    }
-
-    const yr = Number(year);
-    const currentYearPlus1 = new Date().getFullYear() + 1;
-
-    if (!year || yr < 1900 || yr > currentYearPlus1) {
-      Alert.alert("Invalid Year", `Enter a year between 1900 and ${currentYearPlus1}.`);
-      return;
-    }
-    if (!make.trim()) {
-      Alert.alert("Invalid Make", "Enter the vehicle make.");
-      return;
-    }
-    if (!model.trim()) {
-      Alert.alert("Invalid Model", "Enter the vehicle model.");
-      return;
-    }
-    const { data: userData } = await supabase.auth.getUser();
-    const userId = userData.user?.id;
-    if (!userId) {
-      router.replace("/(auth)/sign-in");
-      return;
-    }
-    try {
-      setSaving(true);
-
-      if (isNew) {
-        const { error } = await supabase
-          .from("vehicles")
-          .insert({
-            customer_id: userId,
-            year: yr,
-            make: make.trim(),
-            model: model.trim(),
-            nickname: nickname.trim() || null,
-          });
-        if (error) throw error;
-        Alert.alert("Saved ✅", "Vehicle added successfully.");
-      } else {
-        const { error } = await supabase
-          .from("vehicles")
-          .update({
-            year: yr,
-            make: make.trim(),
-            model: model.trim(),
-            nickname: nickname.trim() || null,
-          })
-          .eq("id", id)
-          .eq("customer_id", userId);
-        if (error) throw error;
-        Alert.alert("Saved ✅", "Vehicle updated successfully.");
-      }
-      router.back();
-    } catch (e: any) {
-      Alert.alert("Failed", e?.message ?? "Could not update vehicle.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = () => {
-    if (!id || !isValidUUID(id)) {
-      Alert.alert("Error", "Invalid vehicle ID");
-      return;
-    }
-
-    Alert.alert(
-      "Delete Vehicle",
-      "Are you sure you want to delete this vehicle? This cannot be undone.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              const { error } = await supabase.from("vehicles").delete().eq("id", id);
-              if (error) throw error;
-
-              Alert.alert("Deleted", "Vehicle removed from your garage.");
-              router.back();
-            } catch (e: any) {
-              Alert.alert("Failed", e?.message ?? "Could not delete vehicle.");
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color={colors.accent} />
-        <Text style={{ marginTop: 12, fontSize: 13, fontWeight: "600", color: colors.textMuted }}>Loading...</Text>
-      </View>
-    );
-  }
-
-  const canSave = year && make.trim() && model.trim();
-
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
-    <Stack.Screen
-          options={{
-            title: "Edit Vehicle",
-            headerStyle: { backgroundColor: colors.bg }, // match your tabs header
-            headerTintColor: colors.textPrimary,
-            headerShadowVisible: false,
-            headerBackTitleVisible: false,
-          }}
-        />
-
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: colors.bg }} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{
-          padding: spacing.lg,
+          paddingHorizontal: spacing.md,
           paddingBottom: spacing.xl,
-          backgroundColor: colors.bg,
           gap: spacing.md,
         }}
         keyboardShouldPersistTaps="handled"
       >
-        <View
-          style={{
-            backgroundColor: colors.surface,
-            borderRadius: 18,
-            borderWidth: 1,
-            borderColor: colors.border,
-            padding: spacing.lg,
-            gap: 8,
-          }}
-        >
-          <View style={{ alignItems: "center", marginBottom: spacing.sm }}>
-            <View style={{ width: 200, height: 120, borderRadius: 16, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", borderWidth: 2, borderColor: colors.border, overflow: "hidden" }}>
-              {year && make && model ? (
-                <Image
-                  source={require("../../../assets/carimage.jpg")}
-                  style={{ width: "100%", height: "100%" }}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={{ fontSize: 48 }}>🚗</Text>
-              )}
-            </View>
-          </View>
+        <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.sm }}>
+          <Pressable
+            onPress={() => router.back()}
+            hitSlop={12}
+            style={({ pressed }) => [{ paddingVertical: 8 }, pressed && { opacity: 0.6 }]}
+          >
+            <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 18 }}>Back</Text>
+          </Pressable>
+          <Text style={{ ...text.title, fontSize: 28, marginTop: spacing.sm }}>Edit Vehicle</Text>
+        </View>
 
-          <Text style={{ fontSize: 24, fontWeight: "900", color: colors.textPrimary }}>Edit Vehicle</Text>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-            Update your vehicle information.
-          </Text>
-
-          <View style={{ flexDirection: "row", gap: 10, marginTop: spacing.sm }}>
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Year</Text>
-              <Pressable
-                onPress={() => setShowYearPicker(true)}
-                style={{
-                  backgroundColor: colors.bg,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: spacing.md,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: year ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {year || "Select year"}
-                </Text>
-              </Pressable>
+        <View style={[card, { padding: spacing.md, gap: spacing.md }]}>
+          {carImageUrl && (
+            <View
+              style={{
+                backgroundColor: colors.bg,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 16,
+                padding: spacing.md,
+                alignItems: "center",
+              }}
+            >
+              <View style={{ width: 200, height: 120, borderRadius: 12, overflow: "hidden" }}>
+                <Image source={{ uri: carImageUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
+              </View>
+              <Text style={{ ...text.section, marginTop: spacing.sm, textAlign: "center" }}>
+                {year} {make} {model}
+              </Text>
+              {nickname && <Text style={{ ...text.muted, marginTop: 4 }}>"{nickname}"</Text>}
             </View>
+          )}
 
-            <View style={{ flex: 2 }}>
-              <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Make</Text>
-              <Pressable
-                onPress={() => {
-                  if (!year) {
-                    Alert.alert("Select Year First", "Please select a year before choosing a make.");
-                    return;
-                  }
-                  setShowMakePicker(true);
-                }}
-                disabled={!year || loadingMakes}
-                style={{
-                  backgroundColor: colors.bg,
-                  borderRadius: 14,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  padding: spacing.md,
-                  opacity: !year ? 0.5 : 1,
-                }}
-              >
-                {loadingMakes ? (
-                  <ActivityIndicator size="small" color={colors.accent} />
-                ) : (
-                  <Text
-                    style={{
-                      fontSize: 16,
-                      fontWeight: "700",
-                      color: make ? colors.textPrimary : colors.textMuted,
-                    }}
-                  >
-                    {make || "Select make"}
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
+          <SelectField
+            label="Year"
+            value={year}
+            placeholder="Select year"
+            onPress={() => setShowYearPicker(true)}
+          />
+
+          <SelectField
+            label="Make"
+            value={make}
+            placeholder="Select make"
+            onPress={() => {
+              if (!year) {
+                Alert.alert("Select Year First", "Please select a year before choosing a make.");
+                return;
+              }
+              setShowMakePicker(true);
+            }}
+            disabled={!year}
+            isLoading={loadingMakes}
+          />
+
+          <SelectField
+            label="Model"
+            value={model}
+            placeholder="Select model"
+            onPress={() => {
+              if (!make) {
+                Alert.alert("Select Make First", "Please select a make before choosing a model.");
+                return;
+              }
+              setShowModelPicker(true);
+            }}
+            disabled={!make}
+            isLoading={loadingModels}
+          />
 
           <View>
-            <Text style={{ fontWeight: "900", color: colors.textPrimary, marginBottom: 8 }}>Model</Text>
-            <Pressable
-              onPress={() => {
-                if (!make) {
-                  Alert.alert("Select Make First", "Please select a make before choosing a model.");
-                  return;
-                }
-                setShowModelPicker(true);
-              }}
-              disabled={!make || loadingModels}
+            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between", marginBottom: 8 }}>
+              <Text style={{ ...text.body, fontWeight: "900" }}>Nickname</Text>
+              <Text style={{ ...text.muted, fontSize: 12 }}>Optional</Text>
+            </View>
+            <View
               style={{
                 backgroundColor: colors.bg,
                 borderRadius: 14,
                 borderWidth: 1,
                 borderColor: colors.border,
                 padding: spacing.md,
-                opacity: !make ? 0.5 : 1,
               }}
             >
-              {loadingModels ? (
-                <ActivityIndicator size="small" color={colors.accent} />
-              ) : (
-                <Text
-                  style={{
-                    fontSize: 16,
-                    fontWeight: "700",
-                    color: model ? colors.textPrimary : colors.textMuted,
-                  }}
-                >
-                  {model || "Select model"}
-                </Text>
-              )}
-            </Pressable>
-          </View>
-
-          <View
-            style={{
-              backgroundColor: colors.bg,
-              borderRadius: 14,
-              borderWidth: 1,
-              borderColor: colors.border,
-              padding: spacing.md,
-              gap: 6,
-            }}
-          >
-            <View style={{ flexDirection: "row", alignItems: "baseline", justifyContent: "space-between" }}>
-              <Text style={{ fontWeight: "900", color: colors.textPrimary }}>Nickname</Text>
-              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textMuted }}>Optional</Text>
+              <TextInput
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder="e.g. My daily driver"
+                placeholderTextColor={colors.textMuted}
+                style={{ ...text.body, fontWeight: "700", padding: 0 }}
+              />
             </View>
-            <TextInput
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="My daily driver"
-              placeholderTextColor={colors.textMuted}
-              style={{
-                fontSize: 16,
-                fontWeight: "700",
-                color: colors.textPrimary,
-                padding: 0,
-              }}
-            />
           </View>
-
-          <Pressable
-            onPress={handleSave}
-            disabled={!canSave || saving}
-            style={{
-              marginTop: spacing.md,
-              backgroundColor: canSave ? colors.accent : colors.border,
-              paddingVertical: 14,
-              borderRadius: 14,
-              alignItems: "center",
-            }}
-          >
-            {saving ? (
-              <ActivityIndicator color="#000" />
-            ) : (
-              <Text style={{ fontWeight: "900", color: canSave ? "#000" : colors.textMuted }}>SAVE CHANGES</Text>
-            )}
-          </Pressable>
-
-          {!canSave ? (
-            <Text style={{ color: colors.textMuted, fontSize: 14, marginTop: 8 }}>
-              Enter a valid year + make + model to continue.
-            </Text>
-          ) : null}
-
-          <Pressable
-            onPress={handleDelete}
-            disabled={deleting}
-            style={{
-              marginTop: spacing.sm,
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: "#ef4444",
-              paddingVertical: 14,
-              borderRadius: 14,
-              alignItems: "center",
-            }}
-          >
-            {deleting ? (
-              <ActivityIndicator color="#ef4444" />
-            ) : (
-              <Text style={{ fontWeight: "900", color: "#ef4444" }}>DELETE VEHICLE</Text>
-            )}
-          </Pressable>
         </View>
+
+        <Pressable
+          onPress={handleSave}
+          disabled={!canSave || saving}
+          style={({ pressed }) => [
+            card,
+            {
+              padding: spacing.md,
+              backgroundColor: canSave ? colors.accent : colors.border,
+              borderColor: canSave ? colors.accent : colors.border,
+              alignItems: "center",
+            },
+            pressed && canSave && { opacity: 0.9 },
+          ]}
+        >
+          {saving ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={{ fontWeight: "900", color: canSave ? "#fff" : colors.textMuted, fontSize: 16 }}>
+              Save Changes
+            </Text>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={handleDelete}
+          disabled={deleting}
+          style={({ pressed }) => [
+            card,
+            {
+              padding: spacing.md,
+              backgroundColor: colors.surface,
+              borderColor: "#EF4444",
+              alignItems: "center",
+            },
+            pressed && { opacity: 0.9 },
+          ]}
+        >
+          {deleting ? (
+            <ActivityIndicator color="#EF4444" />
+          ) : (
+            <Text style={{ fontWeight: "900", color: "#EF4444", fontSize: 16 }}>Delete Vehicle</Text>
+          )}
+        </Pressable>
       </ScrollView>
 
       <PickerModal
@@ -625,15 +576,7 @@ if (foundMake) {
         onClose={() => setShowYearPicker(false)}
         title="Select Year"
         data={years}
-        onSelect={(y) => {
-          setYear(String(y));
-          setShowYearPicker(false);
-          fetchMakes(String(y));
-          setMakeId(null);
-          setMake("");
-          setModel("");
-          setModels([]);
-        }}
+        onSelect={(y) => handleYearChange(String(y))}
       />
 
       <PickerModal
@@ -641,14 +584,8 @@ if (foundMake) {
         onClose={() => setShowMakePicker(false)}
         title="Select Make"
         data={makes}
-        onSelect={(selectedMake: VehicleMake) => {
-          setMakeId(selectedMake.MakeId);
-          setMake(selectedMake.MakeName);
-          setShowMakePicker(false);
-          fetchModels(selectedMake.MakeId, year);
-          setModel("");
-        }}
-        loading={loadingMakes}
+        onSelect={handleMakeChange}
+        isLoading={loadingMakes}
       />
 
       <PickerModal
@@ -656,11 +593,8 @@ if (foundMake) {
         onClose={() => setShowModelPicker(false)}
         title="Select Model"
         data={models}
-        onSelect={(selectedModel: VehicleModel) => {
-          setModel(selectedModel.Model_Name);
-          setShowModelPicker(false);
-        }}
-        loading={loadingModels}
+        onSelect={(selectedModel: VehicleModel) => setModel(selectedModel.Model_Name)}
+        isLoading={loadingModels}
       />
     </KeyboardAvoidingView>
   );

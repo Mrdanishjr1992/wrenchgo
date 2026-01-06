@@ -159,6 +159,9 @@ export default function RequestService() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [additionalDetails, setAdditionalDetails] = useState("");
   const [location, setLocation] = useState("");
+  const [savedLat, setSavedLat] = useState<number | null>(null);
+  const [savedLng, setSavedLng] = useState<number | null>(null);
+  const [savedAddress, setSavedAddress] = useState<string | null>(null);
 
   // Typography helpers
   const text = useMemo(
@@ -722,3 +725,5 @@ export default function RequestService() {
     </View>
   );
 }
+
+
