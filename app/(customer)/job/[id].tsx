@@ -15,8 +15,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard, cardPressed } from "../../../src/ui/styles";
-import { notifyUser } from "../../../src/lib/notify";
+import { createCard } from "../../../src/ui/styles";
 import { CancelQuoteModal } from "../../../src/components/CancelQuoteModal";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
@@ -25,7 +24,7 @@ import { JobProgressTracker, InvoiceView, JobActions } from "../../../components
 import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract } from "../../../src/lib/job-contract";
 import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
-import { getJobPhase } from "../../../src/types/job-lifecycle";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -306,17 +305,16 @@ export default function CustomerJobDetails() {
       if (qErr) throw qErr;
       setQuotes((q as any as Quote[]) ?? []);
 
-      // Load lifecycle data for accepted jobs
-      if (j.accepted_mechanic_id) {
-        const lifecycleData = await getContractWithDetails(id);
-        setContract(lifecycleData.contract);
-        setProgress(lifecycleData.progress);
+      // Load lifecycle data - check for contract regardless of accepted_mechanic_id
+      // Contract might exist even if status hasn't updated properly
+      const lifecycleData = await getContractWithDetails(id);
+      setContract(lifecycleData.contract);
+      setProgress(lifecycleData.progress);
 
+      if (lifecycleData.contract) {
         const invoiceData = await getInvoiceByJobId(id);
         setInvoice(invoiceData);
       } else {
-        setContract(null);
-        setProgress(null);
         setInvoice(null);
       }
     } catch (e: any) {
@@ -398,53 +396,15 @@ export default function CustomerJobDetails() {
   const acceptQuote = useCallback(
     async (quoteId: string) => {
       Alert.alert(
-        "Accept Quote?",
-        "After accepting, you'll be taken to the payment screen to complete your booking.",
+        "Commit to Payment?",
+        "After committing, you'll be taken to the payment screen to complete your booking.",
         [
           { text: "Cancel", style: "cancel" },
           {
-            text: "Accept & Pay",
+            text: "Commit to Payment",
             style: "default",
-            onPress: async () => {
-              try {
-                setBusy(true);
-
-                const { data: userData, error: authErr } = await supabase.auth.getUser();
-                if (authErr) throw authErr;
-
-                const customerId = userData.user?.id;
-                if (!customerId) {
-                  Alert.alert("Not signed in", "Please sign in again.");
-                  router.replace("/(auth)/sign-in");
-                  return;
-                }
-
-                const { data: quote, error: qGetErr } = await supabase
-                  .from("quotes")
-                  .select("id,job_id,mechanic_id,status,price_cents")
-                  .eq("id", quoteId)
-                  .single();
-                if (qGetErr) throw qGetErr;
-
-                if (quote.job_id !== id) {
-                  Alert.alert("Mismatch", "This quote is not for this job.");
-                  return;
-                }
-                if (quote.status !== "pending" || quote.price_cents == null) {
-                  Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
-                  return;
-                }
-
-
-
-                // Don't update quote status here - let the payment flow handle it via RPC
-                // Just navigate to payment screen
-                router.push(`/(customer)/payment/${id}?quoteId=${quoteId}` as any);
-              } catch (e: any) {
-                Alert.alert("Accept error", e?.message ?? "Failed to accept quote.");
-              } finally {
-                setBusy(false);
-              }
+            onPress: () => {
+              router.push(`/(customer)/payment/${id}?quoteId=${quoteId}` as any);
             },
           },
         ]
@@ -503,17 +463,42 @@ export default function CustomerJobDetails() {
     );
   }
 
-  // Derive display status from accepted_mechanic_id if job.status wasn't updated
-  const displayStatus = job.accepted_mechanic_id && (job.status === 'searching' || job.status === 'draft' || job.status === 'quoted')
-    ? 'accepted'
+  // Single source of truth: job.status (corrected if accepted_mechanic_id exists)
+  const effectiveStatus = job.accepted_mechanic_id
+    ? (job.status === 'searching' || job.status === 'draft' || job.status === 'quoted' ? 'accepted' : job.status)
     : job.status;
 
-  const headerHint =
-    job.accepted_mechanic_id
-      ? "✅ Assigned — message your mechanic anytime."
-      : quotedQuotes.length > 0
-      ? `🎉 ${quotedQuotes.length} quote${quotedQuotes.length === 1 ? "" : "s"} ready — pick one to accept.`
-      : "🔎 Searching — quotes will appear here as mechanics respond.";
+  // Header hint derived ONLY from effectiveStatus - no fallback to "Searching" unless status is actually searching
+  const headerHint = (() => {
+    const s = (effectiveStatus || '').toLowerCase();
+    if (s === 'accepted' || s === 'scheduled' || s === 'in_progress' || s === 'work_in_progress') {
+      return "✅ Assigned — message your mechanic anytime.";
+    }
+    if (s === 'completed') {
+      return "🎉 Job completed — please rate your mechanic.";
+    }
+    if (s === 'cancelled') {
+      return "❌ This job was cancelled.";
+    }
+    if (s === 'quoted') {
+      const pendingCount = quotes.filter(q => q.status === 'pending').length;
+      const acceptedCount = quotes.filter(q => q.status === 'accepted').length;
+      if (acceptedCount > 0) {
+        return "✅ Quote accepted — proceed to payment.";
+      }
+      if (pendingCount > 0) {
+        return `🎉 ${pendingCount} quote${pendingCount === 1 ? "" : "s"} ready — pick one to accept.`;
+      }
+      return "📋 Quotes received — review below.";
+    }
+    if (s === 'searching' || s === 'draft') {
+      if (quotes.length > 0) {
+        return `🎉 ${quotes.length} quote${quotes.length === 1 ? "" : "s"} ready — pick one to accept.`;
+      }
+      return "🔎 Searching — quotes will appear here as mechanics respond.";
+    }
+    return "📋 View job details below.";
+  })();
 
   return (
 
@@ -550,10 +535,10 @@ export default function CustomerJobDetails() {
 
         {/* Summary card */}
         <View style={[card, { padding: spacing.lg, gap: 10 }]}>
-          <Text style={text.title}>{job.title}</Text>
+          <Text style={text.title}>{getDisplayTitle(job.title)}</Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <StatusPill status={displayStatus} />
+            <StatusPill status={effectiveStatus} />
             <Text style={text.muted}>Created {fmtDT(job.created_at)}</Text>
           </View>
 
@@ -919,6 +904,8 @@ export default function CustomerJobDetails() {
                 const canAccept =
                   q.status === "pending" && q.price_cents != null && !job.accepted_mechanic_id;
                 const isAccepted = q.status === "accepted" || q.mechanic_id === job.accepted_mechanic_id;
+                // Quote is accepted but no contract exists - needs payment to complete
+                const needsPayment = q.status === "accepted" && !contract && q.price_cents != null;
                 const isOpen = expanded[q.id] ?? isAccepted;
 
                 return (
@@ -956,24 +943,47 @@ export default function CustomerJobDetails() {
                         userId={q.mechanic_id}
                         variant="mini"
                         context="quote_list"
-                        onPressViewProfile={() => setSelectedMechanicId(q.mechanic_id)}
                       />
                     </View>
 
-                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                      <Text style={{ ...text.muted, fontSize: 12 }}>{fmtRelative(q.created_at)}</Text>
-                      <StatusPill status={q.status} />
-                    </View>
-
-                    <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                       <View
                         style={{
-                          flex: 1,
-                          minWidth: 120,
+                          backgroundColor:
+                            q.status === "accepted"
+                              ? "#10b98115"
+                              : q.status === "pending"
+                              ? `${colors.accent}15`
+                              : "#ef444415",
+                          borderWidth: 1,
+                          borderColor:
+                            q.status === "accepted"
+                              ? "#10b98140"
+                              : q.status === "pending"
+                              ? `${colors.accent}40`
+                              : "#ef444440",
+                          borderRadius: 8,
+                          paddingHorizontal: 10,
+                          paddingVertical: 6,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: 11,
+                            fontWeight: "900",
+                            color:
+                              q.status === "accepted" ? "#10b981" : q.status === "pending" ? colors.accent : "#ef4444",
+                          }}
+                        >
+                          {(q.status || "pending").toUpperCase()}
+                        </Text>
+                      </View>
+                      <View
+                        style={{
                           backgroundColor: colors.surface,
                           borderWidth: 1,
                           borderColor: colors.border,
-                          borderRadius: 10,
+                          borderRadius: 8,
                           padding: spacing.sm,
                         }}
                       >
@@ -984,7 +994,28 @@ export default function CustomerJobDetails() {
                       </View>
                     </View>
 
-                    {canAccept ? (
+                    {/* Accepted quote needs payment - show Commit to Payment button */}
+                    {needsPayment ? (
+                      <Pressable
+                        onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${q.id}` as any)}
+                        disabled={busy}
+                        style={({ pressed }) => [
+                          {
+                            backgroundColor: colors.accent,
+                            paddingVertical: 14,
+                            borderRadius: 14,
+                            alignItems: "center",
+                            marginTop: spacing.sm,
+                            opacity: busy ? 0.65 : 1,
+                          },
+                          pressed && { opacity: 0.85 },
+                        ]}
+                      >
+                        <Text style={{ fontWeight: "900", color: "#fff" }}>
+                          Commit to Payment
+                        </Text>
+                      </Pressable>
+                    ) : canAccept ? (
                       <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
                         <Pressable
                           onPress={() => rejectQuote(q.id)}
@@ -1023,7 +1054,7 @@ export default function CustomerJobDetails() {
                           ]}
                         >
                           <Text style={{ fontWeight: "900", color: "#fff" }}>
-                            {busy ? "ACCEPTING…" : "ACCEPT"}
+                            {busy ? "COMMITTING…" : "Commit to Payment"}
                           </Text>
                         </Pressable>
                       </View>
@@ -1075,28 +1106,6 @@ export default function CustomerJobDetails() {
         {/* Assigned mechanic */}
         {job.accepted_mechanic_id && acceptedQuote ? (
           <>
-            {/* Payment Pending - show when accepted but no contract */}
-            {!contract && (
-              <SectionCard title="Payment Required" icon="card-outline">
-                <Text style={{ color: colors.textSecondary, marginBottom: spacing.md }}>
-                  Your quote has been accepted. Please complete payment so your mechanic can begin work.
-                </Text>
-                <Pressable
-                  onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${acceptedQuote.id}` as any)}
-                  style={({ pressed }) => [
-                    {
-                      paddingVertical: 14,
-                      backgroundColor: colors.primary,
-                      borderRadius: 14,
-                      alignItems: "center",
-                    },
-                    pressed && { opacity: 0.7 },
-                  ]}
-                >
-                  <Text style={{ fontWeight: "900", color: "#fff" }}>Complete Payment</Text>
-                </Pressable>
-              </SectionCard>
-            )}
 
             {/* Progress Tracker */}
             {contract && (

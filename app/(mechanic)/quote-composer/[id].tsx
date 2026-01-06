@@ -18,9 +18,10 @@ import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import React from "react";
 
-type QuoteType = "diagnostic_only" | "range" | "fixed" | "inspection_required";
+type QuoteType = "diagnostic_only" | "range" | "fixed";
 
 type Job = {
   id: string;
@@ -38,7 +39,7 @@ const PLATFORM_FEE = 15;
 const DIAGNOSTIC_FEE = 80;
 
 const HOURLY_RATE_OPTIONS = [80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200];
-const HOURS_OPTIONS = ["TBD", 0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6 ];
+const HOURS_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 
 export default function QuoteComposer() {
   const router = useRouter();
@@ -54,10 +55,11 @@ export default function QuoteComposer() {
   const [showCustomerProfile, setShowCustomerProfile] = useState(false);
 
   const [hourlyRate, setHourlyRate] = useState<number | null>(null);
-  const [estimatedHours, setEstimatedHours] = useState<number | "TBD" | null>(null);
-  const [hoursLow, setHoursLow] = useState<number | "TBD" | null>(null);
-  const [hoursHigh, setHoursHigh] = useState<number | "TBD" | null>(null);
+  const [estimatedHours, setEstimatedHours] = useState<number | null>(null);
+  const [hoursLow, setHoursLow] = useState<number | null>(null);
+  const [hoursHigh, setHoursHigh] = useState<number | null>(null);
   const [includeDiagnosticFee, setIncludeDiagnosticFee] = useState(false);
+  const [includeDriveFee, setIncludeDriveFee] = useState(true);
 
   const [arrivalDate, setArrivalDate] = useState("");
   const [arrivalTime, setArrivalTime] = useState("");
@@ -113,25 +115,19 @@ export default function QuoteComposer() {
       type: "diagnostic_only",
       icon: "🔍",
       title: "Diagnostic Only",
-      description: "I'll inspect and diagnose, then quote the repair",
+      description: "Charge for diagnostic inspection, then quote repair separately",
     },
     {
       type: "range",
       icon: "📊",
       title: "Range Quote",
-      description: "Likely repair with price range based on possible causes",
+      description: "Price range based on possible causes (e.g. $200-$400)",
     },
     {
       type: "fixed",
       icon: "✓",
       title: "Fixed Price",
-      description: "I'm confident in the diagnosis and can quote a fixed price",
-    },
-    {
-      type: "inspection_required",
-      icon: "👁",
-      title: "Inspection Required",
-      description: "I need to see the vehicle before quoting",
+      description: "Confident diagnosis with exact price quote",
     },
   ];
 
@@ -141,48 +137,38 @@ export default function QuoteComposer() {
     let laborSubtotal = 0;
 
     if (quoteType === "range" && hoursLow && hoursHigh) {
-      if (hoursLow === "TBD" || hoursHigh === "TBD") return 0;
       const lowLabor = hourlyRate * hoursLow;
       const highLabor = hourlyRate * hoursHigh;
       laborSubtotal = (lowLabor + highLabor) / 2;
     } else if (estimatedHours) {
-      if (estimatedHours === "TBD") return 0;
       laborSubtotal = hourlyRate * estimatedHours;
     }
 
-    let total = laborSubtotal + DRIVE_FEE + PLATFORM_FEE;
-
-    if (includeDiagnosticFee) {
-      total += DIAGNOSTIC_FEE;
-    }
+    let total = laborSubtotal + PLATFORM_FEE;
+    if (includeDriveFee) total += DRIVE_FEE;
+    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
 
     return total;
   };
 
   const calculateTotalLow = () => {
-    if (!hourlyRate || !hoursLow || hoursLow === "TBD") return 0;
-    let total = hourlyRate * hoursLow + DRIVE_FEE + PLATFORM_FEE;
-    if (includeDiagnosticFee) {
-      total += DIAGNOSTIC_FEE;
-    }
+    if (!hourlyRate || !hoursLow) return 0;
+    let total = hourlyRate * hoursLow + PLATFORM_FEE;
+    if (includeDriveFee) total += DRIVE_FEE;
+    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
   };
 
   const calculateTotalHigh = () => {
-    if (!hourlyRate || !hoursHigh || hoursHigh === "TBD") return 0;
-    let total = hourlyRate * hoursHigh + DRIVE_FEE + PLATFORM_FEE;
-    if (includeDiagnosticFee) {
-      total += DIAGNOSTIC_FEE;
-    }
+    if (!hourlyRate || !hoursHigh) return 0;
+    let total = hourlyRate * hoursHigh + PLATFORM_FEE;
+    if (includeDriveFee) total += DRIVE_FEE;
+    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
   };
 
   const canContinue = () => {
     if (!quoteType) return false;
-
-    if (quoteType === "inspection_required") {
-      return true;
-    }
 
     if (quoteType === "diagnostic_only" || quoteType === "fixed") {
       return hourlyRate !== null && estimatedHours !== null;
@@ -193,7 +179,7 @@ export default function QuoteComposer() {
         hourlyRate !== null &&
         hoursLow !== null &&
         hoursHigh !== null &&
-        (hoursLow === "TBD" || hoursHigh === "TBD" || hoursLow <= hoursHigh)
+        hoursLow <= hoursHigh
       );
     }
 
@@ -211,14 +197,13 @@ export default function QuoteComposer() {
       hoursLow: hoursLow?.toString() || "",
       hoursHigh: hoursHigh?.toString() || "",
       includeDiagnosticFee: includeDiagnosticFee.toString(),
+      includeDriveFee: includeDriveFee.toString(),
       arrivalDate: arrivalDate || "",
       arrivalTime: arrivalTime || "",
       durationMinutes:
         quoteType === "range" && hoursLow && hoursHigh
-          ? (hoursLow === "TBD" || hoursHigh === "TBD"
-              ? ""
-              : ((hoursLow + hoursHigh) / 2 * 60).toString())
-          : estimatedHours && estimatedHours !== "TBD"
+          ? ((hoursLow + hoursHigh) / 2 * 60).toString()
+          : estimatedHours
           ? (estimatedHours * 60).toString()
           : "",
       message: message || "",
@@ -236,9 +221,9 @@ export default function QuoteComposer() {
     > = {
       diagnostic_only: {
         tips: [
-          "Protects both parties when diagnosis is unclear",
-          "Customer expects inspection, not repair",
-          "You can quote repair after diagnosing",
+          "Customer pays for inspection time",
+          "Quote repair separately after diagnosing",
+          "Good when diagnosis is unclear",
         ],
         risks: [],
       },
@@ -253,18 +238,10 @@ export default function QuoteComposer() {
       fixed: {
         tips: [
           "Customer appreciates certainty",
-          "Shows confidence",
+          "Shows confidence in your diagnosis",
           "Faster acceptance rate",
         ],
         risks: ["Ensure you account for complications"],
-      },
-      inspection_required: {
-        tips: [
-          "Shows you won't guess",
-          "Protects customer from unnecessary work",
-          "Builds trust through honesty",
-        ],
-        risks: [],
       },
     };
 
@@ -274,10 +251,10 @@ export default function QuoteComposer() {
   const renderPickerModal = (
     visible: boolean,
     onClose: () => void,
-    options: (number | string)[],
-    onSelect: (value: number | "TBD") => void,
+    options: number[],
+    onSelect: (value: number) => void,
     title: string,
-    formatValue: (val: number | string) => string
+    formatValue: (val: number) => string
   ) => (
     <Modal
       visible={visible}
@@ -329,7 +306,7 @@ export default function QuoteComposer() {
               <Pressable
                 key={option}
                 onPress={() => {
-                  onSelect(option as number | "TBD");
+                  onSelect(option);
                   onClose();
                 }}
                 style={({ pressed }) => ({
@@ -413,7 +390,7 @@ export default function QuoteComposer() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
             <Text style={{ fontSize: 20 }}>🔧</Text>
             <Text style={{ ...text.section, fontSize: 13 }}>
-              {vehicleText} • {job.title}
+              {vehicleText} • {getDisplayTitle(job.title)}
             </Text>
           </View>
         </View>
@@ -464,7 +441,7 @@ export default function QuoteComposer() {
           ))}
         </View>
 
-        {quoteType && quoteType !== "inspection_required" && (
+        {quoteType && (
           <>
             <View style={{ gap: spacing.sm }}>
               <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Hourly Pricing</Text>
@@ -622,6 +599,45 @@ export default function QuoteComposer() {
                   </Text>
                 </View>
               </Pressable>
+
+              <Pressable
+                onPress={() => setIncludeDriveFee(!includeDriveFee)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  padding: spacing.md,
+                  borderRadius: radius.md,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <View
+                  style={{
+                    width: 24,
+                    height: 24,
+                    borderRadius: 6,
+                    borderWidth: 2,
+                    borderColor: includeDriveFee ? colors.accent : colors.border,
+                    backgroundColor: includeDriveFee ? colors.accent : "transparent",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  {includeDriveFee && (
+                    <Ionicons name="checkmark" size={16} color="#fff" />
+                  )}
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
+                    Include drive fee
+                  </Text>
+                  <Text style={{ ...text.muted, fontSize: 12 }}>
+                    Add ${DRIVE_FEE} drive fee (travel to customer location)
+                  </Text>
+                </View>
+              </Pressable>
             </View>
 
             {((quoteType === "range" && hourlyRate && hoursLow && hoursHigh) ||
@@ -648,24 +664,11 @@ export default function QuoteComposer() {
                     </Text>
                   </View>
 
-                  {includeDiagnosticFee && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.body, fontSize: 14 }}>Diagnostic fee</Text>
-                      <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                        ${DIAGNOSTIC_FEE}
-                      </Text>
-                    </View>
-                  )}
-
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
                     <Text style={{ ...text.body, fontSize: 14 }}>Labor subtotal</Text>
                     <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
                       {quoteType === "range"
-                        ? hoursLow === "TBD" || hoursHigh === "TBD"
-                          ? "TBD"
-                          : `$${(hourlyRate! * (hoursLow ?? 0)).toFixed(0)} - $${(hourlyRate! * (hoursHigh ?? 0)).toFixed(0)}`
-                        : estimatedHours === "TBD"
-                        ? "TBD"
+                        ? `$${(hourlyRate! * (hoursLow ?? 0)).toFixed(0)} - $${(hourlyRate! * (hoursHigh ?? 0)).toFixed(0)}`
                         : `$${(hourlyRate! * (estimatedHours ?? 0)).toFixed(0)}`}
                     </Text>
                   </View>
@@ -678,15 +681,17 @@ export default function QuoteComposer() {
                     }}
                   />
 
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Drive fee</Text>
-                    <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                      ${DRIVE_FEE}
-                    </Text>
-                  </View>
+                  {includeDriveFee && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ ...text.body, fontSize: 14 }}>Drive fee (travel to you)</Text>
+                      <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
+                        ${DRIVE_FEE}
+                      </Text>
+                    </View>
+                  )}
 
                   <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Platform fee</Text>
+                    <Text style={{ ...text.body, fontSize: 14 }}>Platform fee (booking)</Text>
                     <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
                       ${PLATFORM_FEE}
                     </Text>
@@ -713,11 +718,7 @@ export default function QuoteComposer() {
                     <Text style={{ ...text.body, fontSize: 16, fontWeight: "700" }}>Total</Text>
                     <Text style={{ ...text.body, fontSize: 20, fontWeight: "900", color: colors.accent }}>
                       {quoteType === "range"
-                        ? hoursLow === "TBD" || hoursHigh === "TBD"
-                          ? "TBD"
-                          : `$${calculateTotalLow().toFixed(0)} - $${calculateTotalHigh().toFixed(0)}`
-                        : estimatedHours === "TBD"
-                        ? "TBD"
+                        ? `$${calculateTotalLow().toFixed(0)} - $${calculateTotalHigh().toFixed(0)}`
                         : `$${calculateTotal().toFixed(0)}`}
                     </Text>
                   </View>
@@ -878,7 +879,7 @@ export default function QuoteComposer() {
         showRatePicker,
         () => setShowRatePicker(false),
         HOURLY_RATE_OPTIONS,
-        (val) => setHourlyRate(val === "TBD" ? null : val),
+        setHourlyRate,
         "Select Hourly Rate",
         (val) => `$${val}/hr`
       )}
@@ -889,7 +890,7 @@ export default function QuoteComposer() {
         HOURS_OPTIONS,
         setEstimatedHours,
         "Select Estimated Hours",
-        (val) => val === "TBD" ? "TBD" : `${val} hours`
+        (val) => `${val} hours`
       )}
 
       {renderPickerModal(
@@ -898,7 +899,7 @@ export default function QuoteComposer() {
         HOURS_OPTIONS,
         setHoursLow,
         "Select Low Hours Estimate",
-        (val) => val === "TBD" ? "TBD" : `${val} hours`
+        (val) => `${val} hours`
       )}
 
       {renderPickerModal(
@@ -907,7 +908,7 @@ export default function QuoteComposer() {
         HOURS_OPTIONS,
         setHoursHigh,
         "Select High Hours Estimate",
-        (val) => val === "TBD" ? "TBD" : `${val} hours`
+        (val) => `${val} hours`
       )}
 
       {job?.customer_id && (

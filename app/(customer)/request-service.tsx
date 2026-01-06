@@ -146,6 +146,7 @@ export default function RequestService() {
 
   const [userId, setUserId] = useState<string | null>(null);
   const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
+  const [symptomLabel, setSymptomLabel] = useState<string | null>(null);
 
   const [loadingSubmit, setLoadingSubmit] = useState(false);
 
@@ -183,13 +184,14 @@ export default function RequestService() {
       }
       if (data.session?.user?.id) {
         setUserId(data.session.user.id);
-        // Check if user has payment method
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("stripe_customer_id")
-          .eq("id", data.session.user.id)
-          .single();
-        setHasPaymentMethod(!!profile?.stripe_customer_id);
+        // Check if user has payment method in customer_payment_methods table
+        const { data: paymentMethods } = await supabase
+          .from("customer_payment_methods")
+          .select("id")
+          .eq("customer_id", data.session.user.id)
+          .is("deleted_at", null)
+          .limit(1);
+        setHasPaymentMethod(paymentMethods && paymentMethods.length > 0);
       } else {
         router.replace("/(auth)/sign-in");
       }
@@ -268,6 +270,18 @@ export default function RequestService() {
     setCurrentQuestionIndex(0);
 
     fetchQuestionsFromDB(symptomKey);
+
+    // Fetch symptom label
+    (async () => {
+      const { data } = await supabase
+        .from("symptoms")
+        .select("label")
+        .eq("key", symptomKey)
+        .single();
+      if (data?.label) {
+        setSymptomLabel(data.label);
+      }
+    })();
   }, [symptomKey, fetchQuestionsFromDB]);
 
   // If no questions, jump to details after load
@@ -353,7 +367,7 @@ export default function RequestService() {
         "Please add a payment method before requesting service.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Add Payment", onPress: () => router.push("/(customer)/payment-methods") },
+          { text: "Add Payment", onPress: () => router.push("/(customer)/(tabs)/account") },
         ]
       );
       return;
@@ -399,7 +413,7 @@ export default function RequestService() {
         .from("jobs")
         .insert({
           customer_id: userId,
-          title: symptomKey || "Service Request",
+          title: symptomLabel || symptomKey || "Service Request",
           description,
           location_address: location.trim(),
           location_lat: locationLat,
@@ -424,7 +438,7 @@ export default function RequestService() {
     } finally {
       setLoadingSubmit(false);
     }
-  }, [userId, hasPaymentMethod, symptomKey, vehicleId, location, generateProblemDescription]);
+  }, [userId, hasPaymentMethod, symptomKey, symptomLabel, vehicleId, location, generateProblemDescription]);
 
   const renderTopHeader = () => (
     <View

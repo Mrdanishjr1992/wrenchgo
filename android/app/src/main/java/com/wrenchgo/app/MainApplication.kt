@@ -1,4 +1,4 @@
-package com.wrenchgo
+package com.wrenchgo.app
 
 import android.app.Application
 import android.content.res.Configuration

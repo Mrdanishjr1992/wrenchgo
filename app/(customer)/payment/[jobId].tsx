@@ -10,6 +10,7 @@ import { createCard } from "../../../src/ui/styles";
 import { AppButton } from "../../../src/ui/components/AppButton";
 import { acceptQuoteAndCreateContract } from "../../../src/lib/job-contract";
 import { notifyUser } from "../../../src/lib/notify";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 
 type Job = {
   id: string;
@@ -53,6 +54,20 @@ export default function JobPayment() {
         return;
       }
 
+      // Check if contract already exists for this job
+      const { data: existingContract } = await supabase
+        .from("job_contracts")
+        .select("id")
+        .eq("job_id", jobId)
+        .maybeSingle();
+
+      if (existingContract) {
+        // Contract already exists, redirect to job details
+        Alert.alert("Already Paid", "Payment has already been completed for this job.");
+        router.replace(`/(customer)/job/${jobId}` as any);
+        return;
+      }
+
       const { data: jobData, error: jobError } = await supabase
         .from("jobs")
         .select("id, customer_id, title, status")
@@ -69,16 +84,34 @@ export default function JobPayment() {
 
       setJob(jobData);
 
-      const { data: quoteData, error: quoteError } = await supabase
+      // If quoteId is provided, use that specific quote
+      // Otherwise, find the accepted quote or the most recent pending quote with a price
+      let quoteQuery = supabase
         .from("quotes")
         .select("id, job_id, mechanic_id, price_cents, status, created_at")
-        .eq("job_id", jobId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .eq("job_id", jobId);
+
+      if (quoteId) {
+        quoteQuery = quoteQuery.eq("id", quoteId);
+      } else {
+        // Prioritize accepted quotes, then pending quotes with prices
+        quoteQuery = quoteQuery
+          .in("status", ["accepted", "pending"])
+          .not("price_cents", "is", null)
+          .order("status", { ascending: false }) // 'accepted' comes after 'pending' alphabetically, so descending
+          .order("created_at", { ascending: false });
+      }
+
+      const { data: quoteData, error: quoteError } = await quoteQuery.limit(1).maybeSingle();
 
       if (quoteError) {
         console.error("Error loading quote:", quoteError);
+      }
+
+      if (!quoteData || quoteData.price_cents == null) {
+        Alert.alert("No Quote Available", "There is no quote ready for payment.");
+        router.back();
+        return;
       }
 
       setQuote(quoteData as any);
@@ -88,7 +121,7 @@ export default function JobPayment() {
     } finally {
       setLoading(false);
     }
-  }, [jobId, router]);
+  }, [jobId, quoteId, router]);
 
   useFocusEffect(
     useCallback(() => {
@@ -182,7 +215,7 @@ export default function JobPayment() {
 
           <View style={{ marginBottom: spacing.lg }}>
             <Text style={[text.muted, { marginBottom: spacing.xs }]}>Job:</Text>
-            <Text style={text.body}>{job.title}</Text>
+            <Text style={text.body}>{getDisplayTitle(job.title)}</Text>
           </View>
 
           <View style={{ 
@@ -200,7 +233,9 @@ export default function JobPayment() {
           <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={text.muted}>Quote Status:</Text>
-              <Text style={[text.body, { color: "#10B981" }]}>Accepted</Text>
+              <Text style={[text.body, { color: quote.status === "accepted" ? "#10B981" : colors.accent }]}>
+                {quote.status === "accepted" ? "Accepted" : "Ready to Accept"}
+              </Text>
             </View>
           </View>
         </View>

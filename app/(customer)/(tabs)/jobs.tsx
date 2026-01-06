@@ -13,6 +13,7 @@ import { useFocusEffect } from "@react-navigation/native";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard, cardPressed } from "../../../src/ui/styles";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
 
 type QuoteSummary = {
@@ -297,7 +298,7 @@ export default function CustomerJobs() {
       >
         <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
           <View style={{ flex: 1 }}>
-            <Text style={text.section} numberOfLines={1}>{item.title || "Job"}</Text>
+            <Text style={text.section} numberOfLines={1}>{getDisplayTitle(item.title) || "Job"}</Text>
             <Text style={{ ...text.muted, marginTop: 4 }} numberOfLines={1}>{statusHint(item.status || "searching")}</Text>
           </View>
           <View style={{ alignItems: "flex-end", gap: 8 }}>

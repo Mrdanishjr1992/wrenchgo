@@ -163,6 +163,11 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
 
   const { contract, approved_items, pending_items, rejected_items } = invoice;
 
+  // Filter out platform_fee items for mechanics
+  const filteredApprovedItems = role === 'mechanic'
+    ? approved_items.filter(item => item.item_type !== 'platform_fee')
+    : approved_items;
+
   return (
     <View style={styles.container}>
       {/* Pending Items Alert */}
@@ -190,7 +195,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
         <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
           Invoice Items
         </Text>
-        {approved_items.map(item => renderLineItem(item, false))}
+        {filteredApprovedItems.map(item => renderLineItem(item, false))}
       </View>
 
       {/* Rejected Items (collapsed) */}
@@ -206,7 +211,9 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
       {/* Totals */}
       <View style={[styles.totalsSection, { borderTopColor: colors.border }]}>
         <View style={styles.totalRow}>
-          <Text style={[styles.totalLabel, { color: colors.textMuted }]}>Subtotal</Text>
+          <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+            {role === 'mechanic' ? 'Quoted Amount' : 'Labor & Parts'}
+          </Text>
           <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
             {formatCents(contract.subtotal_cents)}
           </Text>
@@ -223,28 +230,44 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
           </View>
         )}
 
-        <View style={styles.totalRow}>
-          <Text style={[styles.totalLabel, { color: colors.textMuted }]}>Platform Fee</Text>
-          <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
-            {formatCents(contract.platform_fee_cents)}
-          </Text>
-        </View>
+        {/* Platform fee - only show to customer */}
+        {role === 'customer' && (
+          <>
+            <View style={styles.totalRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.totalLabel, { color: colors.textMuted }]}>Platform Fee</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                  Booking, support & payment processing
+                </Text>
+              </View>
+              <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
+                {formatCents(contract.platform_fee_cents)}
+              </Text>
+            </View>
 
-        <View style={[styles.totalRow, styles.grandTotalRow]}>
-          <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
-            {role === 'customer' ? 'Total Due' : 'Customer Total'}
-          </Text>
-          <Text style={[styles.grandTotalValue, { color: colors.accent }]}>
-            {formatCents(contract.total_customer_cents)}
-          </Text>
-        </View>
+            <View style={[styles.totalRow, styles.grandTotalRow]}>
+              <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
+                Total Due
+              </Text>
+              <Text style={[styles.grandTotalValue, { color: colors.accent }]}>
+                {formatCents(contract.total_customer_cents)}
+              </Text>
+            </View>
+          </>
+        )}
 
+        {/* Mechanic earnings breakdown */}
         {role === 'mechanic' && (
           <>
-            <View style={[styles.totalRow, { marginTop: 12 }]}>
-              <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
-                Commission ({Math.round((contract.mechanic_commission_cents / contract.subtotal_cents) * 100)}%)
-              </Text>
+            <View style={[styles.totalRow, { marginTop: 4 }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                  Service Fee ({Math.round((contract.mechanic_commission_cents / contract.subtotal_cents) * 100)}%)
+                </Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                  WrenchGo platform commission
+                </Text>
+              </View>
               <Text style={[styles.totalValue, { color: '#EF4444' }]}>
                 -{formatCents(contract.mechanic_commission_cents)}
               </Text>

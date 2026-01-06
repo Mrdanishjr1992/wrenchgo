@@ -30,7 +30,8 @@
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
-      ]
+      ],
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -43,7 +44,15 @@
           "enableGooglePay": true
         }
       ],
-      "expo-router"
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF9F1C",
+          "sounds": []
+        }
+      ]
     ],
     "extra": {
       "router": {
@@ -52,6 +61,10 @@
       "eas": {
         "projectId": "your-project-id"
       }
+    },
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#FF9F1C"
     }
   }
 }

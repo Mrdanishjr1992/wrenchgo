@@ -23,6 +23,7 @@ import { JobProgressTracker, InvoiceView, JobActions, AddLineItemForm } from "..
 import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract } from "../../../src/lib/job-contract";
 import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -390,7 +391,7 @@ export default function MechanicJobDetails() {
         </View>
 
         <View style={[card, { padding: spacing.lg, gap: 10 }]}>
-          <Text style={text.title}>{job.title}</Text>
+          <Text style={text.title}>{getDisplayTitle(job.title)}</Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <StatusPill status={job.status} />
@@ -768,6 +769,73 @@ export default function MechanicJobDetails() {
             variant="mini"
             onPressViewProfile={() => setSelectedCustomerId(job.customer_id)}
           />
+
+          {/* Cancel Job button for mechanic - only show for active jobs */}
+          {job.status !== "completed" && job.status !== "canceled" && (
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  "Withdraw from Job?",
+                  "Are you sure you want to withdraw from this job? The customer will be notified and may leave a review.",
+                  [
+                    { text: "Keep Job", style: "cancel" },
+                    {
+                      text: "Withdraw",
+                      style: "destructive",
+                      onPress: async () => {
+                        try {
+                          // Update the quote to withdrawn
+                          if (quoteRequest?.id) {
+                            await supabase
+                              .from("quotes")
+                              .update({
+                                status: "withdrawn",
+                                updated_at: new Date().toISOString()
+                              })
+                              .eq("id", quoteRequest.id);
+                          }
+
+                          // Update job status back to searching if no other accepted quote
+                          await supabase
+                            .from("jobs")
+                            .update({
+                              status: "canceled",
+                              accepted_mechanic_id: null,
+                              canceled_at: new Date().toISOString(),
+                              canceled_by: "mechanic",
+                              updated_at: new Date().toISOString()
+                            })
+                            .eq("id", id);
+
+                          Alert.alert(
+                            "Withdrawn",
+                            "You have withdrawn from this job.",
+                            [{ text: "OK", onPress: () => router.replace("/(mechanic)/(tabs)/jobs" as any) }]
+                          );
+                        } catch (e: any) {
+                          Alert.alert("Error", e?.message ?? "Failed to withdraw from job");
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+              style={({ pressed }) => [
+                {
+                  marginTop: spacing.md,
+                  paddingVertical: 14,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: "#EF4444",
+                  borderRadius: 14,
+                  alignItems: "center",
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={{ fontWeight: "900", color: "#EF4444" }}>Withdraw from Job</Text>
+            </Pressable>
+          )}
         </SectionCard>
       </ScrollView>
 

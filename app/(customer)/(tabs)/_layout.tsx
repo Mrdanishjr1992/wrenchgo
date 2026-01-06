@@ -6,8 +6,10 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
+import { usePushNotifications } from "../../../src/hooks/usePushNotifications";
 
 export default function CustomerLayout() {
+  usePushNotifications();
   const router = useRouter();
   const pathname = usePathname();
   const { colors, mode } = useTheme(); // ✅ add mode

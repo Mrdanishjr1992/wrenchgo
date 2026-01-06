@@ -13,9 +13,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import React from "react";
 
-type QuoteType = "diagnostic_only" | "range" | "fixed" | "inspection_required";
+type QuoteType = "diagnostic_only" | "range" | "fixed";
 
 type Quote = {
   id: string;
@@ -87,7 +88,16 @@ export default function QuoteSent() {
         .single();
 
       if (jobError) throw jobError;
-      setJob(jobData);
+
+      // Normalize the nested arrays from Supabase to single objects
+      const normalizedJob: Job = {
+        id: jobData.id,
+        title: jobData.title,
+        customer_id: jobData.customer_id,
+        vehicle: Array.isArray(jobData.vehicle) ? jobData.vehicle[0] ?? null : jobData.vehicle,
+        customer: Array.isArray(jobData.customer) ? jobData.customer[0] ?? null : jobData.customer,
+      };
+      setJob(normalizedJob);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load quote");
       router.back();
@@ -97,11 +107,8 @@ export default function QuoteSent() {
   };
 
   const getPriceDisplay = () => {
-    if (!quote) return "";
-    if (quote.price_cents) {
-      return `$${(quote.price_cents / 100).toFixed(0)}`;
-    }
-    return "Price TBD";
+    if (!quote || !quote.price_cents) return "$0";
+    return `$${(quote.price_cents / 100).toFixed(0)}`;
   };
 
   const handleCall = () => {
@@ -226,7 +233,7 @@ export default function QuoteSent() {
             <View>
               <Text style={{ ...text.muted, fontSize: 13 }}>Vehicle</Text>
               <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
-                {vehicleText} • {job.title}
+                {vehicleText} • {getDisplayTitle(job.title)}
               </Text>
             </View>
 
@@ -250,7 +257,7 @@ export default function QuoteSent() {
               <View>
                 <Text style={{ ...text.muted, fontSize: 13 }}>Notes</Text>
                 <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
-                  {quote.notes}
+                  {quote.notes.split('\n').filter(line => !line.includes('Platform fee')).join('\n')}
                 </Text>
               </View>
             )}
@@ -351,6 +358,74 @@ export default function QuoteSent() {
             >
               <Ionicons name="call" size={18} color="#000" />
               <Text style={{ fontWeight: "700", fontSize: 15, color: "#000" }}>Call Customer</Text>
+            </Pressable>
+          </View>
+        )}
+
+        {/* Quote Actions - only for pending quotes */}
+        {quote.status === "pending" && (
+          <View style={{ gap: spacing.sm }}>
+            <Pressable
+              onPress={() => router.push(`/(mechanic)/quote-composer/${params.id}?edit=true` as any)}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingVertical: 14,
+                borderRadius: radius.lg,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.accent,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Ionicons name="create-outline" size={20} color={colors.accent} />
+              <Text style={{ fontWeight: "700", fontSize: 15, color: colors.accent }}>Adjust Quote</Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  "Withdraw Quote?",
+                  "Are you sure you want to withdraw this quote? The customer will no longer see it.",
+                  [
+                    { text: "Cancel", style: "cancel" },
+                    {
+                      text: "Withdraw",
+                      style: "destructive",
+                      onPress: async () => {
+                        try {
+                          const { error } = await supabase
+                            .from("quotes")
+                            .update({ status: "withdrawn", updated_at: new Date().toISOString() })
+                            .eq("id", quote.id);
+                          if (error) throw error;
+                          Alert.alert("Quote Withdrawn", "Your quote has been withdrawn.");
+                          router.replace("/(mechanic)/(tabs)/leads" as any);
+                        } catch (e: any) {
+                          Alert.alert("Error", e?.message ?? "Failed to withdraw quote");
+                        }
+                      },
+                    },
+                  ]
+                );
+              }}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingVertical: 14,
+                borderRadius: radius.lg,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: "#EF4444",
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Ionicons name="close-circle-outline" size={20} color="#EF4444" />
+              <Text style={{ fontWeight: "700", fontSize: 15, color: "#EF4444" }}>Withdraw Quote</Text>
             </Pressable>
           </View>
         )}

@@ -12,9 +12,10 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { createCard } from "../../src/ui/styles";
+import { getDisplayTitle } from "../../src/lib/format-symptom";
 import React from "react";
 
-type QuoteType = "diagnostic_only" | "range" | "fixed" | "inspection_required";
+type QuoteType = "diagnostic_only" | "range" | "fixed";
 
 type Job = {
   id: string;
@@ -40,6 +41,7 @@ export default function QuoteReview() {
     hoursLow: string;
     hoursHigh: string;
     includeDiagnosticFee: string;
+    includeDriveFee: string;
     arrivalDate: string;
     arrivalTime: string;
     durationMinutes: string;
@@ -92,7 +94,6 @@ export default function QuoteReview() {
       diagnostic_only: "Diagnostic Only",
       range: "Range Quote",
       fixed: "Fixed Price",
-      inspection_required: "Inspection Required",
     };
     return labels[type];
   };
@@ -100,73 +101,55 @@ export default function QuoteReview() {
   const calculatePricing = () => {
     const hourlyRate = parseFloat(params.hourlyRate || "0");
     const includeDiagnostic = params.includeDiagnosticFee === "true";
+    const includeDrive = params.includeDriveFee !== "false"; // default true
+
+    const baseFees = PLATFORM_FEE + (includeDrive ? DRIVE_FEE : 0) + (includeDiagnostic ? DIAGNOSTIC_FEE : 0);
 
     if (params.quoteType === "range") {
-      const hoursLow = params.hoursLow === "TBD" ? null : parseFloat(params.hoursLow || "0");
-      const hoursHigh = params.hoursHigh === "TBD" ? null : parseFloat(params.hoursHigh || "0");
-
-      if (!hoursLow || !hoursHigh) {
-        return {
-          isTBD: true,
-          laborLow: 0,
-          laborHigh: 0,
-          fees: DRIVE_FEE + PLATFORM_FEE + (includeDiagnostic ? DIAGNOSTIC_FEE : 0),
-          totalLow: 0,
-          totalHigh: 0,
-        };
-      }
+      const hoursLow = parseFloat(params.hoursLow || "0");
+      const hoursHigh = parseFloat(params.hoursHigh || "0");
 
       const laborLow = hourlyRate * hoursLow;
       const laborHigh = hourlyRate * hoursHigh;
-      const fees = DRIVE_FEE + PLATFORM_FEE + (includeDiagnostic ? DIAGNOSTIC_FEE : 0);
 
       return {
         isTBD: false,
         laborLow,
         laborHigh,
-        fees,
-        totalLow: laborLow + fees,
-        totalHigh: laborHigh + fees,
+        fees: baseFees,
+        totalLow: laborLow + baseFees,
+        totalHigh: laborHigh + baseFees,
+        includeDrive,
+        includeDiagnostic,
       };
     }
 
-    const estimatedHours = params.estimatedHours === "TBD" ? null : parseFloat(params.estimatedHours || "0");
-
-    if (!estimatedHours) {
-      return {
-        isTBD: true,
-        labor: 0,
-        fees: DRIVE_FEE + PLATFORM_FEE + (includeDiagnostic ? DIAGNOSTIC_FEE : 0),
-        total: 0,
-      };
-    }
-
+    const estimatedHours = parseFloat(params.estimatedHours || "0");
     const labor = hourlyRate * estimatedHours;
-    const fees = DRIVE_FEE + PLATFORM_FEE + (includeDiagnostic ? DIAGNOSTIC_FEE : 0);
 
     return {
       isTBD: false,
       labor,
-      fees,
-      total: labor + fees,
+      fees: baseFees,
+      total: labor + baseFees,
+      includeDrive,
+      includeDiagnostic,
     };
   };
 
   const pricing = calculatePricing();
   const includeDiagnostic = params.includeDiagnosticFee === "true";
+  const includeDrive = params.includeDriveFee !== "false";
 
   const getExpectationText = () => {
     if (params.quoteType === "diagnostic_only") {
-      return `$${DIAGNOSTIC_FEE} diagnostic + travel/platform fees, repair quoted separately`;
+      return `$${DIAGNOSTIC_FEE} diagnostic + platform fees, repair quoted separately`;
     }
     if (params.quoteType === "range") {
       return "Final total will fall within the stated range";
     }
     if (params.quoteType === "fixed") {
       return "Total includes labor estimate + fees";
-    }
-    if (params.quoteType === "inspection_required") {
-      return "Inspection before confirming total";
     }
     return "";
   };
@@ -180,9 +163,6 @@ export default function QuoteReview() {
     }
     if (params.quoteType === "fixed") {
       return "Complete repair at quoted price";
-    }
-    if (params.quoteType === "inspection_required") {
-      return "Vehicle inspection before repair quote";
     }
     return "";
   };
@@ -198,13 +178,13 @@ export default function QuoteReview() {
       }
 
       // Check if mechanic has payout setup
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("stripe_account_id")
-        .eq("id", userData.user.id)
-        .single();
+      const { data: stripeAccount } = await supabase
+        .from("mechanic_stripe_accounts")
+        .select("id, stripe_account_id")
+        .eq("mechanic_id", userData.user.id)
+        .maybeSingle();
 
-      if (!profile?.stripe_account_id) {
+      if (!stripeAccount?.stripe_account_id) {
         Alert.alert(
           "Payout Setup Required",
           "Please set up your payout account before sending quotes.",
@@ -223,16 +203,25 @@ export default function QuoteReview() {
           ? `${params.arrivalDate} ${params.arrivalTime}`
           : null;
 
-      let priceCents = null;
+      let priceCents: number;
       let notesText = params.message || null;
 
-      if (params.quoteType === "range" && !pricing.isTBD) {
+      if (params.quoteType === "range") {
         const priceLowCents = Math.round(pricing.totalLow! * 100);
         const priceHighCents = Math.round(pricing.totalHigh! * 100);
         priceCents = Math.round((priceLowCents + priceHighCents) / 2);
         notesText = `Range: $${(priceLowCents / 100).toFixed(0)} - $${(priceHighCents / 100).toFixed(0)}${notesText ? '\n\n' + notesText : ''}`;
-      } else if (!pricing.isTBD && pricing.total !== undefined) {
-        priceCents = Math.round(pricing.total * 100);
+      } else {
+        priceCents = Math.round(pricing.total! * 100);
+      }
+
+      // Add fee breakdown to notes (only mechanic-related fees, not platform fee)
+      const feeBreakdown = [];
+      if (includeDrive) feeBreakdown.push(`Drive fee: $${DRIVE_FEE}`);
+      if (includeDiagnostic) feeBreakdown.push(`Diagnostic fee: $${DIAGNOSTIC_FEE}`);
+
+      if (feeBreakdown.length > 0) {
+        notesText = (notesText ? notesText + '\n\n' : '') + 'Fees included:\n' + feeBreakdown.join('\n');
       }
 
       const estimatedHours = params.durationMinutes ? parseInt(params.durationMinutes) / 60 : null;
@@ -248,12 +237,17 @@ export default function QuoteReview() {
 
       if (error) throw error;
 
-      // Update job status to "quoted" so customer sees the update
-      await supabase
+      // Update job status to "quoted" - handle any prior status except accepted/completed/cancelled
+      const { error: updateError } = await supabase
         .from("jobs")
         .update({ status: "quoted", updated_at: new Date().toISOString() })
         .eq("id", params.jobId)
-        .eq("status", "searching"); // Only update if still searching
+        .in("status", ["searching", "draft"]); // Only update from initial states
+
+      // Log but don't fail if update didn't affect rows (job may already be quoted)
+      if (updateError) {
+        console.warn("Job status update warning:", updateError.message);
+      }
 
       router.replace(`/(mechanic)/quote-sent/${params.jobId}` as any);
     } catch (e: any) {
@@ -284,31 +278,6 @@ export default function QuoteReview() {
     : "Vehicle";
 
   const renderPricingBreakdown = () => {
-    if (params.quoteType === "inspection_required") {
-      return (
-        <View>
-          <Text style={{ ...text.muted, fontSize: 13 }}>Pricing</Text>
-          <Text style={{ ...text.body, fontSize: 20, fontWeight: "700", marginTop: 2 }}>
-            To be determined after inspection
-          </Text>
-        </View>
-      );
-    }
-
-    if (pricing.isTBD) {
-      return (
-        <View>
-          <Text style={{ ...text.muted, fontSize: 13 }}>Pricing</Text>
-          <Text style={{ ...text.body, fontSize: 20, fontWeight: "700", marginTop: 2 }}>
-            TBD
-          </Text>
-          <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
-            Hours to be determined
-          </Text>
-        </View>
-      );
-    }
-
     return (
       <View style={{ gap: spacing.xs }}>
         <Text style={{ ...text.muted, fontSize: 13 }}>Pricing Breakdown</Text>
@@ -347,12 +316,14 @@ export default function QuoteReview() {
             }}
           />
 
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ ...text.body, fontSize: 14 }}>Drive fee</Text>
-            <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-              ${DRIVE_FEE}
-            </Text>
-          </View>
+          {includeDrive && (
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={{ ...text.body, fontSize: 14 }}>Drive fee</Text>
+              <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
+                ${DRIVE_FEE}
+              </Text>
+            </View>
+          )}
 
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
             <Text style={{ ...text.body, fontSize: 14 }}>Platform fee</Text>
@@ -392,10 +363,6 @@ export default function QuoteReview() {
   };
 
   const getTotalDisplay = () => {
-    if (params.quoteType === "inspection_required" || pricing.isTBD) {
-      return "TBD";
-    }
-
     if (params.quoteType === "range") {
       return `$${pricing.totalLow!.toFixed(0)} - $${pricing.totalHigh!.toFixed(0)}`;
     }
@@ -439,7 +406,7 @@ export default function QuoteReview() {
             <View>
               <Text style={{ ...text.muted, fontSize: 13 }}>Vehicle</Text>
               <Text style={{ ...text.body, fontSize: 15, marginTop: 2 }}>
-                {vehicleText} • {job.title}
+                {vehicleText} • {getDisplayTitle(job.title)}
               </Text>
             </View>
 
@@ -523,7 +490,7 @@ export default function QuoteReview() {
               </View>
             </View>
 
-            {!pricing.isTBD && params.quoteType !== "inspection_required" && (
+            {(
               <Pressable
                 onPress={() => setShowBreakdown(!showBreakdown)}
                 style={{

@@ -13,6 +13,7 @@ import { useRouter } from "expo-router";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard, cardPressed } from "../../../src/ui/styles";
+import { getDisplayTitle } from "../../../src/lib/format-symptom";
 
 type Notif = {
   id: string;
@@ -203,7 +204,7 @@ export default function Notifications() {
     const quoteRows = (qr as QuoteRequestRow[]) ?? [];
 
     const jobTitleById = new Map<string, string>();
-    jobRows.forEach((j) => jobTitleById.set(j.id, j.title?.trim() ? j.title : "Job"));
+    jobRows.forEach((j) => jobTitleById.set(j.id, getDisplayTitle(j.title) || "Job"));
 
     const generated: Notif[] = [];
 

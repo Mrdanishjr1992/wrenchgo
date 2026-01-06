@@ -14,6 +14,7 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
+import { getDisplayTitle } from "../../src/lib/format-symptom";
 
 type Conversation = {
   id: string;
@@ -147,7 +148,7 @@ export function MessagesListView({ role }: MessagesListViewProps) {
           return {
             id: job.id,
             job_id: job.id,
-            title: job.title || "Untitled Job",
+            title: getDisplayTitle(job.title) || "Untitled Job",
             other_party_name: profileMap.get(otherPartyId) || otherPartyLabel,
             last_message: lastMsg?.body || null,
             last_message_time: lastMsg?.created_at || job.created_at,

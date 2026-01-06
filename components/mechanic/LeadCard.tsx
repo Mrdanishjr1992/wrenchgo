@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
+import { getDisplayTitle } from '@/src/lib/format-symptom';
 import type { MechanicLead } from '@/src/types/mechanic-leads';
 
 interface LeadCardProps {
@@ -100,7 +101,7 @@ export function LeadCard({ lead, onPressView, onPressQuote }: LeadCardProps) {
         </View>
 
         <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={isExpanded ? undefined : 2}>
-          {lead.title}
+          {getDisplayTitle(lead.title)}
         </Text>
       </TouchableOpacity>
 

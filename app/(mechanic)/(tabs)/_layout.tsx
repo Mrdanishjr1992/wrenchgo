@@ -7,8 +7,10 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import React from "react";
+import { usePushNotifications } from "../../../src/hooks/usePushNotifications";
 
 export default function MechanicTabsLayout() {
+    usePushNotifications();
     const { colors, text } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
