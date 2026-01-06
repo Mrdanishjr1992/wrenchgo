@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -12,12 +12,13 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
-import { colors, spacing, text } from "../../src/ui/theme";
+import { useTheme } from "../../src/ui/theme-context";
 import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 export default function ResetPassword() {
   const router = useRouter();
+  const { colors, text, spacing } = useTheme();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -101,9 +102,8 @@ export default function ResetPassword() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 32 }}>
-        {/* Hero */}
         <LinearGradient
-          colors={["rgba(13,148,136,0.16)", "rgba(13,148,136,0.02)", "rgba(0,0,0,0)"]}
+          colors={["rgba(59,130,246,0.16)", "rgba(59,130,246,0.02)", "rgba(0,0,0,0)"]}
           style={{
             borderRadius: 24,
             padding: spacing.lg,
@@ -130,9 +130,7 @@ export default function ResetPassword() {
           </View>
         </LinearGradient>
 
-        {/* Form */}
         <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
-          {/* Password */}
           <View
             style={{
               backgroundColor: colors.surface,
@@ -194,7 +192,6 @@ export default function ResetPassword() {
             <Text style={text.muted}>Tip: 8+ chars with a number and symbol is best.</Text>
           </View>
 
-          {/* Confirm */}
           <View
             style={{
               backgroundColor: colors.surface,
@@ -242,12 +239,11 @@ export default function ResetPassword() {
 
             {confirm.length > 0 ? (
               <Text style={{ ...text.muted, fontWeight: "800", color: password === confirm ? colors.success : "#ef4444" }}>
-                {password === confirm ? "Passwords match ✓" : "Passwords don’t match"}
+                {password === confirm ? "Passwords match ✓" : "Passwords don't match"}
               </Text>
             ) : null}
           </View>
 
-          {/* CTA */}
           <Pressable
             onPress={updatePassword}
             disabled={!canSubmit}
@@ -260,9 +256,9 @@ export default function ResetPassword() {
             }}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "900", color: "#000" }}>
+              <Text style={{ fontWeight: "900", color: "#fff" }}>
                 {hasRecoverySession === false ? "OPEN RESET LINK FIRST" : "UPDATE PASSWORD"}
               </Text>
             )}

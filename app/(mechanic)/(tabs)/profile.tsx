@@ -95,12 +95,6 @@ export default function MechanicProfile() {
   const [loadingPayout, setLoadingPayout] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }, [load]);
-
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -213,6 +207,12 @@ export default function MechanicProfile() {
       setLoading(false);
     }
   }, [router]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useFocusEffect(
     useCallback(() => {

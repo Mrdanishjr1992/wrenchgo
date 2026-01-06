@@ -197,6 +197,27 @@ export default function QuoteReview() {
         return;
       }
 
+      // Check if mechanic has payout setup
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("stripe_account_id")
+        .eq("id", userData.user.id)
+        .single();
+
+      if (!profile?.stripe_account_id) {
+        Alert.alert(
+          "Payout Setup Required",
+          "Please set up your payout account before sending quotes.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Set Up Payout", onPress: () => router.push("/(mechanic)/payout-setup") },
+          ]
+        );
+        setSubmitting(false);
+        return;
+      }
+
+
       const arrivalTimeStr =
         params.arrivalDate && params.arrivalTime
           ? `${params.arrivalDate} ${params.arrivalTime}`

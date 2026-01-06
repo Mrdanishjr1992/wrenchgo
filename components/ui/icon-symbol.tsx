@@ -1,3 +1,4 @@
+import React from "react";
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';

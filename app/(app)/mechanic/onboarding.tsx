@@ -1,3 +1,4 @@
+import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking } from 'react-native'
 import { useState, useEffect } from 'react'
 import { router } from 'expo-router'

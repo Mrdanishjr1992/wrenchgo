@@ -145,6 +145,7 @@ export default function RequestService() {
   }, [params.vehicleYear, params.vehicleMake, params.vehicleModel, params.vehicleNickname]);
 
   const [userId, setUserId] = useState<string | null>(null);
+  const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
 
   const [loadingSubmit, setLoadingSubmit] = useState(false);
 
@@ -180,8 +181,18 @@ export default function RequestService() {
       if (error) {
         console.error("getSession error:", error);
       }
-      if (data.session?.user?.id) setUserId(data.session.user.id);
-      else router.replace("/(auth)/sign-in");
+      if (data.session?.user?.id) {
+        setUserId(data.session.user.id);
+        // Check if user has payment method
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("stripe_customer_id")
+          .eq("id", data.session.user.id)
+          .single();
+        setHasPaymentMethod(!!profile?.stripe_customer_id);
+      } else {
+        router.replace("/(auth)/sign-in");
+      }
     };
     getUser();
   }, []);
@@ -336,6 +347,17 @@ export default function RequestService() {
       Alert.alert("Error", "You must be logged in to request service.");
       return;
     }
+    if (!hasPaymentMethod) {
+      Alert.alert(
+        "Payment Required",
+        "Please add a payment method before requesting service.",
+        [
+          { text: "Cancel", style: "cancel" },
+          { text: "Add Payment", onPress: () => router.push("/(customer)/payment-methods") },
+        ]
+      );
+      return;
+    }
     if (!symptomKey) {
       Alert.alert("Missing info", "Please select a symptom first.");
       return;
@@ -402,7 +424,7 @@ export default function RequestService() {
     } finally {
       setLoadingSubmit(false);
     }
-  }, [userId, symptomKey, vehicleId, location, generateProblemDescription]);
+  }, [userId, hasPaymentMethod, symptomKey, vehicleId, location, generateProblemDescription]);
 
   const renderTopHeader = () => (
     <View

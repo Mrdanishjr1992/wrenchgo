@@ -18,6 +18,7 @@ import type {
 interface UserProfileCardProps {
   userId: string;
   variant?: ProfileCardVariant;
+  context?: string;
   showActions?: boolean;
   onPressViewProfile?: () => void;
   onPressReviews?: () => void;
@@ -26,6 +27,7 @@ interface UserProfileCardProps {
 export function UserProfileCard({
   userId,
   variant = 'mini',
+  context,
   showActions = false,
   onPressViewProfile,
   onPressReviews,
