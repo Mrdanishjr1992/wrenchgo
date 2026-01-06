@@ -66,8 +66,8 @@ export default function JobPayment() {
       setJob(jobData);
 
       const { data: quoteData, error: quoteError } = await supabase
-        .from("quote_requests")
-        .select("id, job_id, mechanic_id, price_cents, status, accepted_at")
+        .from("quotes")
+        .select("id, job_id, mechanic_id, price_cents, status, created_at")
         .eq("job_id", jobId)
         .eq("status", "accepted")
         .maybeSingle();
@@ -76,7 +76,7 @@ export default function JobPayment() {
         console.error("Error loading quote:", quoteError);
       }
 
-      setQuote(quoteData);
+      setQuote(quoteData as any);
     } catch (error: any) {
       console.error("Payment info load error:", error);
       Alert.alert("Error", error?.message ?? "Failed to load payment information.");
@@ -164,14 +164,8 @@ export default function JobPayment() {
           <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={text.muted}>Quote Status:</Text>
-              <Text style={[text.body, { color: colors.success }]}>Accepted</Text>
+              <Text style={[text.body, { color: "#10B981" }]}>Accepted</Text>
             </View>
-            {quote.accepted_at && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={text.muted}>Accepted On:</Text>
-                <Text style={text.body}>{new Date(quote.accepted_at).toLocaleDateString()}</Text>
-              </View>
-            )}
           </View>
         </View>
 

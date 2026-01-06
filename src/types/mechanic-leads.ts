@@ -1,5 +1,5 @@
 export type LeadFilterType = 'all' | 'nearby' | 'quoted';
-export type LeadSortType = 'newest' | 'closest' | 'highest_value';
+export type LeadSortType = 'newest' | 'closest';
 
 export interface MechanicLead {
   job_id: string;

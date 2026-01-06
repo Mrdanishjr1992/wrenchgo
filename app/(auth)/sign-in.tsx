@@ -81,31 +81,40 @@ export default function SignIn() {
   const ensureProfileAndRoute = async (user: AnyUser) => {
     const authId = user.id;
 
-    // 1) Give DB triggers a moment (if you have them)
+    // Use RPC to bypass RLS timing issues
     for (let attempt = 1; attempt <= 3; attempt++) {
-      const { data: profile, error } = await supabase
+      const { data: role, error } = await supabase.rpc("get_my_role");
+
+      console.log(`[AUTH] get_my_role attempt ${attempt}`, { role, error });
+
+      if (error) {
+        console.warn("[AUTH] get_my_role error:", error.message);
+        await sleep(250);
+        continue;
+      }
+
+      if (role) {
+        router.replace("/");
+        return;
+      }
+
+      // Role is null but profile might exist - check if we need to create profile
+      const { data: profile } = await supabase
         .from("profiles")
-        .select("id, role")
+        .select("id")
         .eq("id", authId)
         .maybeSingle();
 
-      console.log(`[AUTH] profile attempt ${attempt}`, { profile, error });
-
-      if (error) throw new Error(error.message);
-
       if (profile) {
-        if (!profile.role) {
-          router.replace("/(auth)/choose-role");
-          return;
-        }
-        router.replace("/");
+        // Profile exists but role is null
+        router.replace("/(auth)/choose-role");
         return;
       }
 
       await sleep(250);
     }
 
-    // 2) Still missing -> insert minimal profile row (fallback)
+    // Still no profile -> insert minimal profile row (fallback)
     const fullName =
       user.user_metadata?.full_name ||
       user.user_metadata?.name ||
@@ -121,7 +130,9 @@ export default function SignIn() {
 
     console.log("[AUTH] fallback insert profile err:", insErr);
 
-    if (insErr) throw new Error(insErr.message);
+    if (insErr && !insErr.message.includes("duplicate")) {
+      throw new Error(insErr.message);
+    }
 
     router.replace("/(auth)/choose-role");
   };

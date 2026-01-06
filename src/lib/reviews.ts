@@ -53,20 +53,44 @@ export async function getPublicProfile(userId: string): Promise<PublicProfile | 
 
 export async function getUserRatings(userId: string): Promise<UserRating | null> {
   const { data, error } = await supabase
-    .from('user_ratings')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
+    .from('reviews')
+    .select('overall_rating, performance_rating, timing_rating, cost_rating, created_at')
+    .eq('reviewee_id', userId)
+    .eq('is_hidden', false)
+    .is('deleted_at', null);
 
   if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
-    }
     console.error('Error fetching ratings:', error);
     return null;
   }
 
-  return data;
+  if (!data || data.length === 0) {
+    return null;
+  }
+
+  const count = data.length;
+  const avgOverall = data.reduce((sum, r) => sum + (r.overall_rating || 0), 0) / count;
+  const avgPerformance = data.reduce((sum, r) => sum + (r.performance_rating || 0), 0) / count;
+  const avgTiming = data.reduce((sum, r) => sum + (r.timing_rating || 0), 0) / count;
+  const avgCost = data.reduce((sum, r) => sum + (r.cost_rating || 0), 0) / count;
+
+  const lastReview = data.reduce((latest, r) =>
+    !latest || r.created_at > latest ? r.created_at : latest, '');
+
+  return {
+    user_id: userId,
+    review_count: count,
+    avg_overall_rating: avgOverall,
+    avg_performance_rating: avgPerformance,
+    avg_timing_rating: avgTiming,
+    avg_cost_rating: avgCost,
+    last_review_at: lastReview,
+    five_star_count: data.filter(r => r.overall_rating === 5).length,
+    four_star_count: data.filter(r => r.overall_rating === 4).length,
+    three_star_count: data.filter(r => r.overall_rating === 3).length,
+    two_star_count: data.filter(r => r.overall_rating === 2).length,
+    one_star_count: data.filter(r => r.overall_rating === 1).length,
+  };
 }
 
 export async function getUserBadges(userId: string): Promise<UserBadge[]> {
@@ -181,16 +205,12 @@ export async function getUserReviews(
       reviewer_id,
       reviewee_id,
       reviewer_role,
-      reviewee_role,
       overall_rating,
       performance_rating,
       timing_rating,
       cost_rating,
       comment,
       is_hidden,
-      hidden_reason,
-      hidden_at,
-      hidden_by,
       created_at,
       updated_at,
       reviewer:profiles!reviews_reviewer_id_fkey (
@@ -226,16 +246,15 @@ export async function getUserReviews(
     reviewer_id: item.reviewer_id,
     reviewee_id: item.reviewee_id,
     reviewer_role: item.reviewer_role,
-    reviewee_role: item.reviewee_role,
     overall_rating: item.overall_rating,
     performance_rating: item.performance_rating,
     timing_rating: item.timing_rating,
     cost_rating: item.cost_rating,
     comment: item.comment,
     is_hidden: item.is_hidden,
-    hidden_reason: item.hidden_reason,
-    hidden_at: item.hidden_at,
-    hidden_by: item.hidden_by,
+    hidden_reason: null,
+    hidden_at: null,
+    hidden_by: null,
     created_at: item.created_at,
     updated_at: item.updated_at,
     reviewer: Array.isArray(item.reviewer) ? item.reviewer[0] : item.reviewer,
@@ -254,7 +273,7 @@ export async function submitReview(payload: CreateReviewPayload): Promise<{ succ
     return { success: false, error: 'Not authenticated' };
   }
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('reviews')
     .insert({
       ...payload,
@@ -318,7 +337,7 @@ export async function addMechanicSkill(payload: CreateSkillPayload): Promise<{ s
     return { success: false, error: 'Not authenticated' };
   }
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('mechanic_skills')
     .insert({
       mechanic_id: session.session.user.id,
@@ -339,7 +358,7 @@ export async function updateMechanicSkill(
   skillId: string,
   updates: Partial<Pick<MechanicSkill, 'level' | 'years_experience'>>
 ): Promise<{ success: boolean; error?: string }> {
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('mechanic_skills')
     .update(updates)
     .eq('id', skillId)
@@ -374,7 +393,7 @@ export async function reportReview(payload: ReportReviewPayload): Promise<{ succ
     return { success: false, error: 'Not authenticated' };
   }
 
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('review_reports')
     .insert({
       ...payload,

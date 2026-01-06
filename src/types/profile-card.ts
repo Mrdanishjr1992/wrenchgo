@@ -22,14 +22,11 @@ export interface PublicProfileCardBadge {
 
 export interface PublicProfileCardSkill {
   id: string;
-  level: 'beginner' | 'intermediate' | 'advanced' | 'expert';
-  years_experience: number;
-  is_verified: boolean;
   skill: {
-    id: string;
-    name: string;
+    key: string;
+    label: string;
+    name?: string;  // Fallback for compatibility
     category: string;
-    description: string;
   };
 }
 

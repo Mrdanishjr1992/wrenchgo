@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, TextInput } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, TextInput, RefreshControl } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -76,6 +76,7 @@ export default function Explore() {
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
 
   const { symptoms, loading: loadingSymptoms, error: symptomsError, refetch } = useSymptoms();
 
@@ -183,6 +184,12 @@ export default function Explore() {
     }, [loadVehicles])
   );
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([loadVehicles(), refetch()]);
+    setRefreshing(false);
+  }, [loadVehicles, refetch]);
+
   const handleSelectVehicle = useCallback((vehicle: Vehicle) => {
     setSelectedVehicleId(vehicle.id);
     setSelectedVehicle(vehicle);
@@ -254,6 +261,7 @@ export default function Explore() {
       />
 
       <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{
           padding: spacing.lg,
           paddingLeft: spacing.lg + insets.left,

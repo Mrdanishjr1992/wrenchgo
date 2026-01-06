@@ -6,14 +6,20 @@ import {
   Alert,
   Pressable,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Stack, useLocalSearchParams, useRouter } from "expo-router";
 import { supabase } from "../../../src/lib/supabase";
-import { notifyUser } from "../../../src/lib/notify";
-import { createCard, cardPressed } from "../../../src/ui/styles";
+import { createCard } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
+import { Ionicons } from "@expo/vector-icons";
 import React from "react";
+
+import { JobProgressTracker, InvoiceView, JobActions, AddLineItemForm } from "../../../components/job";
+import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract } from "../../../src/lib/job-contract";
+import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
+import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 
 
 type Job = {
@@ -44,7 +50,7 @@ type QuoteRequest = {
 
 
 export default function MechanicJobDetails() {
-  const { colors, text, spacing, radius } = useTheme();
+  const { colors, text, spacing } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
 
   const statusMeta = (status: string) => {
@@ -139,9 +145,15 @@ export default function MechanicJobDetails() {
   const { id } = useLocalSearchParams<{ id: string }>();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [job, setJob] = useState<Job | null>(null);
-  const [saving, setSaving] = useState(false);
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | null>(null);
+
+  // Job lifecycle state
+  const [contract, setContract] = useState<JobContract | null>(null);
+  const [progress, setProgress] = useState<JobProgress | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [showAddLineItem, setShowAddLineItem] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -172,14 +184,28 @@ export default function MechanicJobDetails() {
       setJob(data as any as Job);
 
       const { data: quoteData } = await supabase
-        .from("quote_requests")
-        .select("id,job_id,status,canceled_at,canceled_by,cancel_reason,cancel_note,cancellation_fee_cents")
+        .from("quotes")
+        .select("id,job_id,status,price_cents,estimated_hours,notes,created_at,updated_at")
         .eq("job_id", id)
         .eq("mechanic_id", mechanicId)
         .single();
 
       if (quoteData) {
-        setQuoteRequest(quoteData as QuoteRequest);
+        setQuoteRequest(quoteData as any as QuoteRequest);
+      }
+
+      // Load lifecycle data
+      if (data?.accepted_mechanic_id === mechanicId) {
+        const lifecycleData = await getContractWithDetails(id);
+        setContract(lifecycleData.contract);
+        setProgress(lifecycleData.progress);
+
+        const invoiceData = await getInvoiceByJobId(id);
+        setInvoice(invoiceData);
+      } else {
+        setContract(null);
+        setProgress(null);
+        setInvoice(null);
       }
     } catch (e: any) {
       Alert.alert("Job error", e?.message ?? "Failed to load job.");
@@ -187,6 +213,12 @@ export default function MechanicJobDetails() {
       setLoading(false);
     }
   }, [id, router]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -211,7 +243,7 @@ export default function MechanicJobDetails() {
         .on("postgres_changes", {
           event: "*",
           schema: "public",
-          table: "quote_requests",
+          table: "quotes",
           filter: `job_id=eq.${id}`
         }, load)
         .subscribe();
@@ -222,54 +254,30 @@ export default function MechanicJobDetails() {
     };
   }, [id, load]);
 
+  // Subscribe to lifecycle updates
+  useEffect(() => {
+    if (!job?.accepted_mechanic_id || !id || !contract) return;
+
+    const progressSub = subscribeToJobProgress(id, (p) => setProgress(p));
+    const contractSub = subscribeToJobContract(id, (c) => setContract(c));
+    const lineItemsSub = contract?.id
+      ? subscribeToLineItems(contract.id, async () => {
+          const invoiceData = await getInvoiceByJobId(id);
+          setInvoice(invoiceData);
+        })
+      : null;
+
+    return () => {
+      progressSub?.unsubscribe();
+      contractSub?.unsubscribe();
+      lineItemsSub?.unsubscribe();
+    };
+  }, [id, job?.accepted_mechanic_id, contract?.id]);
+
   const openChat = useCallback(() => {
     if (!job?.id) return;
     router.push(`/(mechanic)/messages/${job.id}` as any);
   }, [job?.id, router]);
-
-  const updateStatus = async (nextStatus: "work_in_progress" | "completed") => {
-    if (!job) return;
-    try {
-      setSaving(true);
-
-      const { data: updated, error } = await supabase
-        .from("jobs")
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq("id", job.id)
-        .select("id,status")
-        .single();
-
-      if (error) throw error;
-
-      await notifyUser({
-        userId: job.customer_id,
-        title: nextStatus === "work_in_progress" ? "Job started 🔧" : "Job completed ✅",
-        body:
-          nextStatus === "work_in_progress"
-            ? "Your mechanic started the job."
-            : "Your mechanic marked the job as completed.",
-        type: nextStatus === "work_in_progress" ? "job_started" : "job_completed",
-        entityType: "job",
-        entityId: job.id,
-      });
-
-      setJob((prev) => (prev ? { ...prev, status: (updated as any).status } : prev));
-    } catch (e: any) {
-      Alert.alert("Update error", e?.message ?? "Failed to update status.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const canStart = useMemo(() => {
-    if (job?.status === "canceled") return false;
-    return (job?.status || "").toLowerCase() === "accepted";
-  }, [job?.status]);
-
-  const canComplete = useMemo(() => {
-    if (job?.status === "canceled") return false;
-    return (job?.status || "").toLowerCase() === "work_in_progress";
-  }, [job?.status]);
 
   const chatUnlocked = !!job?.accepted_mechanic_id && job?.status !== "canceled";
 
@@ -340,12 +348,13 @@ export default function MechanicJobDetails() {
           <Text style={{ color: "#fff", fontWeight: "900", fontSize: 16 }}>← Back</Text>
         </Pressable>
       </LinearGradient>
-      
+
       <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{
           padding: spacing.md,
           gap: spacing.md,
-          paddingBottom: 210,
+          paddingBottom: 100,
         }}
       >
         <View
@@ -475,110 +484,102 @@ export default function MechanicJobDetails() {
             <Text style={text.muted}>No description provided.</Text>
           )}
         </Card>
-      </ScrollView>
 
-      <View
-        style={{
-          position: "absolute",
-          left: spacing.md,
-          right: spacing.md,
-          bottom: spacing.md,
-        }}
-      >
-        <View
-          style={[
-            card,
-            {
-              borderRadius: 22,
-              padding: spacing.lg,
-              backgroundColor: colors.surface,
-              gap: spacing.sm,
-            },
-          ]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={{ ...text.section, flex: 1 }}>Actions</Text>
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 999,
-                backgroundColor: statusC + "1f",
-                borderWidth: 1,
-                borderColor: statusC + "55",
-              }}
-            >
-              <Text style={{ fontWeight: "900", color: statusC, fontSize: 12 }}>
-                {(job.status || "unknown").toUpperCase()}
-              </Text>
-            </View>
-          </View>
+        {/* Progress Tracker */}
+        {contract && (
+          <Card title="Job Progress" icon="📊">
+            <JobProgressTracker
+              progress={progress}
+              status={job.status}
+              role="mechanic"
+            />
+          </Card>
+        )}
 
+        {/* Job Actions */}
+        {contract && job.status !== "completed" && job.status !== "canceled" && (
+          <Card title="Actions" icon="⚡">
+            <JobActions
+              jobId={id}
+              progress={progress}
+              contract={contract}
+              role="mechanic"
+              onRefresh={load}
+              hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
+            />
+          </Card>
+        )}
+
+        {/* Add Line Item Button */}
+        {contract && progress?.work_started_at && !progress?.finalized_at && job.status !== "canceled" && (
           <Pressable
-            onPress={openChat}
-            disabled={!chatUnlocked}
+            onPress={() => setShowAddLineItem(true)}
             style={({ pressed }) => [
               {
                 backgroundColor: colors.accent,
-                paddingVertical: 14,
+                paddingVertical: 16,
                 borderRadius: 16,
                 alignItems: "center",
-                opacity: chatUnlocked ? (pressed ? 0.85 : 1) : 0.55,
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 10,
               },
+              pressed && { opacity: 0.85 },
             ]}
           >
-            <Text style={{ fontWeight: "900", color: "#fff" }}>
-              {chatUnlocked ? "Open Chat 💬" : "Chat Locked"}
-            </Text>
+            <Ionicons name="add-circle" size={20} color="#fff" />
+            <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>Add Work / Parts</Text>
           </Pressable>
+        )}
 
-          <View style={{ flexDirection: "row", gap: 10 }}>
-            <Pressable
-              onPress={() => updateStatus("work_in_progress")}
-              disabled={!canStart || saving}
-              style={({ pressed }) => [
-                {
-                  flex: 1,
-                  backgroundColor: colors.accent,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  alignItems: "center",
-                  opacity: !canStart || saving ? 0.55 : pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: "#000" }}>
-                {saving && canStart ? "UPDATING…" : canStart ? "START JOB 🔧" : "START JOB"}
-              </Text>
-            </Pressable>
+        {/* Invoice */}
+        {invoice && (
+          <Card title="Invoice" icon="🧾">
+            <InvoiceView
+              invoice={invoice}
+              role="mechanic"
+              onRefresh={load}
+              showPendingActions={false}
+            />
+          </Card>
+        )}
+      </ScrollView>
 
-            <Pressable
-              onPress={() => updateStatus("completed")}
-              disabled={!canComplete || saving}
-              style={({ pressed }) => [
-                {
-                  flex: 1,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.bg,
-                  paddingVertical: 14,
-                  borderRadius: 16,
-                  alignItems: "center",
-                  opacity: !canComplete || saving ? 0.55 : pressed ? 0.9 : 1,
-                },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: colors.textPrimary }}>
-                {saving && canComplete ? "UPDATING…" : canComplete ? "COMPLETE ✅" : "COMPLETE"}
-              </Text>
-            </Pressable>
-          </View>
+      {/* Add Line Item Modal */}
+      <AddLineItemForm
+        jobId={id}
+        visible={showAddLineItem}
+        onClose={() => setShowAddLineItem(false)}
+        onSuccess={load}
+      />
 
-          <Text style={{ ...text.muted, marginTop: 2 }}>
-            Tip: Starting + completing sends a notification to the customer.
-          </Text>
-        </View>
-      </View>
+      {/* Floating Chat Button */}
+      {chatUnlocked && (
+        <Pressable
+          onPress={openChat}
+          style={({ pressed }) => ({
+            position: "absolute",
+            bottom: spacing.lg,
+            right: spacing.md,
+            backgroundColor: colors.accent,
+            paddingVertical: 14,
+            paddingHorizontal: 20,
+            borderRadius: 999,
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 8,
+            shadowColor: "#000",
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5,
+            opacity: pressed ? 0.85 : 1,
+          })}
+        >
+          <Ionicons name="chatbubble-ellipses" size={20} color="#fff" />
+          <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>Chat</Text>
+        </Pressable>
+      )}
     </View>
   );
 }

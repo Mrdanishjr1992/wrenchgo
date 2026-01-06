@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Pressable,
+  RefreshControl,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
@@ -51,6 +52,7 @@ const chipFor = (n: Notif) => {
 export default function Notifications() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<Notif[]>([]);
   const [markingAll, setMarkingAll] = useState(false);
   const { colors, text, spacing } = useTheme();
@@ -108,6 +110,12 @@ export default function Notifications() {
       };
     }, [load])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   const unreadCount = useMemo(() => items.filter((n) => !n.is_read).length, [items]);
 
@@ -229,6 +237,7 @@ export default function Notifications() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <FlatList
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{ padding: spacing.md, paddingBottom: 120 }}
         data={items}
         keyExtractor={(n) => n.id}

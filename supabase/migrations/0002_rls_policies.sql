@@ -14,6 +14,7 @@ ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.vehicles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.quote_requests ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.quotes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reviews ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.mechanic_profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.skills ENABLE ROW LEVEL SECURITY;
@@ -48,6 +49,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.profiles TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.vehicles TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.jobs TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.quote_requests TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.quotes TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.reviews TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.mechanic_profiles TO authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.mechanic_skills TO authenticated;
@@ -74,6 +76,33 @@ GRANT SELECT ON public.symptom_questions TO authenticated;
 GRANT SELECT ON public.media_assets TO anon;
 GRANT SELECT ON public.symptoms TO anon;
 GRANT SELECT ON public.symptom_mappings TO anon;
+
+-- =====================================================
+-- TABLE GRANTS (service_role - for edge functions)
+-- =====================================================
+GRANT ALL ON public.profiles TO service_role;
+GRANT ALL ON public.vehicles TO service_role;
+GRANT ALL ON public.jobs TO service_role;
+GRANT ALL ON public.quote_requests TO service_role;
+GRANT ALL ON public.reviews TO service_role;
+GRANT ALL ON public.mechanic_profiles TO service_role;
+GRANT ALL ON public.mechanic_skills TO service_role;
+GRANT ALL ON public.mechanic_tools TO service_role;
+GRANT ALL ON public.mechanic_safety TO service_role;
+GRANT ALL ON public.messages TO service_role;
+GRANT ALL ON public.notifications TO service_role;
+GRANT ALL ON public.media_assets TO service_role;
+GRANT ALL ON public.mechanic_stripe_accounts TO service_role;
+GRANT ALL ON public.customer_payment_methods TO service_role;
+GRANT ALL ON public.payments TO service_role;
+GRANT ALL ON public.skills TO service_role;
+GRANT ALL ON public.tools TO service_role;
+GRANT ALL ON public.safety_measures TO service_role;
+GRANT ALL ON public.symptoms TO service_role;
+GRANT ALL ON public.symptom_mappings TO service_role;
+GRANT ALL ON public.education_cards TO service_role;
+GRANT ALL ON public.symptom_education TO service_role;
+GRANT ALL ON public.symptom_questions TO service_role;
 
 -- =====================================================
 -- PROFILES POLICIES
@@ -380,5 +409,26 @@ DROP POLICY IF EXISTS "payments_update_involved" ON public.payments;
 CREATE POLICY "payments_update_involved" ON public.payments
   FOR UPDATE TO authenticated
   USING (customer_id = auth.uid() OR mechanic_id = auth.uid());
+
+-- =====================================================
+-- QUOTES POLICIES
+-- =====================================================
+DROP POLICY IF EXISTS "quotes_select_involved" ON public.quotes;
+CREATE POLICY "quotes_select_involved" ON public.quotes
+  FOR SELECT TO authenticated
+  USING (
+    mechanic_id = auth.uid() OR
+    job_id IN (SELECT id FROM jobs WHERE customer_id = auth.uid())
+  );
+
+DROP POLICY IF EXISTS "quotes_insert_mechanic" ON public.quotes;
+CREATE POLICY "quotes_insert_mechanic" ON public.quotes
+  FOR INSERT TO authenticated
+  WITH CHECK (mechanic_id = auth.uid());
+
+DROP POLICY IF EXISTS "quotes_update_mechanic" ON public.quotes;
+CREATE POLICY "quotes_update_mechanic" ON public.quotes
+  FOR UPDATE TO authenticated
+  USING (mechanic_id = auth.uid());
 
 COMMIT;

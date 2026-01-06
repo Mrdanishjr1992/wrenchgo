@@ -8,13 +8,13 @@ export async function notifyUser(params: {
   entityType?: string | null;
   entityId?: string | null;
 }) {
-  const { error } = await supabase.from("notifications").insert({
-    user_id: params.userId,
-    title: params.title,
-    body: params.body ?? null,
-    type: params.type,
-    entity_type: params.entityType ?? null,
-    entity_id: params.entityId ?? null,
+  const { error } = await supabase.rpc("notify_user", {
+    p_user_id: params.userId,
+    p_title: params.title,
+    p_body: params.body ?? "",
+    p_type: params.type,
+    p_entity_type: params.entityType ?? null,
+    p_entity_id: params.entityId ?? null,
   });
 
   if (error) throw error;

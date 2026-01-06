@@ -176,6 +176,25 @@ CREATE TABLE IF NOT EXISTS public.quote_requests (
 COMMENT ON TABLE public.quote_requests IS 'Quotes from mechanics for jobs';
 
 -- =====================================================
+-- TABLE: quotes
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.quotes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
+  mechanic_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  price_cents int,
+  estimated_hours numeric,
+  notes text,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted', 'declined', 'expired', 'withdrawn')),
+  created_at timestamptz DEFAULT now() NOT NULL,
+  updated_at timestamptz DEFAULT now() NOT NULL,
+
+  UNIQUE(job_id, mechanic_id)
+);
+
+COMMENT ON TABLE public.quotes IS 'Mechanic quotes for jobs';
+
+-- =====================================================
 -- TABLE: reviews
 -- =====================================================
 CREATE TABLE IF NOT EXISTS public.reviews (
@@ -183,13 +202,21 @@ CREATE TABLE IF NOT EXISTS public.reviews (
   job_id uuid NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
   reviewer_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   reviewee_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  rating int NOT NULL,
+  reviewer_role public.user_role,
+  overall_rating int NOT NULL,
+  performance_rating int,
+  timing_rating int,
+  cost_rating int,
   comment text,
+  is_hidden boolean DEFAULT false,
   deleted_at timestamptz,
   created_at timestamptz DEFAULT now() NOT NULL,
   updated_at timestamptz DEFAULT now() NOT NULL,
-  
-  CONSTRAINT reviews_rating_range CHECK (rating >= 1 AND rating <= 5),
+
+  CONSTRAINT reviews_overall_rating_range CHECK (overall_rating >= 1 AND overall_rating <= 5),
+  CONSTRAINT reviews_performance_rating_range CHECK (performance_rating IS NULL OR (performance_rating >= 1 AND performance_rating <= 5)),
+  CONSTRAINT reviews_timing_rating_range CHECK (timing_rating IS NULL OR (timing_rating >= 1 AND timing_rating <= 5)),
+  CONSTRAINT reviews_cost_rating_range CHECK (cost_rating IS NULL OR (cost_rating >= 1 AND cost_rating <= 5)),
   UNIQUE(job_id, reviewer_id)
 );
 
@@ -511,5 +538,38 @@ CREATE TABLE IF NOT EXISTS public.payments (
 );
 
 COMMENT ON TABLE public.payments IS 'Payment records for jobs';
+
+-- =====================================================
+-- TABLE: badges
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.badges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  title text NOT NULL,
+  description text,
+  icon text,
+  badge_type text DEFAULT 'achievement',
+  criteria_json jsonb,
+  created_at timestamptz DEFAULT now() NOT NULL
+);
+
+COMMENT ON TABLE public.badges IS 'Master lookup table for badges';
+
+-- =====================================================
+-- TABLE: user_badges
+-- =====================================================
+CREATE TABLE IF NOT EXISTS public.user_badges (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  badge_id uuid NOT NULL REFERENCES public.badges(id) ON DELETE CASCADE,
+  source text,
+  awarded_at timestamptz DEFAULT now() NOT NULL,
+  expires_at timestamptz,
+  created_at timestamptz DEFAULT now() NOT NULL,
+
+  UNIQUE(user_id, badge_id)
+);
+
+COMMENT ON TABLE public.user_badges IS 'Badges awarded to users';
 
 COMMIT;

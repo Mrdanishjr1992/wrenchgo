@@ -30,25 +30,12 @@ export default function Index() {
 
         if (!user) return;
 
-        const authId = user.id;
+        // Use RPC to bypass potential RLS timing issues
+        const { data: role, error: roleErr } = await supabase.rpc("get_my_role");
 
-        const { data: p, error: pErr } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", authId)
-          .maybeSingle();
-
-        if (pErr && __DEV__) {
-          console.warn("boot profile read error:", pErr);
-          return;
+        if (roleErr && __DEV__) {
+          console.warn("boot get_my_role error:", roleErr);
         }
-
-        if (!p) {
-          await supabase.auth.signOut();
-          return;
-        }
-
-        const role = (p?.role as string | null) ?? null;
 
         if (!role) {
           router.replace("/(auth)/choose-role");

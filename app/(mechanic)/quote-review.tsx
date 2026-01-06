@@ -227,6 +227,13 @@ export default function QuoteReview() {
 
       if (error) throw error;
 
+      // Update job status to "quoted" so customer sees the update
+      await supabase
+        .from("jobs")
+        .update({ status: "quoted", updated_at: new Date().toISOString() })
+        .eq("id", params.jobId)
+        .eq("status", "searching"); // Only update if still searching
+
       router.replace(`/(mechanic)/quote-sent/${params.jobId}` as any);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to send quote");

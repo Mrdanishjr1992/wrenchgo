@@ -70,6 +70,7 @@ export function useMechanicLeads(
 
       const { data, error: rpcError } = await supabase.rpc('get_mechanic_leads', {
         p_mechanic_id: mechanicId,
+        p_filter: filter,
         p_mechanic_lat: mechanicLat,
         p_mechanic_lng: mechanicLng,
         p_radius_miles: radiusMiles,
@@ -133,9 +134,12 @@ export function useMechanicLeads(
     setError(null);
 
     try {
+      console.log('Fetching leads with params:', { mechanicId, filter, mechanicLat, mechanicLng, radiusMiles, sortBy });
+
       const [leadsResult, summaryResult] = await Promise.all([
         supabase.rpc('get_mechanic_leads', {
           p_mechanic_id: mechanicId,
+          p_filter: filter,
           p_mechanic_lat: mechanicLat,
           p_mechanic_lng: mechanicLng,
           p_radius_miles: radiusMiles,
@@ -151,11 +155,15 @@ export function useMechanicLeads(
         }),
       ]);
 
+      console.log('Leads result:', leadsResult);
+      console.log('Summary result:', summaryResult);
+
       if (!isMountedRef.current) return;
 
       if (leadsResult.error) throw leadsResult.error;
 
       const newLeads = (leadsResult.data || []) as MechanicLead[];
+      console.log('Parsed leads:', newLeads);
 
       setLeads(newLeads);
 

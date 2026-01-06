@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Image,
   ScrollView,
+  RefreshControl,
 } from "react-native";
 import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -31,6 +32,7 @@ export default function GarageIndex() {
 
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const normalizeReturnTo = (returnTo: string | string[] | undefined): string => {
     if (!returnTo) return "/(customer)/(tabs)/explore";
@@ -76,6 +78,12 @@ export default function GarageIndex() {
       loadVehicles();
     }, [loadVehicles])
   );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadVehicles();
+    setRefreshing(false);
+  }, [loadVehicles]);
 
   const handleSelectVehicle = (vehicle: Vehicle) => {
     const returnToPath = normalizeReturnTo(params.returnTo);
@@ -141,7 +149,10 @@ export default function GarageIndex() {
   }}
 />
 
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        contentContainerStyle={{ padding: spacing.lg, gap: spacing.lg }}
+      >
         <View
           style={{
             padding: spacing.lg,

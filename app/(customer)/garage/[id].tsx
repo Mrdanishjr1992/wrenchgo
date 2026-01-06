@@ -12,6 +12,7 @@ import {
   Image,
   Modal,
   FlatList,
+  RefreshControl,
 } from "react-native";
 import { useRouter, useLocalSearchParams, Stack } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -60,6 +61,7 @@ export default function VehicleDetail() {
   const [model, setModel] = useState("");
   const [nickname, setNickname] = useState("");
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -72,8 +74,10 @@ export default function VehicleDetail() {
   const [showMakePicker, setShowMakePicker] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
 
+  const isNewVehicle = id === "new";
+
   useEffect(() => {
-    if (!didRedirect && (!id || id === "index" || id === "add" || !isValidUUID(id))) {
+    if (!didRedirect && !isNewVehicle && (!id || id === "index" || id === "add" || !isValidUUID(id))) {
       setDidRedirect(true);
       Alert.alert(
         "Invalid Vehicle",
@@ -87,7 +91,7 @@ export default function VehicleDetail() {
         { cancelable: false }
       );
     }
-  }, [id, router, didRedirect]);
+  }, [id, router, didRedirect, isNewVehicle]);
 
   const currentYear = new Date().getFullYear();
   const years = useMemo(() => {
@@ -221,7 +225,7 @@ export default function VehicleDetail() {
   );
 
   const loadVehicle = useCallback(async () => {
-    if (!id || id === "index" || id === "add" || !isValidUUID(id)) {
+    if (!id || id === "index" || id === "add" || id === "new" || !isValidUUID(id)) {
       setLoading(false);
       return;
     }
@@ -274,8 +278,16 @@ if (foundMake) {
     }, [loadVehicle])
   );
 
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadVehicle();
+    setRefreshing(false);
+  }, [loadVehicle]);
+
   const handleSave = async () => {
-    if (!id || !isValidUUID(id)) {
+    const isNew = id === "new";
+
+    if (!isNew && (!id || !isValidUUID(id))) {
       Alert.alert("Error", "Invalid vehicle ID");
       return;
     }
@@ -303,20 +315,33 @@ if (foundMake) {
     }
     try {
       setSaving(true);
-      const { error } = await supabase
-        .from("vehicles")
-        .update({
-          year: yr,
-          make: make.trim(),
-          model: model.trim(),
-          nickname: nickname.trim() || null,
-        })
-        .eq("id", id)
-        .eq("customer_id", userId)
 
-      if (error) throw error;
-
-      Alert.alert("Saved ✅", "Vehicle updated successfully.");
+      if (isNew) {
+        const { error } = await supabase
+          .from("vehicles")
+          .insert({
+            customer_id: userId,
+            year: yr,
+            make: make.trim(),
+            model: model.trim(),
+            nickname: nickname.trim() || null,
+          });
+        if (error) throw error;
+        Alert.alert("Saved ✅", "Vehicle added successfully.");
+      } else {
+        const { error } = await supabase
+          .from("vehicles")
+          .update({
+            year: yr,
+            make: make.trim(),
+            model: model.trim(),
+            nickname: nickname.trim() || null,
+          })
+          .eq("id", id)
+          .eq("customer_id", userId);
+        if (error) throw error;
+        Alert.alert("Saved ✅", "Vehicle updated successfully.");
+      }
       router.back();
     } catch (e: any) {
       Alert.alert("Failed", e?.message ?? "Could not update vehicle.");
@@ -385,6 +410,7 @@ if (foundMake) {
         />
 
       <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{
           padding: spacing.lg,
           paddingBottom: spacing.xl,

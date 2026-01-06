@@ -177,8 +177,8 @@ export default function Notifications() {
     // Quotes
     const { data: qr, error: qrErr } = jobIds.length > 0
       ? await supabase
-          .from("quote_requests")
-          .select("id,job_id,status,created_at,accepted_at,rejected_at,mechanic_id,price_cents")
+          .from("quotes")
+          .select("id,job_id,status,created_at,mechanic_id,price_cents")
           .in("job_id", jobIds)
           .order("created_at", { ascending: false })
           .limit(50)

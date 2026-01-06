@@ -9,6 +9,7 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  RefreshControl,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -20,6 +21,11 @@ import { CancelQuoteModal } from "../../../src/components/CancelQuoteModal";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { JobProgressTracker, InvoiceView, JobActions } from "../../../components/job";
+import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract } from "../../../src/lib/job-contract";
+import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
+import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
+import { getJobPhase } from "../../../src/types/job-lifecycle";
 
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -49,21 +55,20 @@ type Quote = {
   mechanic_id: string;
   status:
     | "pending"
-    | "quoted"
     | "accepted"
-    | "rejected"
-    | "canceled_by_customer"
-    | "canceled_by_mechanic";
+    | "declined"
+    | "expired"
+    | "withdrawn";
   price_cents: number | null;
+  estimated_hours: number | null;
   notes: string | null;
   created_at: string;
-  accepted_at: string | null;
-  canceled_at: string | null;
-  canceled_by: string | null;
-  cancel_reason: string | null;
-  cancel_note: string | null;
-  cancellation_fee_cents: number | null;
-  mechanic: { full_name: string | null; phone: string | null } | null;
+  updated_at: string;
+  accepted_at?: string | null;
+  cancel_reason?: string | null;
+  cancel_note?: string | null;
+  cancellation_fee_cents?: number | null;
+  mechanic?: { full_name: string | null; phone: string | null } | null;
 };
 
 type Job = {
@@ -149,6 +154,7 @@ export default function CustomerJobDetails() {
   const card = useMemo(() => createCard(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const [job, setJob] = useState<Job | null>(null);
@@ -158,12 +164,18 @@ export default function CustomerJobDetails() {
   const [selectedMechanicId, setSelectedMechanicId] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
 
+  // Job lifecycle state
+  const [contract, setContract] = useState<JobContract | null>(null);
+  const [progress, setProgress] = useState<JobProgress | null>(null);
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+
   const statusColor = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "accepted") return colors.accent;
     if (s === "work_in_progress") return colors.accent;
     if (s === "completed") return "#10b981";
     if (s === "searching") return colors.textMuted;
+    if (s === "quoted") return "#f59e0b"; // Orange for quoted
     if (s === "canceled" || s.includes("canceled")) return "#EF4444";
     return colors.textMuted;
   };
@@ -283,16 +295,30 @@ export default function CustomerJobDetails() {
       setJob(j as any as Job);
 
       const { data: q, error: qErr } = await supabase
-        .from("quote_requests")
+        .from("quotes")
         .select(
-          `id,job_id,mechanic_id,status,price_cents,notes,created_at,
-          accepted_at,canceled_at,canceled_by,cancel_reason,cancel_note,cancellation_fee_cents`
+          `id,job_id,mechanic_id,status,price_cents,estimated_hours,notes,created_at,updated_at,
+           mechanic:profiles!quotes_mechanic_id_fkey(full_name,phone)`
         )
         .eq("job_id", id)
         .order("created_at", { ascending: false });
 
       if (qErr) throw qErr;
       setQuotes((q as any as Quote[]) ?? []);
+
+      // Load lifecycle data for accepted jobs
+      if (j.accepted_mechanic_id) {
+        const lifecycleData = await getContractWithDetails(id);
+        setContract(lifecycleData.contract);
+        setProgress(lifecycleData.progress);
+
+        const invoiceData = await getInvoiceByJobId(id);
+        setInvoice(invoiceData);
+      } else {
+        setContract(null);
+        setProgress(null);
+        setInvoice(null);
+      }
     } catch (e: any) {
       console.error("Job load error:", e);
       Alert.alert("Error", e?.message ?? "Failed to load job.");
@@ -300,6 +326,12 @@ export default function CustomerJobDetails() {
       setLoading(false);
     }
   }, [id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }, [load]);
 
   useEffect(() => {
     load();
@@ -318,7 +350,7 @@ export default function CustomerJobDetails() {
         .on("postgres_changes", { event: "*", schema: "public", table: "jobs", filter: `id=eq.${id}` }, load)
         .on(
           "postgres_changes",
-          { event: "*", schema: "public", table: "quote_requests", filter: `job_id=eq.${id}` },
+          { event: "*", schema: "public", table: "quotes", filter: `job_id=eq.${id}` },
           load
         )
         .subscribe();
@@ -329,7 +361,28 @@ export default function CustomerJobDetails() {
     };
   }, [id, load]);
 
-  const quotedQuotes = useMemo(() => quotes.filter((q) => q.status === "quoted"), [quotes]);
+  // Subscribe to lifecycle updates for accepted jobs
+  useEffect(() => {
+    if (!job?.accepted_mechanic_id || !id || !contract) return;
+
+    const progressSub = subscribeToJobProgress(id, (p) => setProgress(p));
+    const contractSub = subscribeToJobContract(id, (c) => setContract(c));
+    const lineItemsSub = contract?.id
+      ? subscribeToLineItems(contract.id, async () => {
+          const invoiceData = await getInvoiceByJobId(id);
+          setInvoice(invoiceData);
+        })
+      : null;
+
+    return () => {
+      progressSub?.unsubscribe();
+      contractSub?.unsubscribe();
+      lineItemsSub?.unsubscribe();
+    };
+  }, [id, job?.accepted_mechanic_id, contract?.id]);
+
+  // "Quoted" means mechanic submitted a price - status is "pending" with price_cents set
+  const quotedQuotes = useMemo(() => quotes.filter((q) => q.status === "pending" && q.price_cents != null), [quotes]);
   const acceptedQuote = useMemo(
     () => quotes.find((q) => q.status === "accepted" || q.mechanic_id === job?.accepted_mechanic_id),
     [quotes, job]
@@ -367,21 +420,17 @@ export default function CustomerJobDetails() {
                 }
 
                 const { data: quote, error: qGetErr } = await supabase
-                  .from("quote_requests")
-                  .select("id,job_id,mechanic_id,customer_id,status,price_cents")
+                  .from("quotes")
+                  .select("id,job_id,mechanic_id,status,price_cents")
                   .eq("id", quoteId)
                   .single();
                 if (qGetErr) throw qGetErr;
 
-                if (quote.customer_id !== customerId) {
-                  Alert.alert("Not allowed", "This quote is not yours.");
-                  return;
-                }
                 if (quote.job_id !== id) {
                   Alert.alert("Mismatch", "This quote is not for this job.");
                   return;
                 }
-                if (quote.status !== "quoted" || quote.price_cents == null) {
+                if (quote.status !== "pending" || quote.price_cents == null) {
                   Alert.alert("Quote not ready", "Wait for the mechanic to send a quote before accepting.");
                   return;
                 }
@@ -389,28 +438,14 @@ export default function CustomerJobDetails() {
 
 
                 const { data: accepted, error: qAccErr } = await supabase
-                  .from("quote_requests")
+                  .from("quotes")
                   .update({ status: "accepted", updated_at: new Date().toISOString() })
                   .eq("id", quoteId)
                   .select("id,mechanic_id,job_id")
                   .single();
                 if (qAccErr) throw qAccErr;
 
-                await notifyUser({
-                  userId: accepted.mechanic_id,
-                  title: "Quote accepted 🎉",
-                  body: "Your quote was accepted. Waiting for customer payment.",
-                  type: "quote_accepted",
-                  entityType: "job",
-                  entityId: id as any,
-                });
-
-                await supabase
-                  .from("quote_requests")
-                  .update({ status: "rejected", updated_at: new Date().toISOString() })
-                  .eq("job_id", id)
-                  .neq("id", quoteId);
-
+                // Update job FIRST (critical)
                 const { error: jErr } = await supabase
                   .from("jobs")
                   .update({
@@ -420,6 +455,23 @@ export default function CustomerJobDetails() {
                   })
                   .eq("id", id);
                 if (jErr) throw jErr;
+
+                // Decline other quotes (non-critical)
+                await supabase
+                  .from("quotes")
+                  .update({ status: "declined", updated_at: new Date().toISOString() })
+                  .eq("job_id", id)
+                  .neq("id", quoteId);
+
+                // Send notification (non-critical, don't block on failure)
+                notifyUser({
+                  userId: accepted.mechanic_id,
+                  title: "Quote accepted 🎉",
+                  body: "Your quote was accepted. Waiting for customer payment.",
+                  type: "quote_accepted",
+                  entityType: "job",
+                  entityId: id as any,
+                }).catch(() => {});
 
                 router.push(`/(customer)/payment/${id}?quoteId=${quoteId}` as any);
               } catch (e: any) {
@@ -433,6 +485,38 @@ export default function CustomerJobDetails() {
       );
     },
     [id, router]
+  );
+
+  const rejectQuote = useCallback(
+    async (quoteId: string) => {
+      Alert.alert(
+        "Reject Quote?",
+        "Are you sure you want to reject this quote?",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Reject",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                setBusy(true);
+                const { error } = await supabase
+                  .from("quotes")
+                  .update({ status: "declined", updated_at: new Date().toISOString() })
+                  .eq("id", quoteId);
+                if (error) throw error;
+                load();
+              } catch (e: any) {
+                Alert.alert("Reject error", e?.message ?? "Failed to reject quote.");
+              } finally {
+                setBusy(false);
+              }
+            },
+          },
+        ]
+      );
+    },
+    [load]
   );
 
   if (loading) {
@@ -453,6 +537,11 @@ export default function CustomerJobDetails() {
     );
   }
 
+  // Derive display status from accepted_mechanic_id if job.status wasn't updated
+  const displayStatus = job.accepted_mechanic_id && (job.status === 'searching' || job.status === 'draft' || job.status === 'quoted')
+    ? 'accepted'
+    : job.status;
+
   const headerHint =
     job.accepted_mechanic_id
       ? "✅ Assigned — message your mechanic anytime."
@@ -464,6 +553,7 @@ export default function CustomerJobDetails() {
 
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
           contentContainerStyle={{
             paddingHorizontal: spacing.md,
             paddingBottom: spacing.md,
@@ -488,24 +578,6 @@ export default function CustomerJobDetails() {
         Back
       </Text>
     </Pressable>
-
-    {job.accepted_mechanic_id ? (
-      <Pressable
-        onPress={openChat}
-        hitSlop={12}
-        style={({ pressed }) => [
-          {
-            backgroundColor: colors.accent,
-            paddingVertical: 10,
-            paddingHorizontal: 14,
-            borderRadius: 999,
-          },
-          pressed && { opacity: 0.8 },
-        ]}
-      >
-        <Text style={{ fontWeight: "900", color: "#fff" }}>Open Chat</Text>
-      </Pressable>
-    ) : null}
   </View>
 </View>
 
@@ -515,7 +587,7 @@ export default function CustomerJobDetails() {
           <Text style={text.title}>{job.title}</Text>
 
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <StatusPill status={job.status} />
+            <StatusPill status={displayStatus} />
             <Text style={text.muted}>Created {fmtDT(job.created_at)}</Text>
           </View>
 
@@ -532,6 +604,47 @@ export default function CustomerJobDetails() {
             <Text style={{ ...text.body, color: colors.textPrimary, fontWeight: "800" }}>{headerHint}</Text>
           </View>
         </View>
+
+        {/* Chat with Mechanic - prominent button for active jobs */}
+        {job.accepted_mechanic_id && (
+          <Pressable
+            onPress={openChat}
+            style={({ pressed }) => [
+              card,
+              {
+                padding: spacing.md,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backgroundColor: colors.accent,
+                borderColor: colors.accent,
+              },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View
+                style={{
+                  width: 44,
+                  height: 44,
+                  borderRadius: 22,
+                  backgroundColor: "rgba(255,255,255,0.2)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="chatbubbles" size={22} color="#fff" />
+              </View>
+              <View>
+                <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>Chat with Mechanic</Text>
+                <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 }}>
+                  Message your assigned mechanic
+                </Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#fff" />
+          </Pressable>
+        )}
 
         {/* Job details */}
         <SectionCard title="Job Details" icon="document-text-outline">
@@ -838,18 +951,15 @@ export default function CustomerJobDetails() {
             <View style={{ gap: spacing.md }}>
               {quotes.map((q) => {
                 const canAccept =
-                  q.status === "quoted" && q.price_cents != null && !job.accepted_mechanic_id;
+                  q.status === "pending" && q.price_cents != null && !job.accepted_mechanic_id;
                 const isAccepted = q.status === "accepted" || q.mechanic_id === job.accepted_mechanic_id;
                 const isOpen = expanded[q.id] ?? isAccepted;
 
                 return (
-                  <Pressable
+                  <View
                     key={q.id}
-                    onPress={() => toggleExpand(q.id)}
-                    disabled={busy}
-                    style={({ pressed }) => [
+                    style={[
                       card,
-                      pressed && !busy && cardPressed,
                       {
                         padding: spacing.md,
                         gap: spacing.sm,
@@ -908,6 +1018,62 @@ export default function CustomerJobDetails() {
                       </View>
                     </View>
 
+                    {canAccept ? (
+                      <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
+                        <Pressable
+                          onPress={() => rejectQuote(q.id)}
+                          disabled={busy}
+                          style={({ pressed }) => [
+                            {
+                              flex: 1,
+                              backgroundColor: colors.surface,
+                              borderWidth: 1,
+                              borderColor: colors.border,
+                              paddingVertical: 14,
+                              borderRadius: 14,
+                              alignItems: "center",
+                              opacity: busy ? 0.65 : 1,
+                            },
+                            pressed && { opacity: 0.85 },
+                          ]}
+                        >
+                          <Text style={{ fontWeight: "900", color: colors.textPrimary }}>
+                            REJECT
+                          </Text>
+                        </Pressable>
+                        <Pressable
+                          onPress={() => acceptQuote(q.id)}
+                          disabled={busy}
+                          style={({ pressed }) => [
+                            {
+                              flex: 1,
+                              backgroundColor: colors.accent,
+                              paddingVertical: 14,
+                              borderRadius: 14,
+                              alignItems: "center",
+                              opacity: busy ? 0.65 : 1,
+                            },
+                            pressed && { opacity: 0.85 },
+                          ]}
+                        >
+                          <Text style={{ fontWeight: "900", color: "#fff" }}>
+                            {busy ? "ACCEPTING…" : "ACCEPT"}
+                          </Text>
+                        </Pressable>
+                      </View>
+                    ) : null}
+
+                    <Pressable
+                      onPress={() => toggleExpand(q.id)}
+                      disabled={busy}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}
+                    >
+                      <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
+                      <Text style={{ ...text.muted, fontWeight: "800", fontSize: 12 }}>
+                        {isOpen ? "Hide details" : "View details"}
+                      </Text>
+                    </Pressable>
+
                     {isOpen ? (
                       <View style={{ gap: spacing.sm, marginTop: spacing.sm }}>
                         {q.notes ? (
@@ -931,38 +1097,9 @@ export default function CustomerJobDetails() {
                             <Text style={{ ...text.body, marginTop: 2 }}>{q.mechanic.phone}</Text>
                           </View>
                         ) : null}
-
-                        {canAccept ? (
-                          <Pressable
-                            onPress={() => acceptQuote(q.id)}
-                            disabled={busy}
-                            style={({ pressed }) => [
-                              {
-                                marginTop: spacing.sm,
-                                backgroundColor: colors.accent,
-                                paddingVertical: 14,
-                                borderRadius: 14,
-                                alignItems: "center",
-                                opacity: busy ? 0.65 : 1,
-                              },
-                              pressed && { opacity: 0.85 },
-                            ]}
-                          >
-                            <Text style={{ fontWeight: "900", color: "#fff" }}>
-                              {busy ? "ACCEPTING…" : "ACCEPT QUOTE"}
-                            </Text>
-                          </Pressable>
-                        ) : null}
                       </View>
                     ) : null}
-
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
-                      <Ionicons name={isOpen ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} />
-                      <Text style={{ ...text.muted, fontWeight: "800", fontSize: 12 }}>
-                        {isOpen ? "Hide details" : "View details"}
-                      </Text>
-                    </View>
-                  </Pressable>
+                  </View>
                 );
               })}
             </View>
@@ -971,67 +1108,74 @@ export default function CustomerJobDetails() {
 
         {/* Assigned mechanic */}
         {job.accepted_mechanic_id && acceptedQuote ? (
-          <SectionCard title="Assigned Mechanic" icon="person-outline">
-            <View
-              style={{
-                backgroundColor: `${colors.accent}15`,
-                borderWidth: 1,
-                borderColor: `${colors.accent}40`,
-                borderRadius: 12,
-                padding: spacing.md,
-                marginBottom: spacing.sm,
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: "900", color: colors.accent }}>✓ ACCEPTED QUOTE</Text>
-            </View>
+          <>
+            {/* Progress Tracker */}
+            {contract && (
+              <SectionCard title="Job Progress" icon="trending-up-outline">
+                <JobProgressTracker
+                  progress={progress}
+                  status={job.status}
+                  role="customer"
+                />
+              </SectionCard>
+            )}
 
-            <Text style={text.body}>
-              Name:{" "}
-              <Text style={{ color: colors.textPrimary, fontWeight: "900" }}>
-                {job.accepted_mechanic?.full_name ?? "Mechanic"}
-              </Text>
-            </Text>
+            {/* Job Actions */}
+            {contract && job.status !== "completed" && job.status !== "canceled" && (
+              <SectionCard title="Actions Required" icon="hand-left-outline">
+                <JobActions
+                  jobId={id}
+                  progress={progress}
+                  contract={contract}
+                  role="customer"
+                  onRefresh={load}
+                  hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
+                />
+              </SectionCard>
+            )}
 
-            {job.accepted_mechanic?.phone ? <Text style={text.body}>Phone: {job.accepted_mechanic.phone}</Text> : null}
+            {/* Invoice */}
+            {invoice && (
+              <SectionCard title="Invoice" icon="receipt-outline">
+                <InvoiceView
+                  invoice={invoice}
+                  role="customer"
+                  onRefresh={load}
+                  showPendingActions={job.status !== "completed" && job.status !== "canceled"}
+                />
+              </SectionCard>
+            )}
 
-            <Text style={{ ...text.muted, marginTop: spacing.sm }}>This job is assigned — chat is unlocked.</Text>
+            {/* Mechanic Info */}
+            <SectionCard title="Your Mechanic" icon="person-outline">
+              <UserProfileCard
+                userId={job.accepted_mechanic_id}
+                variant="mini"
+                context="quote_detail"
+                onPressViewProfile={() => setSelectedMechanicId(job.accepted_mechanic_id!)}
+              />
 
-            <Pressable
-              onPress={openChat}
-              style={({ pressed }) => [
-                {
-                  marginTop: spacing.sm,
-                  backgroundColor: colors.accent,
-                  paddingVertical: 14,
-                  borderRadius: 14,
-                  alignItems: "center",
-                },
-                pressed && { opacity: 0.85 },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: "#fff" }}>Message Mechanic</Text>
-            </Pressable>
-
-            {job.status !== "completed" && job.status !== "canceled" ? (
-              <Pressable
-                onPress={() => setShowCancelModal(true)}
-                style={({ pressed }) => [
-                  {
-                    marginTop: spacing.sm,
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: "#EF4444",
-                    paddingVertical: 14,
-                    borderRadius: 14,
-                    alignItems: "center",
-                  },
-                  pressed && { opacity: 0.7 },
-                ]}
-              >
-                <Text style={{ fontWeight: "900", color: "#EF4444" }}>Cancel Job</Text>
-              </Pressable>
-            ) : null}
-          </SectionCard>
+              {job.status !== "completed" && job.status !== "canceled" && (
+                <Pressable
+                  onPress={() => setShowCancelModal(true)}
+                  style={({ pressed }) => [
+                    {
+                      marginTop: spacing.md,
+                      paddingVertical: 14,
+                      backgroundColor: colors.surface,
+                      borderWidth: 1,
+                      borderColor: "#EF4444",
+                      borderRadius: 14,
+                      alignItems: "center",
+                    },
+                    pressed && { opacity: 0.7 },
+                  ]}
+                >
+                  <Text style={{ fontWeight: "900", color: "#EF4444" }}>Cancel Job</Text>
+                </Pressable>
+              )}
+            </SectionCard>
+          </>
         ) : null}
       </ScrollView>
 

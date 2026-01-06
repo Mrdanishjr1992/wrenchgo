@@ -16,7 +16,6 @@ export function LeadsHeader({ summary, sortBy, onChangeSortBy }: LeadsHeaderProp
   const sortOptions: { value: LeadSortType; label: string; icon: keyof typeof Ionicons.glyphMap }[] = [
     { value: 'newest', label: 'Newest', icon: 'time-outline' },
     { value: 'closest', label: 'Closest', icon: 'location-outline' },
-    { value: 'highest_value', label: 'Highest Value', icon: 'cash-outline' },
   ];
 
   return (

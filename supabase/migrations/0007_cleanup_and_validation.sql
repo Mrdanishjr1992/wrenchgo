@@ -14,7 +14,7 @@ GRANT EXECUTE ON FUNCTION public.handle_new_user() TO service_role;
 GRANT EXECUTE ON FUNCTION public.set_user_role(public.user_role) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_role() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_my_profile() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_mechanic_leads(uuid, double precision, double precision, integer, integer, integer, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_mechanic_leads(uuid, text, numeric, numeric, numeric, integer, integer, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_mechanic_profile_full(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.save_theme_preference(public.theme_mode) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.create_stripe_connect_account() TO authenticated;

@@ -75,6 +75,7 @@ export default function CustomerJobs() {
       if (s === "work_in_progress") return colors.accent;
       if (s === "completed") return "#10b981";
       if (s === "searching") return colors.textMuted;
+      if (s === "quoted") return "#f59e0b";
       if (s === "canceled") return "#EF4444";
       return colors.textMuted;
     },
@@ -84,6 +85,7 @@ export default function CustomerJobs() {
   const statusHint = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "searching") return "Waiting for mechanics to send quotes…";
+    if (s === "quoted") return "You have quotes waiting! Tap to review.";
     if (s === "accepted") return "Mechanic assigned. Next: start job.";
     if (s === "work_in_progress") return "Work in progress. You'll get updates here.";
     if (s === "completed") return "Job completed. Review details inside.";
@@ -94,6 +96,7 @@ export default function CustomerJobs() {
   const statusLabel = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "work_in_progress") return "IN PROGRESS";
+    if (s === "quoted") return "QUOTED";
     return (status || "unknown").toUpperCase();
   };
 
@@ -189,7 +192,10 @@ export default function CustomerJobs() {
       const jobsData = ((jobRows as Job[]) ?? []).map((j) => ({
         ...j,
         title: j.title ?? "Job",
-        status: j.status ?? "searching",
+        // Derive status: if accepted_mechanic_id is set but status is still 'searching', show 'accepted'
+        status: j.accepted_mechanic_id && (j.status === 'searching' || j.status === 'draft' || j.status === 'quoted')
+          ? 'accepted'
+          : j.status ?? "searching",
       }));
 
       if (jobsData.length === 0) {
@@ -199,15 +205,19 @@ export default function CustomerJobs() {
 
       const jobIds = jobsData.map((j) => j.id);
 
-      // 2) Load quote_requests (schema uses price_cents)
+      // 2) Load quotes
       const { data: quoteRows, error: quotesErr } = await supabase
-        .from("quote_requests")
-        .select("id,job_id,mechanic_id,customer_id,status,price_cents,created_at,accepted_at")
+        .from("quotes")
+        .select("id,job_id,mechanic_id,status,price_cents,created_at")
         .in("job_id", jobIds);
 
       if (quotesErr) throw quotesErr;
 
-      const quotes = (quoteRows as QuoteRequest[]) ?? [];
+      const quotes = (quoteRows ?? []).map((q: any) => ({
+        ...q,
+        customer_id: userId,
+        accepted_at: q.status === 'accepted' ? q.created_at : null,
+      })) as QuoteRequest[];
 
       // 3) Load mechanic names from profiles by id
       const mechanicIds = Array.from(new Set(quotes.map((q) => q.mechanic_id).filter(Boolean)));
@@ -291,7 +301,7 @@ export default function CustomerJobs() {
           .channel("customer-quotes-" + userId)
           .on(
             "postgres_changes",
-            { event: "*", schema: "public", table: "quote_requests", filter: `customer_id=eq.${userId}` },
+            { event: "*", schema: "public", table: "quotes" },
             () => load()
           )
           .subscribe();
@@ -313,8 +323,19 @@ export default function CustomerJobs() {
     }
   }, [load]);
 
+  // 3 categories: Waiting for Quote (searching), Active (accepted/in_progress), Completed
+  const waitingForQuote = useMemo(
+    () => jobs.filter((j) => {
+      const s = (j.status || "").toLowerCase();
+      return s === "searching" || s === "draft" || s === "quoted";
+    }),
+    [jobs]
+  );
   const active = useMemo(
-    () => jobs.filter((j) => (j.status || "").toLowerCase() !== "completed"),
+    () => jobs.filter((j) => {
+      const s = (j.status || "").toLowerCase();
+      return s === "accepted" || s === "work_in_progress" || s === "in_progress" || s === "scheduled";
+    }),
     [jobs]
   );
   const completed = useMemo(
@@ -501,20 +522,20 @@ export default function CustomerJobs() {
               <Text style={text.title}>Jobs</Text>
               <Text style={{ marginTop: 6, ...text.muted }}>Track quotes, assignments, and progress.</Text>
 
-              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.sm }}>
+              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.sm }}>
                 <View
                   style={{
                     flex: 1,
                     backgroundColor: colors.surface,
                     borderRadius: 16,
-                    padding: spacing.md,
+                    padding: spacing.sm,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  <Text style={text.muted}>Active</Text>
-                  <Text style={{ ...text.title, fontSize: 22 }}>{String(active.length)}</Text>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Waiting</Text>
+                  <Text style={{ ...text.title, fontSize: 20 }}>{String(waitingForQuote.length)}</Text>
                 </View>
 
                 <View
@@ -522,14 +543,29 @@ export default function CustomerJobs() {
                     flex: 1,
                     backgroundColor: colors.surface,
                     borderRadius: 16,
-                    padding: spacing.md,
+                    padding: spacing.sm,
                     borderWidth: 1,
                     borderColor: colors.border,
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  <Text style={text.muted}>Completed</Text>
-                  <Text style={{ ...text.title, fontSize: 22 }}>{String(completed.length)}</Text>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
+                  <Text style={{ ...text.title, fontSize: 20 }}>{String(active.length)}</Text>
+                </View>
+
+                <View
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.surface,
+                    borderRadius: 16,
+                    padding: spacing.sm,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                    gap: 4,
+                  }}
+                >
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Done</Text>
+                  <Text style={{ ...text.title, fontSize: 20 }}>{String(completed.length)}</Text>
                 </View>
               </View>
             </LinearGradient>
@@ -565,9 +601,20 @@ export default function CustomerJobs() {
         }
         renderItem={() => (
           <View style={{ paddingHorizontal: spacing.md }}>
+            <SectionHeader title="Waiting for Quote" count={waitingForQuote.length} />
+            {waitingForQuote.length === 0 ? (
+              <Text style={{ marginTop: 6, ...text.muted }}>No jobs waiting for quotes.</Text>
+            ) : (
+              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+                {waitingForQuote.map((item) => (
+                  <JobCard key={item.id} item={item} />
+                ))}
+              </View>
+            )}
+
             <SectionHeader title="Active" count={active.length} />
             {active.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>Nothing active right now.</Text>
+              <Text style={{ marginTop: 6, ...text.muted }}>No active jobs right now.</Text>
             ) : (
               <View style={{ marginTop: spacing.md, gap: spacing.md }}>
                 {active.map((item) => (

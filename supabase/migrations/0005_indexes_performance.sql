@@ -40,6 +40,13 @@ CREATE INDEX IF NOT EXISTS idx_quote_requests_customer ON public.quote_requests(
 CREATE INDEX IF NOT EXISTS idx_quote_requests_status ON public.quote_requests(status) WHERE deleted_at IS NULL;
 
 -- =====================================================
+-- QUOTES INDEXES
+-- =====================================================
+CREATE INDEX IF NOT EXISTS idx_quotes_job ON public.quotes(job_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_mechanic ON public.quotes(mechanic_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_status ON public.quotes(status);
+
+-- =====================================================
 -- REVIEWS INDEXES
 -- =====================================================
 CREATE INDEX IF NOT EXISTS idx_reviews_job ON public.reviews(job_id) WHERE deleted_at IS NULL;

@@ -262,19 +262,13 @@ function FullProfileCard({
               {profile.skills.map((skill) => (
                 <View key={skill.id} style={[styles.skillItem, { borderColor: colors.border }]}>
                   <View style={styles.skillHeader}>
-                    <Text style={[styles.skillName, { color: colors.textPrimary }]}>{skill.skill.name}</Text>
-                    {skill.is_verified && (
-                      <Ionicons name="checkmark-circle" size={16} color="#10B981" />
-                    )}
+                    <Text style={[styles.skillName, { color: colors.textPrimary }]}>{skill.skill?.label || skill.skill?.name || 'Unknown'}</Text>
                   </View>
-                  <View style={styles.skillMeta}>
-                    <View style={[styles.levelBadge, { backgroundColor: getLevelColor(skill.level) }]}>
-                      <Text style={styles.levelText}>{skill.level}</Text>
-                    </View>
+                  {skill.skill?.category && (
                     <Text style={[styles.experienceText, { color: colors.textMuted }]}>
-                      {skill.years_experience} {skill.years_experience === 1 ? 'year' : 'years'}
+                      {skill.skill.category}
                     </Text>
-                  </View>
+                  )}
                 </View>
               ))}
             </View>

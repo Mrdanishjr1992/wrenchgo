@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { spacing } from "../../src/ui/theme";
@@ -350,7 +351,25 @@ export default function RequestService() {
     try {
       const description = generateProblemDescription();
 
-      // Keep your existing table name to avoid breaking anything
+      // Geocode the address to get lat/lng
+      let locationLat: number | null = null;
+      let locationLng: number | null = null;
+
+      try {
+        // Append USA for better geocoding of zip codes
+        const searchLocation = /^\d{5}$/.test(location.trim())
+          ? `${location.trim()}, USA`
+          : location.trim();
+        const geocoded = await Location.geocodeAsync(searchLocation);
+        if (geocoded && geocoded.length > 0) {
+          locationLat = geocoded[0].latitude;
+          locationLng = geocoded[0].longitude;
+        }
+        console.log('Geocoded', searchLocation, 'to', locationLat, locationLng);
+      } catch (geoError) {
+        console.warn("Geocoding failed:", geoError);
+      }
+
       const { error } = await supabase
         .from("jobs")
         .insert({
@@ -358,6 +377,8 @@ export default function RequestService() {
           title: symptomKey || "Service Request",
           description,
           location_address: location.trim(),
+          location_lat: locationLat,
+          location_lng: locationLng,
           status: "searching",
           vehicle_id: vehicleId,
           symptom_id: null,
