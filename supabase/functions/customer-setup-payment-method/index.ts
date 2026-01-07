@@ -50,7 +50,7 @@ serve(async (req) => {
 
     let { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, full_name, email")
+      .select("id, full_name, email, stripe_customer_id")
       .eq("id", user.id)
       .single();
 
@@ -63,7 +63,7 @@ serve(async (req) => {
           full_name: user.user_metadata?.full_name || "",
           role: "customer",
         })
-        .select("id, full_name, email")
+        .select("id, full_name, email, stripe_customer_id")
         .single();
 
       if (createError || !newProfile) {
@@ -75,13 +75,18 @@ serve(async (req) => {
       profile = newProfile;
     }
 
-    const { data: existingPaymentMethod } = await supabase
-      .from("customer_payment_methods")
-      .select("stripe_customer_id")
-      .eq("customer_id", profile.id)
-      .maybeSingle();
+    let stripeCustomerId = profile.stripe_customer_id;
 
-    let stripeCustomerId = existingPaymentMethod?.stripe_customer_id;
+    if (!stripeCustomerId) {
+      const { data: existingPaymentMethod } = await supabase
+        .from("customer_payment_methods")
+        .select("stripe_customer_id")
+        .eq("customer_id", profile.id)
+        .not("stripe_customer_id", "is", null)
+        .maybeSingle();
+
+      stripeCustomerId = existingPaymentMethod?.stripe_customer_id;
+    }
 
     if (!stripeCustomerId) {
       const customer = await stripeRequest("customers", {
@@ -91,11 +96,25 @@ serve(async (req) => {
         "metadata[profile_id]": profile.id,
       });
       stripeCustomerId = customer.id;
+
+      await supabase
+        .from("profiles")
+        .update({ 
+          stripe_customer_id: stripeCustomerId,
+          payment_method_status: "pending"
+        })
+        .eq("id", user.id);
+    } else {
+      await supabase
+        .from("profiles")
+        .update({ payment_method_status: "pending" })
+        .eq("id", user.id);
     }
 
     const setupIntent = await stripeRequest("setup_intents", {
       customer: stripeCustomerId,
       "payment_method_types[]": "card",
+      usage: "off_session",
       "metadata[user_id]": user.id,
       "metadata[profile_id]": profile.id,
     });

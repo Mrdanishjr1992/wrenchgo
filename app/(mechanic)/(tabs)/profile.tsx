@@ -1260,6 +1260,49 @@ export default function MechanicProfile() {
 
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </Pressable>
+
+              <Pressable
+                onPress={() => router.push("/(mechanic)/invite")}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  backgroundColor: colors.bg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: "#f59e0b" + "15",
+                    }}
+                  >
+                    <Ionicons name="gift-outline" size={18} color="#f59e0b" />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>
+                      Invite & Earn
+                    </Text>
+                    <Text style={{ ...text.muted, marginTop: 3 }}>
+                      Refer friends, earn commission credits
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </Pressable>
             </View>
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>

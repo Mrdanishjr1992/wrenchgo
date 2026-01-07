@@ -1,86 +1,141 @@
 // src/ui/theme.ts
-import { Dimensions, Platform, PixelRatio } from "react-native";
+import { Dimensions, PixelRatio } from "react-native";
 
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+/**
+ * Base guideline width (iPhone X / 11 Pro)
+ */
+const BASE_WIDTH = 375;
 
-export const screenSizes = {
-  width: SCREEN_WIDTH,
-  height: SCREEN_HEIGHT,
-  isSmallDevice: SCREEN_WIDTH < 375,
-  isMediumDevice: SCREEN_WIDTH >= 375 && SCREEN_WIDTH < 414,
-  isLargeDevice: SCREEN_WIDTH >= 414,
-  isTablet: SCREEN_WIDTH >= 768,
+/**
+ * Get current screen dimensions
+ * (kept as a function for future orientation support)
+ */
+export const getScreen = () => {
+  const { width, height } = Dimensions.get("window");
+
+  return {
+    width,
+    height,
+    isSmallDevice: width < 375,
+    isMediumDevice: width >= 375 && width < 414,
+    isLargeDevice: width >= 414 && width < 768,
+    isTablet: width >= 768,
+  };
 };
 
-const scale = SCREEN_WIDTH / 375;
+/**
+ * Static snapshot (useful for theme/constants)
+ */
+export const screenSizes = getScreen();
 
+/**
+ * Scale value based on screen width
+ */
+const scale = screenSizes.width / BASE_WIDTH;
+
+/**
+ * Normalize sizes (fonts, spacing, icons)
+ */
 export const normalize = (size: number): number => {
-  const newSize = size * scale;
-  if (Platform.OS === "ios") {
-    return Math.round(PixelRatio.roundToNearestPixel(newSize));
-  } else {
-    return Math.round(PixelRatio.roundToNearestPixel(newSize)) - 2;
-  }
+  const scaledSize = size * scale;
+  return Math.round(PixelRatio.roundToNearestPixel(scaledSize));
 };
 
-export const responsiveSize = (small: number, medium: number, large: number): number => {
+/**
+ * Responsive size helper
+ */
+export const responsiveSize = (
+  small: number,
+  medium: number,
+  large: number,
+  tablet?: number
+): number => {
+  if (screenSizes.isTablet && tablet !== undefined) return tablet;
   if (screenSizes.isSmallDevice) return small;
   if (screenSizes.isMediumDevice) return medium;
   return large;
 };
 
-export const lightColors = {
-  bg: "#FAFBFC",
-  surface: "#FFFFFF",
-  surface2: "#F7F9FA",
-  textPrimary: "#1A202C",
-  textSecondary: "#4A5568",
-  textMuted: "#718096",
-  text: "#1A202C",
-  muted: "#718096",
-  border: "#E2E8F0",
-  divider: "#EDF2F7",
-  accent: "#3B82F6",
-  overlay: "rgba(0, 0, 0, 0.5)",
-  black: "#000000",
-  primary: "#FF6B35",
-  primaryLight: "#F7931E",
-  primaryBg: "#FFF5F0",
-  blue: "#3B82F6",
-  blueBg: "#EFF6FF",
-  green: "#10B981",
-  greenBg: "#F0FDF4",
-  gray: "#E5E7EB",
-  success: "#10B981",
-  error: "#EF4444",
-  warning: "#F59E0B",
-};
+export type Colors = typeof lightColors;
 
-export const darkColors = {
-  bg: "#121212",
-  surface: "#1E1E1E",
-  surface2: "#252525",
-  textPrimary: "#E8E8E8",
-  textSecondary: "#B8B8B8",
-  textMuted: "#8A8A8A",
-  text: "#E8E8E8",
-  muted: "#8A8A8A",
-  border: "#2C2C2C",
-  divider: "#222222",
-  accent: "#60A5FA",
-  overlay: "rgba(0, 0, 0, 0.7)",
-  primary: "#FF8C5A",
-  primaryLight: "#FFB347",
-  primaryBg: "#2D1810",
-  blue: "#60A5FA",
-  blueBg: "#1E3A5F",
-  green: "#34D399",
-  greenBg: "#1A3A2E",
-  gray: "#374151",
-  success: "#34D399",
-  error: "#F87171",
+export const lightColors = {
+  // Backgrounds
+  bg: "#F6FAFA", // very light teal-tinted white
+  surface: "#FFFFFF",
+  surface2: "#EEF6F6",
+
+  // Text
+  textPrimary: "#0F172A", // near-black
+  textSecondary: "#334155",
+  textMuted: "#64748B",
+  text: "#0F172A",
+  muted: "#64748B",
+
+  // Borders & dividers
+  border: "#D6E4E5",
+  divider: "#E2F0F0",
+
+  // Brand / Accent (TEAL) — lighter
+  primary: "#2DD4BF", // was #14B8A6
+  primaryLight: "#99F6E4", // was #5EEAD4
+  primaryBg: "#F0FDFA", // was #ECFEFF
+  accent: "#14B8A6", // was #0D9488
+
+  // Utility colors — aligned to lighter teal
+  blue: "#2DD4BF", // was #0EA5A4
+  blueBg: "#F0FDFA", // was #E6FFFB
+  green: "#2DD4BF", // was #14B8A6
+  greenBg: "#F0FDFA", // was #ECFEFF
+  gray: "#E5E7EB",
+
+  // Status
+  success: "#2DD4BF",
+  warning: "#F59E0B",
+  error: "#EF4444",
+
+  // Misc
+  overlay: "rgba(0, 0, 0, 0.45)",
+  black: "#000000",
+} as const;
+
+export const darkColors: Colors = {
+  // Backgrounds
+  bg: "#0B1220", // deep blue-black
+  surface: "#101826",
+  surface2: "#162032",
+
+  // Text
+  textPrimary: "#E6FDFC", // very light teal-white
+  textSecondary: "#B3E6E3",
+  textMuted: "#7CCFC9",
+  text: "#E6FDFC",
+  muted: "#7CCFC9",
+
+  // Borders & dividers
+  border: "#1F2F3A",
+  divider: "#182635",
+
+  // Brand / Accent (TEAL) — lighter
+  primary: "#5EEAD4", // was #2DD4BF
+  primaryLight: "#99F6E4",
+  primaryBg: "#123C3A", // was #0F2E2C
+  accent: "#5EEAD4", // was #2DD4BF
+
+  // Utility colors
+  blue: "#5EEAD4",
+  blueBg: "#0F4A47",
+  green: "#5EEAD4",
+  greenBg: "#123C3A",
+  gray: "#1F2937",
+
+  // Status
+  success: "#5EEAD4",
   warning: "#FBBF24",
-};
+  error: "#F87171",
+
+  // Misc
+  overlay: "rgba(0, 0, 0, 0.7)",
+} as const;
 
 export const spacing = {
   xs: normalize(6),
@@ -99,6 +154,7 @@ export const radius = {
 
 export const withAlpha = (color: string, alpha: number): string => {
   if (color.startsWith("rgba")) return color;
+
   if (color.startsWith("#")) {
     const hex = color.replace("#", "");
     const r = parseInt(hex.substring(0, 2), 16);
@@ -106,10 +162,11 @@ export const withAlpha = (color: string, alpha: number): string => {
     const b = parseInt(hex.substring(4, 6), 16);
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   }
+
   return color;
 };
 
-export const createText = (colors: typeof lightColors) => ({
+export const createText = (colors: Colors) => ({
   title: {
     fontSize: normalize(24),
     fontWeight: "900" as const,

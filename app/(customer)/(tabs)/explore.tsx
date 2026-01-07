@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from "react";
-import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, TextInput, RefreshControl } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, RefreshControl } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -74,7 +74,6 @@ export default function Explore() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(true);
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
 
@@ -95,19 +94,7 @@ export default function Explore() {
   const categoryGroups = useMemo<CategoryGroup[]>(() => {
     const grouped: Record<string, CategoryGroup> = {};
 
-    // Filter symptoms by search query
-    const filteredSymptoms = (symptoms ?? []).filter((symptom: any) => {
-      if (!searchQuery.trim()) return true;
-
-      const query = searchQuery.toLowerCase();
-      const label = (symptom.symptom_label ?? "").toLowerCase();
-      const explainer = (symptom.customer_explainer ?? "").toLowerCase();
-      const category = (symptom.category ?? "").toLowerCase();
-
-      return label.includes(query) || explainer.includes(query) || category.includes(query);
-    });
-
-    filteredSymptoms.forEach((symptom: any) => {
+    (symptoms ?? []).forEach((symptom: any) => {
       const category = symptom.category || "Other";
 
       if (!grouped[category]) {
@@ -134,7 +121,7 @@ export default function Explore() {
       if (diff !== 0) return diff;
       return a.category.localeCompare(b.category);
     });
-  }, [symptoms, searchQuery]);
+  }, [symptoms]);
 
   const loadVehicles = useCallback(async () => {
     try {
@@ -355,41 +342,6 @@ export default function Explore() {
         {/* Step 2: Symptom */}
         {stepPill("STEP 2")}
 
-        {/* Search Bar */}
-        {!loadingSymptoms && !symptomsError && symptoms.length > 0 && (
-          <View
-            style={[
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.sm,
-              },
-            ]}
-          >
-            <Text style={{ fontSize: 18 }}>🔍</Text>
-            <TextInput
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              placeholder="Search symptoms..."
-              placeholderTextColor={colors.textMuted}
-              style={{
-                flex: 1,
-                fontSize: 15,
-                fontWeight: "600",
-                color: colors.textPrimary,
-                padding: 0,
-              }}
-            />
-            {searchQuery.length > 0 && (
-              <Pressable onPress={() => setSearchQuery("")}>
-                <Text style={{ fontSize: 18, color: colors.textMuted }}>✕</Text>
-              </Pressable>
-            )}
-          </View>
-        )}
-
         {loadingSymptoms ? (
           <View style={{ padding: spacing.xl, alignItems: "center" }}>
             <ActivityIndicator size="large" color={colors.accent} />
@@ -446,23 +398,8 @@ export default function Explore() {
               No symptoms found
             </Text>
             <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, textAlign: "center" }}>
-              Try a different search term or clear the search to see all symptoms.
+              Please try again later or contact support.
             </Text>
-            <Pressable
-              onPress={() => setSearchQuery("")}
-              style={({ pressed }) => [
-                {
-                  marginTop: spacing.md,
-                  backgroundColor: colors.accent,
-                  paddingHorizontal: spacing.lg,
-                  paddingVertical: spacing.md,
-                  borderRadius: 10,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "900" }}>Clear Search</Text>
-            </Pressable>
           </View>
         ) : (
           <>

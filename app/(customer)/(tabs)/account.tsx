@@ -1153,6 +1153,45 @@ export default function CustomerAccount() {
         </Pressable>
 
         <Pressable
+          onPress={() => router.push("/(customer)/invite")}
+          style={({ pressed }) => [
+            card,
+            {
+              flexDirection: "row",
+              alignItems: "center",
+              padding: spacing.lg,
+              borderRadius: radius.lg,
+              gap: spacing.md,
+              opacity: pressed ? 0.7 : 1,
+            },
+          ]}
+        >
+          <View
+            style={{
+              width: 44,
+              height: 44,
+              borderRadius: radius.md,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "#10B981" + "20",
+              borderWidth: 1,
+              borderColor: "#10B981" + "30",
+            }}
+          >
+            <Ionicons name="gift-outline" size={22} color="#10B981" />
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>Invite & Earn</Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+              Refer friends, get free platform fees
+            </Text>
+          </View>
+
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+
+        <Pressable
           onPress={signOut}
           style={({ pressed }) => [
             card,

@@ -1,16 +1,20 @@
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import { View, Text, ScrollView, ActivityIndicator, Alert } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useStripe } from "@stripe/stripe-react-native";
-import { supabase } from "../../../src/lib/supabase";
-import { useTheme } from "../../../src/ui/theme-context";
-import { createCard } from "../../../src/ui/styles";
-import { AppButton } from "../../../src/ui/components/AppButton";
-import { acceptQuoteAndCreateContract } from "../../../src/lib/job-contract";
-import { notifyUser } from "../../../src/lib/notify";
-import { getDisplayTitle } from "../../../src/lib/format-symptom";
+import { supabase } from "@/src/lib/supabase";
+import { useTheme } from "@/src/ui/theme-context";
+import { createCard } from "@/src/ui/styles";
+import { AppButton } from "@/src/ui/components/AppButton";
+import { acceptQuoteAndCreateContract } from "@/src/lib/job-contract";
+import { notifyUser } from "@/src/lib/notify";
+import { getDisplayTitle } from "@/src/lib/format-symptom";
+import { previewPromoDiscount, getPromoDiscountDescription } from "@/src/lib/promos";
+import type { PromoDiscountPreview } from "@/src/types/promos";
+
+const PLATFORM_FEE_CENTS = 1500;
 
 type Job = {
   id: string;
@@ -39,6 +43,7 @@ export default function JobPayment() {
   const [job, setJob] = useState<Job | null>(null);
   const [quote, setQuote] = useState<Quote | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [promoPreview, setPromoPreview] = useState<PromoDiscountPreview | null>(null);
 
   const loadPaymentInfo = useCallback(async () => {
     if (!jobId) return;
@@ -54,7 +59,6 @@ export default function JobPayment() {
         return;
       }
 
-      // Check if contract already exists for this job
       const { data: existingContract } = await supabase
         .from("job_contracts")
         .select("id")
@@ -62,7 +66,6 @@ export default function JobPayment() {
         .maybeSingle();
 
       if (existingContract) {
-        // Contract already exists, redirect to job details
         Alert.alert("Already Paid", "Payment has already been completed for this job.");
         router.replace(`/(customer)/job/${jobId}` as any);
         return;
@@ -84,8 +87,6 @@ export default function JobPayment() {
 
       setJob(jobData);
 
-      // If quoteId is provided, use that specific quote
-      // Otherwise, find the accepted quote or the most recent pending quote with a price
       let quoteQuery = supabase
         .from("quotes")
         .select("id, job_id, mechanic_id, price_cents, status, created_at")
@@ -94,11 +95,10 @@ export default function JobPayment() {
       if (quoteId) {
         quoteQuery = quoteQuery.eq("id", quoteId);
       } else {
-        // Prioritize accepted quotes, then pending quotes with prices
         quoteQuery = quoteQuery
           .in("status", ["accepted", "pending"])
           .not("price_cents", "is", null)
-          .order("status", { ascending: false }) // 'accepted' comes after 'pending' alphabetically, so descending
+          .order("status", { ascending: false })
           .order("created_at", { ascending: false });
       }
 
@@ -115,6 +115,9 @@ export default function JobPayment() {
       }
 
       setQuote(quoteData as any);
+
+      const preview = await previewPromoDiscount(PLATFORM_FEE_CENTS);
+      setPromoPreview(preview);
     } catch (error: any) {
       console.error("Payment info load error:", error);
       Alert.alert("Error", error?.message ?? "Failed to load payment information.");
@@ -135,8 +138,6 @@ export default function JobPayment() {
     try {
       setProcessing(true);
 
-      // For now, skip Stripe and create contract directly (payment simulation)
-      // TODO: Re-enable Stripe payment when edge function auth is fixed
       const contractResult = await acceptQuoteAndCreateContract(quote.id);
 
       if (!contractResult.success) {
@@ -145,7 +146,7 @@ export default function JobPayment() {
 
       notifyUser({
         userId: quote.mechanic_id,
-        title: "Payment Complete! 🎉",
+        title: "Payment Complete!",
         body: "The customer has completed payment. You can now start the job.",
         type: "payment_complete",
         entityType: "job",
@@ -202,7 +203,11 @@ export default function JobPayment() {
     );
   }
 
-  const priceInDollars = (quote.price_cents / 100).toFixed(2);
+  const platformFeeCents = PLATFORM_FEE_CENTS;
+  const discountCents = promoPreview?.has_discount ? promoPreview.discount_cents : 0;
+  const finalPlatformFeeCents = platformFeeCents - discountCents;
+  const totalCents = quote.price_cents + finalPlatformFeeCents;
+  const totalDollars = (totalCents / 100).toFixed(2);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -220,15 +225,61 @@ export default function JobPayment() {
 
           <View style={{ 
             padding: spacing.lg, 
-            backgroundColor: colors.accent + "11",
+            backgroundColor: colors.surface,
             borderRadius: 12,
             borderWidth: 1,
-            borderColor: colors.accent + "33",
-            marginBottom: spacing.lg
+            borderColor: colors.border,
+            marginBottom: spacing.lg,
+            gap: spacing.sm,
           }}>
-            <Text style={[text.muted, { marginBottom: spacing.xs }]}>Amount Due:</Text>
-            <Text style={[text.title, { fontSize: 32, color: colors.accent }]}>${priceInDollars}</Text>
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={text.body}>Service</Text>
+              <Text style={text.body}>${(quote.price_cents / 100).toFixed(2)}</Text>
+            </View>
+            
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={text.body}>Platform Fee</Text>
+              <Text style={text.body}>${(platformFeeCents / 100).toFixed(2)}</Text>
+            </View>
+
+            {promoPreview?.has_discount && discountCents > 0 && (
+              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={[text.body, { color: "#10B981" }]}>
+                    {getPromoDiscountDescription(promoPreview.credit_type!)}
+                  </Text>
+                </View>
+                <Text style={[text.body, { color: "#10B981" }]}>
+                  -${(discountCents / 100).toFixed(2)}
+                </Text>
+              </View>
+            )}
+
+            <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.xs }} />
+
+            <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+              <Text style={[text.body, { fontWeight: "700" }]}>Total</Text>
+              <Text style={[text.title, { color: colors.accent }]}>${totalDollars}</Text>
+            </View>
           </View>
+
+          {promoPreview?.has_discount && (
+            <View style={{
+              padding: spacing.md,
+              backgroundColor: "#10B98115",
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: "#10B98140",
+              marginBottom: spacing.lg,
+              flexDirection: "row",
+              alignItems: "center",
+            }}>
+              <Ionicons name="gift" size={20} color="#10B981" style={{ marginRight: spacing.sm }} />
+              <Text style={[text.body, { color: "#10B981", flex: 1 }]}>
+                Referral credit applied! You're saving ${(discountCents / 100).toFixed(2)}.
+              </Text>
+            </View>
+          )}
 
           <View style={{ gap: spacing.sm, marginBottom: spacing.lg }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -250,7 +301,7 @@ export default function JobPayment() {
         </View>
 
         <AppButton
-          title={processing ? "Processing..." : `Pay $${priceInDollars}`}
+          title={processing ? "Processing..." : `Pay $${totalDollars}`}
           variant="primary"
           onPress={handlePayment}
           disabled={processing}

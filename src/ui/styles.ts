@@ -12,25 +12,27 @@ export const createCard = (colors: ThemeColors) => ({
   borderRadius: radius.lg,
   ...(Platform.OS === "ios"
     ? {
-        shadowColor: colors.textPrimary,
-        shadowOffset: { width: 0, height: normalize(4) },
-        shadowOpacity: 0.08,
-        shadowRadius: normalize(10),
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: normalize(6) },
+        shadowOpacity: colors.bg === "#0B1220" ? 0.35 : 0.08,
+        shadowRadius: normalize(14),
       }
     : {
-        elevation: 4,
+        elevation: colors.bg === "#0B1220" ? 6 : 4,
       }),
 });
 
 export const cardPressed = {
-  transform: [{ scale: 0.985 }],
-  elevation: 1,
+  transform: [{ scale: 0.99 }],
+  ...(Platform.OS === "android" ? { elevation: 2 } : {}),
 };
 
-export const createPill = (colors: any) => ({
-  paddingHorizontal: normalize(10),
-  paddingVertical: normalize(6),
+
+export const createPill = (colors: ThemeColors, selected = false) => ({
+  paddingHorizontal: normalize(12),
+  paddingVertical: normalize(7),
   borderRadius: 999,
   borderWidth: 1,
-  borderColor: colors.border,
+  borderColor: selected ? colors.primary : colors.border,
+  backgroundColor: selected ? colors.primaryBg : "transparent",
 });

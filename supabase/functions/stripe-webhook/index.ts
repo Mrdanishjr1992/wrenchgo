@@ -58,6 +58,22 @@ serve(async (req) => {
         await handlePaymentIntentRequiresAction(event.data.object as Stripe.PaymentIntent)
         break
 
+      case 'setup_intent.succeeded':
+        await handleSetupIntentSucceeded(event.data.object as Stripe.SetupIntent)
+        break
+
+      case 'setup_intent.setup_failed':
+        await handleSetupIntentFailed(event.data.object as Stripe.SetupIntent)
+        break
+
+      case 'payment_method.attached':
+        await handlePaymentMethodAttached(event.data.object as Stripe.PaymentMethod)
+        break
+
+      case 'payment_method.detached':
+        await handlePaymentMethodDetached(event.data.object as Stripe.PaymentMethod)
+        break
+
       case 'account.updated':
         await handleAccountUpdated(event.data.object as Stripe.Account)
         break
@@ -152,6 +168,13 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
     available_for_transfer_at: nextMonday.toISOString(),
   })
 
+  // =====================================================
+  // INVITATION PROMO AWARDING
+  // =====================================================
+  // Check if this is the customer's first qualifying paid fee transaction
+  // and award credits to their inviter if applicable
+  await handleInvitationAward(payment.customer_id, payment.id, payment.platform_fee_cents || 0, paymentIntent.id)
+
   await supabase.from('notifications').insert([
     {
       user_id: payment.customer_id,
@@ -168,6 +191,67 @@ async function handlePaymentIntentSucceeded(paymentIntent: Stripe.PaymentIntent)
       data: { job_id: jobId, payment_id: payment.id },
     },
   ])
+}
+
+// Handle invitation promo awarding when a payment succeeds
+async function handleInvitationAward(
+  customerId: string,
+  paymentId: string,
+  platformFeeCents: number,
+  stripeEventId: string
+) {
+  // Only award if payment has a platform fee (qualifying transaction)
+  if (platformFeeCents <= 0) {
+    return
+  }
+
+  // Check if this user was invited
+  const { data: invitation } = await supabase
+    .from('invitations')
+    .select('id, inviter_id')
+    .eq('invited_id', customerId)
+    .single()
+
+  if (!invitation) {
+    return
+  }
+
+  // Check if this is the user's first qualifying paid fee transaction
+  const { data: isFirst } = await supabase.rpc('check_first_qualifying_payment', {
+    p_user_id: customerId,
+    p_payment_id: paymentId,
+  })
+
+  if (!isFirst) {
+    return
+  }
+
+  // Award credits to inviter (idempotent - will fail silently if already awarded)
+  const { data: awardResult, error: awardError } = await supabase.rpc('award_invitation_credits', {
+    p_invited_id: customerId,
+    p_payment_id: paymentId,
+    p_stripe_event_id: stripeEventId,
+  })
+
+  if (awardError) {
+    console.error('Error awarding invitation credits:', awardError)
+    return
+  }
+
+  if (awardResult?.success && awardResult?.inviter_id) {
+    // Notify inviter about their reward
+    const awardType = awardResult.award_type === 'FEELESS_1'
+      ? '1 free platform fee credit'
+      : '5 x $5 off platform fee credits'
+
+    await supabase.from('notifications').insert({
+      user_id: awardResult.inviter_id,
+      type: 'invitation_reward',
+      title: 'Referral Reward Earned!',
+      body: `Your friend completed their first job! You earned ${awardType}.`,
+      data: { credit_type: awardResult.award_type },
+    })
+  }
 }
 
 async function handlePaymentIntentFailed(paymentIntent: Stripe.PaymentIntent) {
@@ -369,4 +453,150 @@ function getNextMonday(): Date {
   nextMonday.setDate(now.getDate() + daysUntilMonday)
   nextMonday.setHours(0, 0, 0, 0)
   return nextMonday
+}
+
+// =====================================================
+// SETUP INTENT HANDLERS
+// =====================================================
+
+async function handleSetupIntentSucceeded(setupIntent: Stripe.SetupIntent) {
+  const userId = setupIntent.metadata?.user_id
+  const customerId = setupIntent.customer as string
+  const paymentMethodId = setupIntent.payment_method as string
+
+  if (!userId) {
+    console.error('SetupIntent missing user_id in metadata')
+    return
+  }
+
+  const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId)
+  const card = paymentMethod.card
+
+  await supabase
+    .from('customer_payment_methods')
+    .upsert({
+      customer_id: userId,
+      stripe_customer_id: customerId,
+      stripe_payment_method_id: paymentMethodId,
+      is_default: true,
+      card_brand: card?.brand || null,
+      card_last4: card?.last4 || null,
+      card_exp_month: card?.exp_month || null,
+      card_exp_year: card?.exp_year || null,
+    }, {
+      onConflict: 'stripe_payment_method_id'
+    })
+
+  await supabase
+    .from('customer_payment_methods')
+    .update({ is_default: false })
+    .eq('customer_id', userId)
+    .neq('stripe_payment_method_id', paymentMethodId)
+
+  await stripe.customers.update(customerId, {
+    invoice_settings: { default_payment_method: paymentMethodId }
+  })
+
+  await supabase
+    .from('profiles')
+    .update({
+      payment_method_status: 'active',
+      stripe_customer_id: customerId,
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+
+  console.log(`Payment method activated for user ${userId}`)
+}
+
+async function handleSetupIntentFailed(setupIntent: Stripe.SetupIntent) {
+  const userId = setupIntent.metadata?.user_id
+
+  if (!userId) {
+    console.error('SetupIntent missing user_id in metadata')
+    return
+  }
+
+  await supabase
+    .from('profiles')
+    .update({
+      payment_method_status: 'failed',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', userId)
+
+  console.log(`Payment method setup failed for user ${userId}`)
+}
+
+async function handlePaymentMethodAttached(paymentMethod: Stripe.PaymentMethod) {
+  const customerId = paymentMethod.customer as string
+  if (!customerId) return
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('stripe_customer_id', customerId)
+    .single()
+
+  if (!profile) {
+    console.log(`No profile found for Stripe customer ${customerId}`)
+    return
+  }
+
+  const card = paymentMethod.card
+
+  await supabase
+    .from('customer_payment_methods')
+    .upsert({
+      customer_id: profile.id,
+      stripe_customer_id: customerId,
+      stripe_payment_method_id: paymentMethod.id,
+      is_default: true,
+      card_brand: card?.brand || null,
+      card_last4: card?.last4 || null,
+      card_exp_month: card?.exp_month || null,
+      card_exp_year: card?.exp_year || null,
+    }, {
+      onConflict: 'stripe_payment_method_id'
+    })
+
+  await supabase
+    .from('profiles')
+    .update({
+      payment_method_status: 'active',
+      updated_at: new Date().toISOString()
+    })
+    .eq('id', profile.id)
+}
+
+async function handlePaymentMethodDetached(paymentMethod: Stripe.PaymentMethod) {
+  await supabase
+    .from('customer_payment_methods')
+    .update({ deleted_at: new Date().toISOString() })
+    .eq('stripe_payment_method_id', paymentMethod.id)
+
+  const { data: remaining } = await supabase
+    .from('customer_payment_methods')
+    .select('customer_id')
+    .eq('stripe_payment_method_id', paymentMethod.id)
+    .is('deleted_at', null)
+    .single()
+
+  if (remaining) {
+    const { count } = await supabase
+      .from('customer_payment_methods')
+      .select('id', { count: 'exact', head: true })
+      .eq('customer_id', remaining.customer_id)
+      .is('deleted_at', null)
+
+    if (count === 0) {
+      await supabase
+        .from('profiles')
+        .update({
+          payment_method_status: 'none',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', remaining.customer_id)
+    }
+  }
 }

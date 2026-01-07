@@ -1,25 +1,28 @@
 import React from "react";
-import { View, Image } from "react-native";
+import { Image, View, StyleSheet } from "react-native";
 
 export function LogoHeader() {
   return (
-    <View
-      style={{
-        width: 80,
-        height: 100,
-        borderRadius: 20,
-        alignItems: "center",
-        justifyContent: "center",
-      }}
-    >
+    <View style={styles.container}>
       <Image
         source={require("../../assets/logo.png")}
-        style={{
-          width: "100%",
-          height: "100%",
-        }}
+        style={styles.logo}
         resizeMode="contain"
       />
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  logo: {
+    width: "100%",
+    height: "100%",
+  },
+});
+
