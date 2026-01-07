@@ -58,7 +58,7 @@ BEGIN
   -- Only trigger when review becomes visible
   IF NEW.visibility = 'visible' AND (OLD.visibility IS NULL OR OLD.visibility != 'visible') THEN
     -- Check if this is a customer reviewing a mechanic
-    SELECT p.id, NEW.rating
+    SELECT p.id, NEW.overall_rating
     INTO v_mechanic_id, v_customer_rating
     FROM public.profiles p
     WHERE p.id = NEW.reviewee_id

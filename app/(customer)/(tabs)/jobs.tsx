@@ -17,6 +17,7 @@ import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
 import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
+import { FinancialSummary } from "../../../components/financials";
 
 type QuoteSummary = {
   quoteCount: number;
@@ -60,6 +61,8 @@ export default function CustomerJobs() {
   const [jobs, setJobs] = useState<JobWithQuoteSummary[]>([]);
   const [canceling, setCanceling] = useState<string | null>(null);
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
+  const [customerId, setCustomerId] = useState<string | null>(null);
+  const [showFinancials, setShowFinancials] = useState(false);
 
   const statusColor = useCallback(
     (status: string) => {
@@ -149,6 +152,7 @@ export default function CustomerJobs() {
         setJobs([]);
         return;
       }
+      setCustomerId(userId);
 
       const { data: jobRows, error: jobsErr } = await supabase
         .from("jobs")
@@ -479,6 +483,40 @@ export default function CustomerJobs() {
               </View>
             </View>
 
+            {/* Financial Summary Toggle */}
+            {customerId && completed.length > 0 && (
+              <View style={{ marginTop: spacing.md }}>
+                <Pressable
+                  onPress={() => setShowFinancials(!showFinancials)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: colors.surface,
+                    borderRadius: radius.md,
+                    padding: spacing.md,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                    <Ionicons name="card-outline" size={20} color={colors.accent} />
+                    <Text style={{ ...text.body, fontWeight: "600" }}>Spending Summary</Text>
+                  </View>
+                  <Ionicons
+                    name={showFinancials ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+                {showFinancials && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <FinancialSummary userId={customerId} role="customer" />
+                  </View>
+                )}
+              </View>
+            )}
+
             {jobs.length === 0 && (
               <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm }}>
                 <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
@@ -550,3 +588,5 @@ export default function CustomerJobs() {
     </View>
   );
 }
+
+

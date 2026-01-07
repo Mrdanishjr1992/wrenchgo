@@ -96,7 +96,7 @@ BEGIN
     job_id,
     reviewer_id,
     reviewee_id,
-    rating,
+    overall_rating,
     comment,
     professionalism_rating,
     communication_rating,
@@ -119,9 +119,9 @@ BEGIN
     now(),
     now()
   )
-  ON CONFLICT (job_id, reviewer_id) 
+  ON CONFLICT (job_id, reviewer_id)
   DO UPDATE SET
-    rating = EXCLUDED.rating,
+    overall_rating = EXCLUDED.overall_rating,
     comment = EXCLUDED.comment,
     professionalism_rating = EXCLUDED.professionalism_rating,
     communication_rating = EXCLUDED.communication_rating,
@@ -364,7 +364,7 @@ BEGIN
     WHERE jc.mechanic_id = p_user_id;
   ELSE
     SELECT
-      COUNT(*) FILTER (WHERE j.status IN ('active', 'completed')) as total,
+      COUNT(*) FILTER (WHERE j.status IN ('in_progress', 'work_in_progress', 'completed')) as total,
       COUNT(*) FILTER (WHERE j.status = 'completed') as completed,
       COUNT(*) FILTER (WHERE j.status = 'cancelled') as cancelled
     INTO v_total_jobs, v_completed_jobs, v_cancelled_jobs
@@ -376,8 +376,8 @@ BEGIN
   SELECT
     COUNT(*) FILTER (WHERE reviewer_id = p_user_id) as given,
     COUNT(*) FILTER (WHERE reviewee_id = p_user_id) as received,
-    AVG(rating) FILTER (WHERE reviewer_id = p_user_id) as avg_given,
-    AVG(rating) FILTER (WHERE reviewee_id = p_user_id) as avg_received
+    AVG(overall_rating) FILTER (WHERE reviewer_id = p_user_id) as avg_given,
+    AVG(overall_rating) FILTER (WHERE reviewee_id = p_user_id) as avg_received
   INTO v_reviews_given, v_reviews_received, v_avg_rating_given, v_avg_rating_received
   FROM public.reviews
   WHERE (reviewer_id = p_user_id OR reviewee_id = p_user_id)

@@ -59,22 +59,20 @@ BEGIN
       
       -- Average rating
       WHEN 'avg_rating' THEN
-        SELECT 
-          AVG(rating),
-          COUNT(*)
-        INTO v_current_value, v_current_value
+        SELECT COUNT(*)
+        INTO v_review_count
         FROM public.reviews
         WHERE reviewee_id = p_user_id
           AND visibility = 'visible';
-        
+
         -- Require minimum 5 reviews for rating badges
-        IF v_current_value >= 5 THEN
-          SELECT AVG(rating)
+        IF v_review_count >= 5 THEN
+          SELECT AVG(overall_rating)
           INTO v_current_value
           FROM public.reviews
           WHERE reviewee_id = p_user_id
             AND visibility = 'visible';
-          
+
           v_meets_criteria := v_current_value >= v_badge_record.criteria_threshold;
         END IF;
       
@@ -112,16 +110,16 @@ BEGIN
               AND jc.status IN ('active', 'completed')
           )
           SELECT
-            CASE WHEN total_count > 0 
+            CASE WHEN total_count > 0
               THEN (on_time_count::numeric / total_count * 100)
               ELSE 0
             END
           INTO v_current_value
           FROM on_time_stats;
-          
+
           v_meets_criteria := v_current_value >= v_badge_record.criteria_threshold;
         END IF;
-      
+
       -- Completion rate
       WHEN 'completion_rate' THEN
         IF v_user_role = 'mechanic' THEN
@@ -133,16 +131,16 @@ BEGIN
             WHERE mechanic_id = p_user_id
           )
           SELECT
-            CASE WHEN total_count > 0 
+            CASE WHEN total_count > 0
               THEN (completed_count::numeric / total_count * 100)
               ELSE 0
             END
           INTO v_current_value
           FROM completion_stats;
-          
+
           v_meets_criteria := v_current_value >= v_badge_record.criteria_threshold;
         END IF;
-      
+
       -- Response time (average minutes to quote)
       WHEN 'response_time' THEN
         IF v_user_role = 'mechanic' THEN

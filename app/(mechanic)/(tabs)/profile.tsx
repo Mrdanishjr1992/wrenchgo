@@ -94,6 +94,8 @@ export default function MechanicProfile() {
   const [payoutAccount, setPayoutAccount] = useState<any>(null);
   const [loadingPayout, setLoadingPayout] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [reviews, setReviews] = useState<any[]>([]);
+  const [reviewCount, setReviewCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -197,6 +199,25 @@ export default function MechanicProfile() {
         .maybeSingle();
 
       setPayoutAccount(payoutData);
+
+      const { data: reviewsData } = await supabase
+        .from("reviews")
+        .select(`
+          id,
+          overall_rating,
+          comment,
+          created_at,
+          reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
+        `)
+        .eq("reviewee_id", userId)
+        .eq("is_hidden", false)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      setReviews(reviewsData || []);
+      setReviewCount(reviewsData?.length || 0);
+
       setIsDirty(false);
     } catch (e: any) {
       console.error("Profile load error:", e);
@@ -1210,6 +1231,174 @@ export default function MechanicProfile() {
 
                 <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
               </Pressable>
+
+              <Pressable
+                onPress={() => router.push("/(mechanic)/earnings")}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  backgroundColor: colors.bg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: "#10b981" + "15",
+                    }}
+                  >
+                    <Ionicons name="wallet-outline" size={18} color="#10b981" />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>
+                      Earnings & Taxes
+                    </Text>
+                    <Text style={{ ...text.muted, marginTop: 3 }}>
+                      View payouts and tax summaries
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#FFB800" + "20", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="star-outline" size={16} color="#FFB800" />
+                  </View>
+                  <Text style={text.section}>My Reviews ({reviewCount})</Text>
+                </View>
+                {reviews.length > 0 && (
+                  <Pressable onPress={() => router.push(`/profile/${profile?.id}`)}>
+                    <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 13 }}>View All</Text>
+                  </Pressable>
+                )}
+              </View>
+              {reviews.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+                  <Ionicons name="chatbubble-outline" size={32} color={colors.textMuted} />
+                  <Text style={{ ...text.muted, fontSize: 13, textAlign: "center", marginTop: 8 }}>
+                    No reviews yet
+                  </Text>
+                  <Text style={{ ...text.muted, fontSize: 12, textAlign: "center", marginTop: 2 }}>
+                    Complete jobs to receive reviews
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.md, marginTop: spacing.xs }}>
+                  {reviews.slice(0, 3).map((review) => (
+                    <View
+                      key={review.id}
+                      style={{
+                        padding: spacing.sm,
+                        borderRadius: radius.md,
+                        backgroundColor: colors.bg,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          {review.reviewer?.avatar_url ? (
+                            <Image
+                              source={{ uri: review.reviewer.avatar_url }}
+                              style={{ width: 28, height: 28, borderRadius: 14 }}
+                            />
+                          ) : (
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
+                                {(review.reviewer?.full_name || "U").charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={{ fontWeight: "600", color: colors.textPrimary, fontSize: 14 }}>
+                            {review.reviewer?.full_name || "Customer"}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="star" size={14} color="#FFB800" />
+                          <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
+                            {review.overall_rating}
+                          </Text>
+                        </View>
+                      </View>
+                      {review.comment && (
+                        <Text style={{ ...text.muted, fontSize: 13, marginTop: 8, lineHeight: 18 }} numberOfLines={2}>
+                          "{review.comment}"
+                        </Text>
+                      )}
+                      <Text style={{ ...text.muted, fontSize: 11, marginTop: 6 }}>
+                        {new Date(review.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="location-outline" size={16} color="#f59e0b" />
+                </View>
+                <Text style={text.section}>Home Location</Text>
+              </View>
+              <Text style={{ ...text.muted, fontSize: 13 }}>
+                Set your home location for faster service requests
+              </Text>
+              {homeLatitude && homeLongitude && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
+                    {locationDisplay}
+                  </Text>
+                </View>
+              )}
+              <Pressable
+                onPress={fetchCurrentLocation}
+                disabled={loadingLocation}
+                style={({ pressed }) => ({
+                  marginTop: spacing.xs,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  opacity: pressed || loadingLocation ? 0.7 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                })}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator color={colors.accent} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="navigate" size={18} color={colors.accent} />
+                    <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
+                      {homeLatitude && homeLongitude ? "Update Location" : "Use Current Location"}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
             </View>
           </>
         )}
@@ -1251,46 +1440,6 @@ export default function MechanicProfile() {
                   backgroundColor: colors.bg,
                 }}
               />
-
-              <Text style={[text.section, { marginTop: spacing.md }]}>Home Location</Text>
-              <Text style={[text.muted, { fontSize: 12 }]}>
-                Set your home location for faster service requests
-              </Text>
-
-              {(homeLatitude && homeLongitude) && (
-                <View style={{ marginTop: spacing.xs, marginBottom: spacing.xs }}>
-                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
-                    {locationDisplay}
-                  </Text>
-                </View>
-              )}
-
-              <Pressable
-                onPress={fetchCurrentLocation}
-                disabled={loadingLocation}
-                style={{
-                  backgroundColor: colors.surface,
-                  paddingVertical: 12,
-                  borderRadius: radius.lg,
-                  alignItems: "center",
-                  marginTop: spacing.xs,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  {loadingLocation ? (
-                    <ActivityIndicator color={colors.accent} size="small" />
-                  ) : (
-                    <>
-                      <Ionicons name="location" size={20} color={colors.accent} />
-                      <Text style={{ fontWeight: "600", color: colors.textPrimary }}>
-                        Use Current Location
-                      </Text>
-                    </>
-                  )}
-                </View>
-              </Pressable>
             </View>
 
             <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>

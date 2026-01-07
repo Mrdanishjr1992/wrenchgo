@@ -46,6 +46,9 @@ const chipFor = (n: Notif) => {
   const t = (n.type || "").toLowerCase();
   if (t.includes("quote")) return { label: "QUOTE", tone: "accent" as const };
   if (t.includes("job")) return { label: "JOB", tone: "muted" as const };
+  if (t.includes("payment") || t.includes("payout")) return { label: "PAYMENT", tone: "success" as const };
+  if (t.includes("refund") || t.includes("dispute")) return { label: "DISPUTE", tone: "warning" as const };
+  if (t.includes("review")) return { label: "REVIEW", tone: "accent" as const };
   return { label: "ALERT", tone: "muted" as const };
 };
 

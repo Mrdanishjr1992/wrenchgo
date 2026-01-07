@@ -219,7 +219,8 @@ export default function MechanicJobDetails() {
         return;
       }
 
-      const { data, error } = await supabase
+      // First try to get job where mechanic is accepted
+      let { data, error } = await supabase
         .from("jobs")
         .select(
           `
@@ -232,7 +233,31 @@ export default function MechanicJobDetails() {
         .eq("accepted_mechanic_id", mechanicId)
         .single();
 
-      if (error) throw error;
+      // If not found, try to get job without mechanic filter (for notifications about new jobs)
+      if (error?.code === "PGRST116") {
+        const result = await supabase
+          .from("jobs")
+          .select(
+            `
+            id,title,description,preferred_time,status,created_at,accepted_mechanic_id,customer_id,vehicle_id,
+            canceled_at,canceled_by,
+            vehicle:vehicles(year, make, model)
+          `
+          )
+          .eq("id", id)
+          .single();
+
+        if (result.error) {
+          Alert.alert("Job Not Found", "This job may have been canceled or is no longer available.");
+          router.back();
+          return;
+        }
+        data = result.data;
+        error = null;
+      } else if (error) {
+        throw error;
+      }
+
       setJob(data as any as Job);
 
       const { data: quoteData } = await supabase

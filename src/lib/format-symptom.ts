@@ -29,6 +29,39 @@ export function isRawSymptomKey(title: string): boolean {
  */
 export function getDisplayTitle(title: string | null | undefined): string {
   if (!title) return "Service Request";
+
+  // Check if title is JSON
+  if (title.startsWith("{") || title.startsWith("[")) {
+    try {
+      const parsed = JSON.parse(title);
+      // Handle array - take first element
+      const obj = Array.isArray(parsed) ? parsed[0] : parsed;
+      if (!obj) return "Service Request";
+
+      // Extract symptom key from various possible structures
+      const symptomKey =
+        obj?.symptom_key ||
+        obj?.symptom?.key ||
+        obj?.symptom ||
+        obj?.key ||
+        obj?.title ||
+        obj?.name;
+
+      if (symptomKey && typeof symptomKey === "string") {
+        return isRawSymptomKey(symptomKey) ? formatSymptomKey(symptomKey) : symptomKey;
+      }
+
+      // Fallback to any string value in the object
+      for (const val of Object.values(obj)) {
+        if (typeof val === "string" && val.length > 0 && val.length < 100) {
+          return isRawSymptomKey(val) ? formatSymptomKey(val) : val;
+        }
+      }
+    } catch {
+      // Not valid JSON, continue
+    }
+  }
+
   if (isRawSymptomKey(title)) {
     return formatSymptomKey(title);
   }

@@ -15,8 +15,10 @@ import { createCard, cardPressed } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
-import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
+import { getPendingReviewPrompts, ReviewPrompt, hasReviewedJob } from "../../../src/lib/reviews";
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
+import { FinancialSummary } from "../../../components/financials";
+import { formatCents, PAYOUT_STATUS_LABELS, PAYOUT_STATUS_COLORS } from "../../../src/lib/financials";
 
 type Job = {
   id: string;
@@ -25,6 +27,13 @@ type Job = {
   preferred_time: string | null;
   created_at: string;
   customer_name: string | null;
+  // Financial fields for completed jobs
+  mechanic_payout_cents?: number | null;
+  payout_status?: string | null;
+  payment_status?: "pending" | "authorized" | "captured" | null;
+  // Review status
+  has_reviewed?: boolean;
+  has_pending_review?: boolean;
 };
 
 type WaitingJob = {
@@ -49,6 +58,8 @@ export default function MechanicJobs() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [waitingJobs, setWaitingJobs] = useState<WaitingJob[]>([]);
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
+  const [mechanicId, setMechanicId] = useState<string | null>(null);
+  const [showFinancials, setShowFinancials] = useState(false);
 
   const statusColor = useCallback(
     (status: string) => {
@@ -129,18 +140,19 @@ export default function MechanicJobs() {
       const { data: userData, error: userErr } = await supabase.auth.getUser();
       if (userErr) throw userErr;
 
-      const mechanicId = userData.user?.id;
-      if (!mechanicId) {
+      const mId = userData.user?.id;
+      if (!mId) {
         setJobs([]);
         setWaitingJobs([]);
         return;
       }
+      setMechanicId(mId);
 
       // Load assigned jobs
       const { data, error } = await supabase
         .from("jobs")
         .select("id,title,status,preferred_time,created_at,customer_id")
-        .eq("accepted_mechanic_id", mechanicId)
+        .eq("accepted_mechanic_id", mId)
         .in("status", ["accepted", "work_in_progress", "completed"])
         .order("created_at", { ascending: false });
 
@@ -150,7 +162,7 @@ export default function MechanicJobs() {
       const { data: pendingQuotes, error: quotesErr } = await supabase
         .from("quotes")
         .select("id,job_id,price_cents,status,created_at")
-        .eq("mechanic_id", mechanicId)
+        .eq("mechanic_id", mId)
         .eq("status", "pending")
         .order("created_at", { ascending: false });
 
@@ -208,6 +220,7 @@ export default function MechanicJobs() {
 
       const jobsData = (data ?? []) as any[];
       const customerIds = Array.from(new Set(jobsData.map((j) => j.customer_id).filter(Boolean)));
+      const jobIds = jobsData.map((j) => j.id);
 
       let nameById = new Map<string, string>();
       if (customerIds.length > 0) {
@@ -221,19 +234,86 @@ export default function MechanicJobs() {
         });
       }
 
-      setJobs(
-        jobsData.map((j) => ({
-          id: j.id,
-          title: j.title || "Job",
-          status: j.status,
-          preferred_time: j.preferred_time,
-          created_at: j.created_at,
-          customer_name: nameById.get(j.customer_id) || null,
-        }))
-      );
+      // Load financial data for jobs (contracts + payouts)
+      let contractsByJobId = new Map<string, any>();
+      let payoutsByContractId = new Map<string, any>();
 
-      const prompts = await getPendingReviewPrompts(mechanicId);
+      if (jobIds.length > 0) {
+        const { data: contracts } = await supabase
+          .from("job_contracts")
+          .select("job_id, mechanic_payout_cents, payment_authorized_at, payment_captured_at, id")
+          .in("job_id", jobIds)
+          .eq("mechanic_id", mId);
+
+        (contracts ?? []).forEach((c: any) => {
+          contractsByJobId.set(c.job_id, c);
+        });
+
+        const contractIds = (contracts ?? []).map((c: any) => c.id).filter(Boolean);
+        if (contractIds.length > 0) {
+          const { data: payouts } = await supabase
+            .from("payouts")
+            .select("contract_id, status")
+            .in("contract_id", contractIds);
+
+          (payouts ?? []).forEach((p: any) => {
+            payoutsByContractId.set(p.contract_id, p);
+          });
+        }
+      }
+
+      // Check review status for completed jobs
+      const completedJobIds = jobsData.filter((j) => j.status === "completed").map((j) => j.id);
+      let reviewedJobIds = new Set<string>();
+
+      if (completedJobIds.length > 0) {
+        const { data: reviews } = await supabase
+          .from("reviews")
+          .select("job_id")
+          .eq("reviewer_id", mId)
+          .in("job_id", completedJobIds);
+
+        (reviews ?? []).forEach((r: any) => {
+          reviewedJobIds.add(r.job_id);
+        });
+      }
+
+      // Get pending review prompts
+      const prompts = await getPendingReviewPrompts(mId);
       setReviewPrompts(prompts);
+      const promptJobIds = new Set(prompts.map((p) => p.job_id));
+
+      setJobs(
+        jobsData.map((j) => {
+          const contract = contractsByJobId.get(j.id);
+          const payout = contract ? payoutsByContractId.get(contract.id) : null;
+
+          let paymentStatus: Job["payment_status"] = null;
+          if (contract) {
+            if (contract.payment_captured_at) {
+              paymentStatus = "captured";
+            } else if (contract.payment_authorized_at) {
+              paymentStatus = "authorized";
+            } else {
+              paymentStatus = "pending";
+            }
+          }
+
+          return {
+            id: j.id,
+            title: j.title || "Job",
+            status: j.status,
+            preferred_time: j.preferred_time,
+            created_at: j.created_at,
+            customer_name: nameById.get(j.customer_id) || null,
+            mechanic_payout_cents: contract?.mechanic_payout_cents || null,
+            payout_status: payout?.status || null,
+            payment_status: paymentStatus,
+            has_reviewed: reviewedJobIds.has(j.id),
+            has_pending_review: promptJobIds.has(j.id),
+          };
+        })
+      );
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load jobs.");
       setJobs([]);
@@ -286,6 +366,9 @@ export default function MechanicJobs() {
 
   const JobCard = ({ item }: { item: Job }) => {
     const c = statusColor(item.status);
+    const isCompleted = item.status === "completed";
+    const payoutColor = item.payout_status ? PAYOUT_STATUS_COLORS[item.payout_status] : null;
+    const payoutLabel = item.payout_status ? PAYOUT_STATUS_LABELS[item.payout_status] : null;
 
     return (
       <Pressable
@@ -319,6 +402,77 @@ export default function MechanicJobs() {
             <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
               👤 {item.customer_name}
             </Text>
+          </View>
+        )}
+
+        {/* Financial info for completed jobs */}
+        {isCompleted && item.mechanic_payout_cents && (
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <View style={{ flex: 1, backgroundColor: "#10b98115", borderWidth: 1, borderColor: "#10b98140", borderRadius: 8, padding: 10 }}>
+              <Text style={{ fontSize: 11, color: colors.textMuted }}>Your Earnings</Text>
+              <Text style={{ fontSize: 16, fontWeight: "700", color: "#10b981" }}>
+                {formatCents(item.mechanic_payout_cents)}
+              </Text>
+            </View>
+            {payoutLabel && payoutColor && (
+              <View style={{ backgroundColor: `${payoutColor}15`, borderWidth: 1, borderColor: `${payoutColor}40`, borderRadius: 8, padding: 10, justifyContent: "center" }}>
+                <Text style={{ fontSize: 11, fontWeight: "600", color: payoutColor }}>{payoutLabel}</Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Review badge for completed jobs */}
+        {isCompleted && (
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            {item.has_pending_review && !item.has_reviewed && (
+              <Pressable
+                onPress={(e) => {
+                  e.stopPropagation();
+                  router.push(`/(mechanic)/review/${item.id}` as any);
+                }}
+                style={{
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  backgroundColor: "#f59e0b15",
+                  borderWidth: 1,
+                  borderColor: "#f59e0b40",
+                  borderRadius: 8,
+                  padding: 10,
+                }}
+              >
+                <Ionicons name="star-outline" size={16} color="#f59e0b" />
+                <Text style={{ fontSize: 12, fontWeight: "700", color: "#f59e0b" }}>Review Customer</Text>
+              </Pressable>
+            )}
+            {item.has_reviewed && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: "#10b98115", borderRadius: 8, padding: 10 }}>
+                <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                <Text style={{ fontSize: 12, fontWeight: "600", color: "#10b981" }}>Review Submitted</Text>
+              </View>
+            )}
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                router.push(`/(mechanic)/payout-details/${item.id}` as any);
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                backgroundColor: colors.surface,
+                borderWidth: 1,
+                borderColor: colors.border,
+                borderRadius: 8,
+                padding: 10,
+              }}
+            >
+              <Ionicons name="receipt-outline" size={16} color={colors.accent} />
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }}>Details</Text>
+            </Pressable>
           </View>
         )}
 
@@ -439,6 +593,40 @@ export default function MechanicJobs() {
                 <Text style={{ ...text.title, fontSize: 22, color: "#10b981" }}>{completed.length}</Text>
               </View>
             </View>
+
+            {/* Financial Summary Toggle */}
+            {mechanicId && completed.length > 0 && (
+              <View style={{ marginTop: spacing.md }}>
+                <Pressable
+                  onPress={() => setShowFinancials(!showFinancials)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    backgroundColor: colors.surface,
+                    borderRadius: radius.md,
+                    padding: spacing.md,
+                    borderWidth: 1,
+                    borderColor: colors.border,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                    <Ionicons name="stats-chart-outline" size={20} color={colors.accent} />
+                    <Text style={{ ...text.body, fontWeight: "600" }}>Earnings Summary</Text>
+                  </View>
+                  <Ionicons
+                    name={showFinancials ? "chevron-up" : "chevron-down"}
+                    size={20}
+                    color={colors.textMuted}
+                  />
+                </Pressable>
+                {showFinancials && (
+                  <View style={{ marginTop: spacing.sm }}>
+                    <FinancialSummary userId={mechanicId} role="mechanic" />
+                  </View>
+                )}
+              </View>
+            )}
 
             {jobs.length === 0 && waitingJobs.length === 0 && (
               <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm }}>

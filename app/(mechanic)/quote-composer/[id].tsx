@@ -28,11 +28,16 @@ type QuoteType = "diagnostic_only" | "range" | "fixed";
 type Job = {
   id: string;
   title: string;
+  description: string | null;
   customer_id: string;
+  location_address: string | null;
+  preferred_time: string | null;
   vehicle: {
     year: number;
     make: string;
     model: string;
+    color: string | null;
+    license_plate: string | null;
   } | null;
 };
 
@@ -40,7 +45,7 @@ const DRIVE_FEE = 50;
 const PLATFORM_FEE = 15;
 const DIAGNOSTIC_FEE = 80;
 
-const HOURLY_RATE_OPTIONS = [80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200];
+const HOURLY_RATE_OPTIONS = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200];
 const HOURS_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
 
 export default function QuoteComposer() {
@@ -87,8 +92,11 @@ export default function QuoteComposer() {
           `
           id,
           title,
+          description,
           customer_id,
-          vehicle:vehicles(year, make, model)
+          location_address,
+          preferred_time,
+          vehicle:vehicles(year, make, model, color, license_plate)
         `
         )
         .eq("id", params.id)
@@ -96,9 +104,27 @@ export default function QuoteComposer() {
 
       if (error) throw error;
 
+      let vehicleData = Array.isArray(data.vehicle) ? data.vehicle[0] : data.vehicle;
+
+      // If no vehicle from relation, try to parse from description JSON
+      if (!vehicleData && data.description?.startsWith("{")) {
+        try {
+          const parsed = JSON.parse(data.description);
+          if (parsed.vehicle) {
+            vehicleData = {
+              year: parsed.vehicle.year || 0,
+              make: parsed.vehicle.make || "",
+              model: parsed.vehicle.model || "",
+              color: null,
+              license_plate: null,
+            };
+          }
+        } catch {}
+      }
+
       const jobData = {
         ...data,
-        vehicle: Array.isArray(data.vehicle) ? data.vehicle[0] : data.vehicle
+        vehicle: vehicleData
       };
 
       setJob(jobData);
@@ -351,10 +377,6 @@ export default function QuoteComposer() {
     );
   }
 
-  const vehicleText = job.vehicle
-    ? `${job.vehicle.year} ${job.vehicle.make} ${job.vehicle.model}`
-    : "Vehicle";
-
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
@@ -381,27 +403,66 @@ export default function QuoteComposer() {
       />
 
       <ScrollView contentContainerStyle={{ paddingTop: spacing.md, paddingHorizontal: spacing.md, paddingBottom: Math.max(insets.bottom, spacing.md), gap: spacing.md }}>
-        <View
+        <Pressable
+          onPress={() => setShowJobSummary(true)}
           style={[
             card,
             {
               padding: spacing.md,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
               margin: spacing.sm,
               backgroundColor: colors.accent,
               borderColor: colors.black
             },
           ]}
         >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
-            <Text style={{ fontSize: 20 }}>🔧</Text>
-            <Text style={{ ...text.section, fontSize: 13 }}>
-              {vehicleText} • {getDisplayTitle(job.title)}
-            </Text>
+          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
+            <Text style={{ fontSize: 24 }}>🚗</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...text.section, fontSize: 15, color: colors.surface, fontWeight: "700" }}>
+                {job.vehicle
+                  ? `${job.vehicle.year} ${job.vehicle.make} ${job.vehicle.model}`
+                  : "No vehicle info"}
+              </Text>
+              {job.vehicle?.color && (
+                <Text style={{ ...text.muted, fontSize: 12, color: colors.surface + "CC" }}>
+                  {job.vehicle.color}{job.vehicle.license_plate ? ` • ${job.vehicle.license_plate}` : ""}
+                </Text>
+              )}
+              <View style={{ marginTop: spacing.xs, flexDirection: "row", alignItems: "center", gap: 4 }}>
+                <Text style={{ fontSize: 14 }}>🔧</Text>
+                <Text style={{ ...text.body, fontSize: 13, color: colors.surface }}>
+                  {getDisplayTitle(job.title)}
+                </Text>
+              </View>
+              {job.description && !job.description.startsWith("{") && (
+                <Text numberOfLines={2} style={{ ...text.muted, fontSize: 12, color: colors.surface + "BB", marginTop: 4 }}>
+                  {job.description}
+                </Text>
+              )}
+              {(job.location_address || job.preferred_time) && (
+                <View style={{ marginTop: spacing.xs, gap: 2 }}>
+                  {job.location_address && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Ionicons name="location-outline" size={12} color={colors.surface + "AA"} />
+                      <Text numberOfLines={1} style={{ ...text.muted, fontSize: 11, color: colors.surface + "AA" }}>
+                        {job.location_address}
+                      </Text>
+                    </View>
+                  )}
+                  {job.preferred_time && (
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                      <Ionicons name="time-outline" size={12} color={colors.surface + "AA"} />
+                      <Text style={{ ...text.muted, fontSize: 11, color: colors.surface + "AA" }}>
+                        Preferred: {job.preferred_time}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              )}
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.surface + "80"} />
           </View>
-        </View>
+        </Pressable>
 
         {job.customer_id && (
           <View style={{ gap: spacing.sm }}>

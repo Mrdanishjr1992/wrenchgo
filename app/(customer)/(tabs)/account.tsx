@@ -77,6 +77,7 @@ export default function CustomerAccount() {
   const [isDirty, setIsDirty] = useState(false);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [jobStats, setJobStats] = useState({ active: 0, completed: 0 });
+  const [ratingStats, setRatingStats] = useState({ avg: 0, count: 0 });
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -166,6 +167,13 @@ export default function CustomerAccount() {
         .limit(10);
 
       setReviews(reviewsData || []);
+
+      const reviewCount = reviewsData?.length || 0;
+      const avgRating = reviewCount > 0
+        ? reviewsData!.reduce((sum: number, r: any) => sum + (r.overall_rating || 0), 0) / reviewCount
+        : 0;
+      setRatingStats({ avg: avgRating, count: reviewCount });
+
       setIsDirty(false);
     } catch (e: any) {
       console.error("Profile load error:", e);
@@ -601,6 +609,16 @@ export default function CustomerAccount() {
                 borderTopColor: colors.border + "40",
               }}>
                 <View style={{ alignItems: "center", flex: 1 }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                    <Ionicons name="star" size={16} color="#FFB800" />
+                    <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textPrimary }}>
+                      {ratingStats.avg > 0 ? ratingStats.avg.toFixed(1) : "—"}
+                    </Text>
+                  </View>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Rating ({ratingStats.count})</Text>
+                </View>
+                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ alignItems: "center", flex: 1 }}>
                   <Text style={{ fontSize: 20, fontWeight: "800", color: colors.accent }}>{jobStats.active}</Text>
                   <Text style={{ ...text.muted, fontSize: 11 }}>Active Jobs</Text>
                 </View>
@@ -608,11 +626,6 @@ export default function CustomerAccount() {
                 <View style={{ alignItems: "center", flex: 1 }}>
                   <Text style={{ fontSize: 20, fontWeight: "800", color: "#10b981" }}>{jobStats.completed}</Text>
                   <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
-                </View>
-                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
-                <View style={{ alignItems: "center", flex: 1 }}>
-                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textPrimary }}>{vehicles.length}</Text>
-                  <Text style={{ ...text.muted, fontSize: 11 }}>Vehicles</Text>
                 </View>
               </View>
             )}
@@ -947,77 +960,81 @@ export default function CustomerAccount() {
               </Pressable>
             </View>
 
-            {profile?.id && reviews.length > 0 && (
-              <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-                <Text style={text.section}>My Reviews</Text>
-                <Text style={{ ...text.muted, fontSize: 13, marginBottom: spacing.xs }}>
-                  Reviews from mechanics you've worked with
-                </Text>
-                {reviews.map((review: any) => (
-                  <View
-                    key={review.id}
-                    style={{
-                      padding: spacing.md,
-                      borderRadius: radius.md,
-                      backgroundColor: colors.surface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      gap: spacing.xs,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                        {review.reviewer?.avatar_url ? (
-                          <Image
-                            source={{ uri: review.reviewer.avatar_url }}
-                            style={{ width: 32, height: 32, borderRadius: 16 }}
-                          />
-                        ) : (
-                          <View
-                            style={{
-                              width: 32,
-                              height: 32,
-                              borderRadius: 16,
-                              backgroundColor: colors.accent + "20",
-                              alignItems: "center",
-                              justifyContent: "center",
-                            }}
-                          >
-                            <Ionicons name="person" size={16} color={colors.accent} />
-                          </View>
-                        )}
-                        <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
-                          {review.reviewer?.full_name || "Anonymous"}
-                        </Text>
-                      </View>
-                      <View style={{ flexDirection: "row", gap: 2 }}>
-                        {[1, 2, 3, 4, 5].map((star) => (
-                          <Ionicons
-                            key={star}
-                            name={star <= review.overall_rating ? "star" : "star-outline"}
-                            size={14}
-                            color="#FFB800"
-                          />
-                        ))}
-                      </View>
-                    </View>
-                    {review.comment && (
-                      <Text style={{ ...text.body, fontSize: 14, color: colors.textPrimary }}>
-                        {review.comment}
-                      </Text>
-                    )}
-                    <Text style={{ ...text.muted, fontSize: 12 }}>
-                      {new Date(review.created_at).toLocaleDateString()}
-                    </Text>
+            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#FFB800" + "20", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="star-outline" size={16} color="#FFB800" />
                   </View>
-                ))}
-                {reviews.length >= 10 && (
-                  <Text style={{ ...text.muted, fontSize: 12, textAlign: "center", marginTop: spacing.xs }}>
-                    Showing 10 most recent reviews
-                  </Text>
+                  <Text style={text.section}>My Reviews ({ratingStats.count})</Text>
+                </View>
+                {reviews.length > 0 && profile?.id && (
+                  <Pressable onPress={() => router.push(`/profile/${profile.id}`)}>
+                    <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 13 }}>View All</Text>
+                  </Pressable>
                 )}
               </View>
-            )}
+              {reviews.length === 0 ? (
+                <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+                  <Ionicons name="chatbubble-outline" size={32} color={colors.textMuted} />
+                  <Text style={{ ...text.muted, fontSize: 13, textAlign: "center", marginTop: 8 }}>
+                    No reviews yet
+                  </Text>
+                  <Text style={{ ...text.muted, fontSize: 12, textAlign: "center", marginTop: 2 }}>
+                    Complete jobs to receive reviews
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ gap: spacing.md, marginTop: spacing.xs }}>
+                  {reviews.slice(0, 3).map((review: any) => (
+                    <View
+                      key={review.id}
+                      style={{
+                        padding: spacing.sm,
+                        borderRadius: radius.md,
+                        backgroundColor: colors.bg,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                      }}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                          {review.reviewer?.avatar_url ? (
+                            <Image
+                              source={{ uri: review.reviewer.avatar_url }}
+                              style={{ width: 28, height: 28, borderRadius: 14 }}
+                            />
+                          ) : (
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
+                                {(review.reviewer?.full_name || "M").charAt(0).toUpperCase()}
+                              </Text>
+                            </View>
+                          )}
+                          <Text style={{ fontWeight: "600", color: colors.textPrimary, fontSize: 14 }}>
+                            {review.reviewer?.full_name || "Mechanic"}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                          <Ionicons name="star" size={14} color="#FFB800" />
+                          <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
+                            {review.overall_rating}
+                          </Text>
+                        </View>
+                      </View>
+                      {review.comment && (
+                        <Text style={{ ...text.muted, fontSize: 13, marginTop: 8, lineHeight: 18 }} numberOfLines={2}>
+                          "{review.comment}"
+                        </Text>
+                      )}
+                      <Text style={{ ...text.muted, fontSize: 11, marginTop: 6 }}>
+                        {new Date(review.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
           </>
         )}
 
