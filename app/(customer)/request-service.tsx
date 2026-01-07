@@ -24,7 +24,7 @@ type Question = {
   options?: string[];
 };
 
-// Fallback flows (only used if DB doesn’t return questions)
+// Fallback flows (only used if DB doesnâ€™t return questions)
 type QuestionFlow = { [key: string]: Question[] };
 
 const QUESTION_FLOWS: QuestionFlow = {
@@ -33,7 +33,7 @@ const QUESTION_FLOWS: QuestionFlow = {
       id: "key_turn_result",
       question: "What happens when you turn the key?",
       type: "choice",
-      options: ["Nothing at all", "Clicking sound", "Engine cranks but won’t start", "Starts then dies", "Not sure"],
+      options: ["Nothing at all", "Clicking sound", "Engine cranks but wonâ€™t start", "Starts then dies", "Not sure"],
     },
     {
       id: "dashboard_lights",
@@ -87,15 +87,15 @@ const QUESTION_FLOWS: QuestionFlow = {
   battery_issues: [
     {
       id: "battery_symptom",
-      question: "What’s happening?",
+      question: "Whatâ€™s happening?",
       type: "choice",
-      options: ["Slow to start", "Won’t hold charge", "Electrical issues", "Battery light on", "Not sure"],
+      options: ["Slow to start", "Wonâ€™t hold charge", "Electrical issues", "Battery light on", "Not sure"],
     },
     {
       id: "battery_age",
       question: "How old is your battery?",
       type: "choice",
-      options: ["Less than 2 years", "2–4 years", "4+ years", "Not sure"],
+      options: ["Less than 2 years", "2â€“4 years", "4+ years", "Not sure"],
     },
   ],
   maintenance: [
@@ -152,7 +152,7 @@ export default function RequestService() {
 
   // Steps:
   // - if coming from explorer with symptomKey: start at questions (or details if no questions)
-  // - otherwise: show a friendly “no symptom selected” state
+  // - otherwise: show a friendly â€œno symptom selectedâ€ state
   const [step, setStep] = useState<"questions" | "details">("questions");
 
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -186,14 +186,13 @@ export default function RequestService() {
       }
       if (data.session?.user?.id) {
         setUserId(data.session.user.id);
-        // Check if user has payment method in customer_payment_methods table
-        const { data: paymentMethods } = await supabase
-          .from("customer_payment_methods")
-          .select("id")
-          .eq("customer_id", data.session.user.id)
-          .is("deleted_at", null)
-          .limit(1);
-        setHasPaymentMethod(paymentMethods && paymentMethods.length > 0);
+        // Check payment_method_status from profiles (server-authoritative)
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select("payment_method_status")
+          .eq("id", data.session.user.id)
+          .single();
+        setHasPaymentMethod(profile?.payment_method_status === 'active');
       } else {
         router.replace("/(auth)/sign-in");
       }
@@ -486,27 +485,35 @@ export default function RequestService() {
         }
       }
 
-      const { error } = await supabase
-        .from("jobs")
-        .insert({
-          customer_id: userId,
-          title: symptomLabel || symptomKey || "Service Request",
-          description,
-          location_address: locationAddress,
-          location_lat: locationLat,
-          location_lng: locationLng,
-          status: "searching",
-          vehicle_id: vehicleId,
-          symptom_id: null,
-        } as any)
-        .select()
-        .single();
+      const { data: result, error } = await supabase.rpc('create_job_with_payment_check', {
+        p_title: symptomLabel || symptomKey || "Service Request",
+        p_description: description,
+        p_location_address: locationAddress,
+        p_location_lat: locationLat,
+        p_location_lng: locationLng,
+        p_vehicle_id: vehicleId,
+      });
 
       if (error) throw error;
 
+      if (!result?.success) {
+        if (result?.code === 'PAYMENT_METHOD_REQUIRED') {
+          Alert.alert(
+            "Payment Method Required",
+            "To use this feature, please add a payment method.",
+            [
+              { text: "Not now", style: "cancel" },
+              { text: "Add Payment Method", onPress: () => router.push("/(customer)/payment-setup") },
+            ]
+          );
+          return;
+        }
+        throw new Error(result?.message || 'Failed to create job');
+      }
+
       Alert.alert(
         "Sent!",
-        "Your request has been sent to mechanics in your area. You’ll receive quotes soon.",
+        "Your request has been sent to mechanics in your area. You'll receive quotes soon.",
         [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (error: any) {
@@ -577,18 +584,18 @@ export default function RequestService() {
       return (
         <View style={{ padding: spacing.xl, alignItems: "center" }}>
           <ActivityIndicator size="large" color={colors.accent} />
-          <Text style={{ marginTop: spacing.md, ...text.muted }}>Loading questions…</Text>
+          <Text style={{ marginTop: spacing.md, ...text.muted }}>Loading questionsâ€¦</Text>
         </View>
       );
     }
 
     if (!currentQuestion) {
-      // No questions — handled by step jump to details, but keep safe fallback
+      // No questions â€” handled by step jump to details, but keep safe fallback
       return (
         <View style={{ padding: spacing.lg }}>
           <Text style={text.h2}>A few quick details</Text>
           <Text style={[text.muted, { marginTop: spacing.sm }]}>
-            We’ll use this to match you with the right mechanic.
+            Weâ€™ll use this to match you with the right mechanic.
           </Text>
         </View>
       );
@@ -666,7 +673,7 @@ export default function RequestService() {
                 fontSize: 16,
                 fontWeight: "600",
               }}
-              placeholder="Type your answer…"
+              placeholder="Type your answerâ€¦"
               placeholderTextColor={colors.textSecondary}
               multiline
               value={answers[currentQuestion.id] || ""}
@@ -682,7 +689,7 @@ export default function RequestService() {
     <View style={{ padding: spacing.lg, paddingBottom: 140 }}>
       <Text style={{ ...text.h2, marginBottom: spacing.sm }}>Review & send</Text>
       <Text style={{ ...text.muted, marginBottom: spacing.lg }}>
-        Add your location and any extra details — then we’ll send this to nearby mechanics.
+        Add your location and any extra details â€” then weâ€™ll send this to nearby mechanics.
       </Text>
 
       <View
@@ -715,7 +722,7 @@ export default function RequestService() {
           }}
         >
           <ActivityIndicator size="small" color={colors.accent} />
-          <Text style={{ ...text.muted, marginTop: spacing.sm }}>Getting your location…</Text>
+          <Text style={{ ...text.muted, marginTop: spacing.sm }}>Getting your locationâ€¦</Text>
         </View>
       ) : locationError ? (
         <View
@@ -767,7 +774,7 @@ export default function RequestService() {
                 Location detected
               </Text>
             </View>
-            <Text style={{ ...text.muted }}>{location || "Getting address…"}</Text>
+            <Text style={{ ...text.muted }}>{location || "Getting addressâ€¦"}</Text>
           </View>
           <TouchableOpacity
             onPress={getCurrentLocation}

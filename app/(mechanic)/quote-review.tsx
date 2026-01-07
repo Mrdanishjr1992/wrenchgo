@@ -177,6 +177,26 @@ export default function QuoteReview() {
         return;
       }
 
+      // Check if mechanic has payment method (required for all transactional actions)
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("payment_method_status")
+        .eq("id", userData.user.id)
+        .single();
+
+      if (profile?.payment_method_status !== 'active') {
+        Alert.alert(
+          "Payment Method Required",
+          "To use this feature, please add a payment method.",
+          [
+            { text: "Not now", style: "cancel" },
+            { text: "Add Payment Method", onPress: () => router.push("/(mechanic)/payment-setup") },
+          ]
+        );
+        setSubmitting(false);
+        return;
+      }
+
       // Check if mechanic has payout setup
       const { data: stripeAccount } = await supabase
         .from("mechanic_stripe_accounts")
@@ -226,16 +246,29 @@ export default function QuoteReview() {
 
       const estimatedHours = params.durationMinutes ? parseInt(params.durationMinutes) / 60 : null;
 
-      const { error } = await supabase.from("quotes").insert({
-        job_id: params.jobId,
-        mechanic_id: userData.user.id,
-        price_cents: priceCents,
-        estimated_hours: estimatedHours,
-        notes: notesText,
-        status: "pending",
+      const { data: result, error } = await supabase.rpc('submit_quote_with_payment_check', {
+        p_job_id: params.jobId,
+        p_price_cents: priceCents,
+        p_estimated_hours: estimatedHours,
+        p_notes: notesText,
       });
 
       if (error) throw error;
+
+      if (!result?.success) {
+        if (result?.code === 'PAYMENT_METHOD_REQUIRED') {
+          Alert.alert(
+            "Payment Method Required",
+            "To use this feature, please add a payment method.",
+            [
+              { text: "Not now", style: "cancel" },
+              { text: "Add Payment Method", onPress: () => router.push("/(mechanic)/payment-setup") },
+            ]
+          );
+          return;
+        }
+        throw new Error(result?.message || 'Failed to submit quote');
+      }
 
       // Get customer_id from job to send notification
       const { data: jobData } = await supabase

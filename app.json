@@ -4,37 +4,48 @@
     "slug": "wrenchgo",
     "version": "1.0.0",
     "orientation": "portrait",
+
     "icon": "./assets/icon.png",
+
     "userInterfaceStyle": "light",
+
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+
     "scheme": "wrenchgo",
+
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.wrenchgo.app",
+      "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access for ID verification",
         "NSPhotoLibraryUsageDescription": "We need photo library access to upload job photos"
       }
     },
+
     "android": {
+      "package": "com.wrenchgo",
+
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.wrenchgo",
+
       "permissions": [
         "CAMERA",
         "READ_EXTERNAL_STORAGE",
         "WRITE_EXTERNAL_STORAGE"
       ]
     },
+
     "web": {
       "favicon": "./assets/favicon.png"
     },
+
     "plugins": [
       [
         "@stripe/stripe-react-native",
@@ -54,6 +65,12 @@
       ],
       "@react-native-community/datetimepicker"
     ],
+
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#FF9F1C"
+    },
+
     "extra": {
       "router": {
         "origin": false
@@ -61,10 +78,6 @@
       "eas": {
         "projectId": "your-project-id"
       }
-    },
-    "notification": {
-      "icon": "./assets/notification-icon.png",
-      "color": "#FF9F1C"
     }
   }
 }
