@@ -28,7 +28,6 @@ export default function ChooseRole() {
 
   const requireUser = async () => {
     const { data, error } = await supabase.auth.getSession();
-    if (error) console.log("choose-role getSession error:", error.message);
 
     const user = data.session?.user;
     if (!user) {
@@ -53,10 +52,6 @@ export default function ChooseRole() {
         // Use RPC to check role (bypasses RLS)
         const { data: existingRole, error: roleErr } = await supabase.rpc("get_my_role");
 
-        if (roleErr) {
-          console.log("choose-role: get_my_role error:", roleErr.message);
-        }
-
         if (existingRole) {
           router.replace("/");
           return;
@@ -64,7 +59,6 @@ export default function ChooseRole() {
 
         if (mounted) setLoading(false);
       } catch (e: any) {
-        console.log("choose-role init error:", e?.message);
         if (mounted) setLoading(false);
       }
     };
@@ -94,7 +88,6 @@ export default function ChooseRole() {
 
       router.replace("/");
     } catch (e: any) {
-      console.log("choose-role save error:", e?.message);
 
       // Make "already set" friendlier if your RPC throws that message
       const msg = String(e?.message || "");

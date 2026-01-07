@@ -22,7 +22,6 @@ try {
     });
   }
 } catch (error) {
-  console.log('Push notifications not available in this environment');
 }
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
@@ -32,7 +31,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
   
   try {
     if (!Device.isDevice) {
-      console.log('Push notifications require a physical device');
       return null;
     }
 
@@ -45,7 +43,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
     }
 
     if (finalStatus !== 'granted') {
-      console.log('Push notification permission not granted');
       return null;
     }
 
@@ -65,7 +62,6 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
     return token;
   } catch (error) {
-    console.log('Push notifications not available:', error);
     return null;
   }
 }

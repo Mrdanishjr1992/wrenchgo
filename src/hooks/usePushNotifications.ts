@@ -29,7 +29,6 @@ export function usePushNotifications() {
           await savePushToken(user.id, token);
         }
       } catch (error) {
-        console.log('Push notification setup failed:', error);
       }
     };
 
@@ -37,12 +36,11 @@ export function usePushNotifications() {
 
     try {
       notificationListener.current = addNotificationReceivedListener((notification) => {
-        console.log('Notification received:', notification);
       });
 
       responseListener.current = addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data;
-        
+
         if (data?.entityType && data?.entityId) {
           if (data.entityType === 'job') {
             supabase.auth.getUser().then(({ data: { user } }) => {
@@ -67,7 +65,6 @@ export function usePushNotifications() {
         }
       });
     } catch (error) {
-      console.log('Notification listeners not available');
     }
 
     return () => {

@@ -8,9 +8,8 @@ export async function notifyUser(params: {
   entityType?: string | null;
   entityId?: string | null;
 }) {
-  // Try RPC first, fallback to direct insert
   let inserted = false;
-  
+
   try {
     const { error } = await supabase.rpc("notify_user", {
       p_user_id: params.userId,
@@ -23,14 +22,10 @@ export async function notifyUser(params: {
 
     if (!error) {
       inserted = true;
-    } else {
-      console.log("RPC notify_user not available, using direct insert");
     }
   } catch (e) {
-    console.log("RPC notify_user failed, using direct insert");
   }
 
-  // Fallback: direct insert into notifications table
   if (!inserted) {
     try {
       const { error } = await supabase.from("notifications").insert({

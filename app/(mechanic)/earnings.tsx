@@ -14,16 +14,16 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import DateTimePicker from "@react-native-community/datetimepicker";
-import { useTheme } from "../../src/contexts/ThemeContext";
-import { supabase } from "../../src/lib/supabase";
-import { formatCents, PAYOUT_STATUS_LABELS, PAYOUT_STATUS_COLORS } from "../../src/lib/financials";
+import { useTheme } from "@/src/ui/theme-context";
+import { supabase } from "@/src/lib/supabase";
+import { formatCents, PAYOUT_STATUS_LABELS, PAYOUT_STATUS_COLORS } from "@/src/lib/financials";
 import type {
   EarningsSummary,
   PayoutRecord,
   TaxYearSummary,
   TimeRangeKey,
   MonthlyBreakdown,
-} from "../../src/types/earnings";
+} from "@/src/types/earnings";
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 

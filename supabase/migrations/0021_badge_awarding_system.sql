@@ -24,6 +24,7 @@ DECLARE
   v_user_role text;
   v_meets_criteria boolean;
   v_current_value numeric;
+  v_review_count int;
   v_badges_awarded int := 0;
   v_badges_revoked int := 0;
   v_has_badge boolean;

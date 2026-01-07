@@ -85,10 +85,7 @@ export default function SignIn() {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const { data: role, error } = await supabase.rpc("get_my_role");
 
-      console.log(`[AUTH] get_my_role attempt ${attempt}`, { role, error });
-
       if (error) {
-        console.warn("[AUTH] get_my_role error:", error.message);
         await sleep(250);
         continue;
       }
@@ -128,8 +125,6 @@ export default function SignIn() {
       updated_at: new Date().toISOString(),
     });
 
-    console.log("[AUTH] fallback insert profile err:", insErr);
-
     if (insErr && !insErr.message.includes("duplicate")) {
       throw new Error(insErr.message);
     }
@@ -145,7 +140,6 @@ export default function SignIn() {
       configureGoogleSignIn();
       setIsGoogleAvailable(true);
     } catch (error) {
-      console.log("Google Sign-In not available (likely running in Expo Go):", error);
       setIsGoogleAvailable(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -217,44 +211,25 @@ export default function SignIn() {
             const decoded = atobFn(padded);
 
             // Convert binary string -> UTF-8 safely
-            const json = decodeURIComponent(
+            decodeURIComponent(
               decoded
                 .split("")
                 .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
                 .join("")
             );
-
-            const payload = JSON.parse(json);
-            console.log("🔍 ID Token Audience (aud):", payload?.aud);
-            console.log("🔍 ID Token Issuer (iss):", payload?.iss);
-            console.log("🔍 ID Token Email:", payload?.email);
-          } else {
-            console.log("ℹ️ atob not available in this runtime; skipping token decode");
           }
-        } else {
-          console.log("ℹ️ Token does not look like a JWT; skipping decode");
         }
       } catch (decodeErr) {
-        console.warn("Could not decode token for debugging:", decodeErr);
+        // Debug decode error - silently ignore
       }
     }
-        const { data, error } = await supabase.auth.signInWithIdToken({
+
+    const { data, error } = await supabase.auth.signInWithIdToken({
           provider: "google",
           token: idToken,
         });
 
-        console.log("🔎 signInWithIdToken result:", {
-          hasSession: !!data?.session,
-          hasUser: !!data?.user,
-          error: error?.message,
-        });
-
         if (error) {
-          console.error("❌ Supabase signInWithIdToken error:", {
-            message: error.message,
-            status: (error as any)?.status,
-            name: (error as any)?.name,
-          });
           setErr(error.message);
           return;
         }
@@ -263,17 +238,9 @@ export default function SignIn() {
         const user = data?.user;
 
         if (!session || !user) {
-          console.error("❌ Google sign-in missing session/user:", {
-            hasSession: !!session,
-            hasUser: !!user,
-            userId: user?.id,
-            userEmail: user?.email,
-          });
           setErr("Google sign-in did not create a session. Check Supabase + Google config.");
           return;
         }
-
-        console.log("✅ Google sign-in successful:", { userId: user.id, email: user.email });
 
 
         // remember email

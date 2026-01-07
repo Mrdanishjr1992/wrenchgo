@@ -308,7 +308,7 @@ export default function MechanicProfile() {
         return;
       }
 
-      console.log("Saving profile data for user:", userId);
+
 
       const normalizedName = fullName.trim() ? toTitleCase(fullName) : null;
       const normalizedPhone = phone.trim() || null;
@@ -328,7 +328,6 @@ export default function MechanicProfile() {
             updated_at: new Date().toISOString(),
           })
           .eq("id", userId);
-        console.log("Profile updated successfully");
       } catch (error) {
         console.error("Error updating profile:", error);
         throw error;
@@ -339,16 +338,15 @@ export default function MechanicProfile() {
           .from("mechanic_profiles")
           .upsert({
             id: userId,
-            
+
             bio: bio.trim() || null,
             service_radius_km: parseFloat(serviceRadius) || 50,
             is_available: availableNow,
             years_experience: yearsExperience ? parseInt(yearsExperience) : null,
-            
-            
+
+
             updated_at: new Date().toISOString(),
           });
-        console.log("Mechanic profile upserted successfully");
       } catch (error) {
         console.error("Error upserting mechanic profile:", error);
         throw error;
@@ -437,14 +435,11 @@ export default function MechanicProfile() {
 
   const setupPayoutAccount = async () => {
     try {
-      console.log("[SETUP] Starting payout account setup...");
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         Alert.alert("Error", "Not authenticated");
         return;
       }
-
-      console.log("[SETUP] Got session, calling edge function...");
 
       const apiResponse = await fetch(
         `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-connect-create-account-link`,
@@ -458,26 +453,17 @@ export default function MechanicProfile() {
         }
       );
 
-      console.log("[SETUP] Response status:", apiResponse.status);
-
       const jsonData = await apiResponse.json();
-      console.log("[SETUP] Response data:", jsonData);
 
       if (!apiResponse.ok) {
         throw new Error(jsonData.error || "Failed to create account link");
       }
 
       const onboardingUrl = jsonData.url;
-      console.log("[SETUP] Extracted URL:", onboardingUrl);
-      console.log("[SETUP] URL type:", typeof onboardingUrl);
-      console.log("[SETUP] URL length:", onboardingUrl?.length);
 
       if (onboardingUrl) {
-        console.log("[SETUP] Attempting to open URL...");
-        const opened = await Linking.openURL(onboardingUrl);
-        console.log("[SETUP] URL opened successfully:", opened);
+        await Linking.openURL(onboardingUrl);
       } else {
-        console.error("[SETUP] URL is falsy:", onboardingUrl);
         Alert.alert("Error", "No URL received from server");
       }
     } catch (e: any) {

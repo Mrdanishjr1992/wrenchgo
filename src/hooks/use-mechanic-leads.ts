@@ -134,8 +134,6 @@ export function useMechanicLeads(
     setError(null);
 
     try {
-      console.log('Fetching leads with params:', { mechanicId, filter, mechanicLat, mechanicLng, radiusMiles, sortBy });
-
       const [leadsResult, summaryResult] = await Promise.all([
         supabase.rpc('get_mechanic_leads', {
           p_mechanic_id: mechanicId,
@@ -155,15 +153,11 @@ export function useMechanicLeads(
         }),
       ]);
 
-      console.log('Leads result:', leadsResult);
-      console.log('Summary result:', summaryResult);
-
       if (!isMountedRef.current) return;
 
       if (leadsResult.error) throw leadsResult.error;
 
       const newLeads = (leadsResult.data || []) as MechanicLead[];
-      console.log('Parsed leads:', newLeads);
 
       setLeads(newLeads);
 

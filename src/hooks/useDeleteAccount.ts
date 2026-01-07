@@ -17,8 +17,6 @@ export const useDeleteAccount = () => {
     try {
       setIsDeleting(true);
 
-      console.log("[DELETE ACCOUNT] Starting deletion process...");
-
       // Get current session
       const {
         data: { session },
@@ -26,16 +24,11 @@ export const useDeleteAccount = () => {
       } = await supabase.auth.getSession();
 
       if (sessionError || !session) {
-        console.error("[DELETE ACCOUNT] Session error:", sessionError);
         throw new Error("No active session");
       }
 
-      console.log("[DELETE ACCOUNT] Session found, user ID:", session.user.id);
-
       // Get user agent info
       const userAgent = `${Platform.OS} ${Platform.Version} - ${Device.modelName || "Unknown"}`;
-
-      console.log("[DELETE ACCOUNT] Calling Edge Function...");
 
       // Get Supabase URL from env
       const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
@@ -62,35 +55,25 @@ export const useDeleteAccount = () => {
         }
       );
 
-      console.log("[DELETE ACCOUNT] Response status:", response.status);
-
       const responseText = await response.text();
-      console.log("[DELETE ACCOUNT] Response body:", responseText);
 
       let data;
       try {
         data = JSON.parse(responseText);
       } catch (e) {
-        console.error("[DELETE ACCOUNT] Failed to parse response:", e);
         throw new Error(`Server error: ${responseText.substring(0, 200)}`);
       }
 
       if (!response.ok) {
-        console.error("[DELETE ACCOUNT] Non-OK response:", data);
         throw new Error(data?.error || `Server returned ${response.status}`);
       }
 
       if (!data?.success) {
-        console.error("[DELETE ACCOUNT] Deletion failed:", data?.error);
         throw new Error(data?.error || "Failed to delete account");
       }
 
-      console.log("[DELETE ACCOUNT] Deletion successful, signing out...");
-
       // Sign out locally
       await supabase.auth.signOut();
-
-      console.log("[DELETE ACCOUNT] Signed out, navigating to index...");
 
       // Navigate to index (landing/login page)
       router.replace("/");
