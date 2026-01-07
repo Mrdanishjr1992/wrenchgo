@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
@@ -63,14 +64,16 @@ export default function QuoteComposer() {
   const [includeDiagnosticFee, setIncludeDiagnosticFee] = useState(false);
   const [includeDriveFee, setIncludeDriveFee] = useState(true);
 
-  const [arrivalDate, setArrivalDate] = useState("");
-  const [arrivalTime, setArrivalTime] = useState("");
+  const [arrivalDate, setArrivalDate] = useState<Date>(new Date());
+  const [arrivalTime, setArrivalTime] = useState<Date>(new Date());
   const [message, setMessage] = useState("");
 
   const [showRatePicker, setShowRatePicker] = useState(false);
   const [showHoursPicker, setShowHoursPicker] = useState(false);
   const [showHoursLowPicker, setShowHoursLowPicker] = useState(false);
   const [showHoursHighPicker, setShowHoursHighPicker] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
 
   useEffect(() => {
     loadJob();
@@ -191,6 +194,9 @@ export default function QuoteComposer() {
   const handleContinue = () => {
     if (!canContinue()) return;
 
+    const formatDate = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+
     const queryParams = new URLSearchParams({
       jobId: params.id,
       quoteType: quoteType!,
@@ -200,8 +206,8 @@ export default function QuoteComposer() {
       hoursHigh: hoursHigh?.toString() || "",
       includeDiagnosticFee: includeDiagnosticFee.toString(),
       includeDriveFee: includeDriveFee.toString(),
-      arrivalDate: arrivalDate || "",
-      arrivalTime: arrivalTime || "",
+      arrivalDate: formatDate(arrivalDate),
+      arrivalTime: formatTime(arrivalTime),
       durationMinutes:
         quoteType === "range" && hoursLow && hoursHigh
           ? ((hoursLow + hoursHigh) / 2 * 60).toString()
@@ -738,41 +744,73 @@ export default function QuoteComposer() {
               <View style={{ flexDirection: "row", gap: spacing.sm }}>
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Arrival date</Text>
-                  <TextInput
-                    placeholder="Today"
-                    placeholderTextColor={colors.textMuted}
-                    value={arrivalDate}
-                    onChangeText={setArrivalDate}
+                  <Pressable
+                    onPress={() => setShowDatePicker(true)}
                     style={{
                       borderWidth: 1,
                       borderColor: colors.border,
                       borderRadius: radius.md,
                       padding: spacing.md,
-                      fontSize: 15,
-                      color: colors.textPrimary,
                       backgroundColor: colors.surface,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                     }}
-                  />
+                  >
+                    <Text style={{ fontSize: 15, color: colors.textPrimary }}>
+                      {arrivalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                    </Text>
+                    <Ionicons name="calendar-outline" size={18} color={colors.textMuted} />
+                  </Pressable>
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Arrival time</Text>
-                  <TextInput
-                    placeholder="2:30 PM"
-                    placeholderTextColor={colors.textMuted}
-                    value={arrivalTime}
-                    onChangeText={setArrivalTime}
+                  <Pressable
+                    onPress={() => setShowTimePicker(true)}
                     style={{
                       borderWidth: 1,
                       borderColor: colors.border,
                       borderRadius: radius.md,
                       padding: spacing.md,
-                      fontSize: 15,
-                      color: colors.textPrimary,
                       backgroundColor: colors.surface,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
                     }}
-                  />
+                  >
+                    <Text style={{ fontSize: 15, color: colors.textPrimary }}>
+                      {arrivalTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                    </Text>
+                    <Ionicons name="time-outline" size={18} color={colors.textMuted} />
+                  </Pressable>
                 </View>
               </View>
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={arrivalDate}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  minimumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(Platform.OS === "ios");
+                    if (selectedDate) setArrivalDate(selectedDate);
+                  }}
+                />
+              )}
+
+              {showTimePicker && (
+                <DateTimePicker
+                  value={arrivalTime}
+                  mode="time"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  minuteInterval={15}
+                  onChange={(event, selectedTime) => {
+                    setShowTimePicker(Platform.OS === "ios");
+                    if (selectedTime) setArrivalTime(selectedTime);
+                  }}
+                />
+              )}
             </View>
 
             <View style={{ gap: spacing.sm }}>
