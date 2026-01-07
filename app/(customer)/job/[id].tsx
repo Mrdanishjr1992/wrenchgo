@@ -161,6 +161,7 @@ export default function CustomerJobDetails() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [selectedMechanicId, setSelectedMechanicId] = useState<string | null>(null);
+  const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
   const insets = useSafeAreaInsets();
 
   // Job lifecycle state
@@ -172,7 +173,7 @@ export default function CustomerJobDetails() {
     const s = (status || "").toLowerCase();
     if (s === "accepted") return colors.accent;
     if (s === "work_in_progress") return colors.accent;
-    if (s === "completed") return "#10b981";
+    if (s === "completed") return colors.success;
     if (s === "searching") return colors.textMuted;
     if (s === "quoted") return "#f59e0b"; // Orange for quoted
     if (s === "canceled" || s.includes("canceled")) return "#EF4444";
@@ -292,6 +293,27 @@ export default function CustomerJobDetails() {
       }
 
       setJob(j as any as Job);
+
+      // Fetch question texts for this job's symptom
+      const intake = parseJobIntake(j.description);
+      if (intake?.symptom?.key && intake?.answers) {
+        const answerKeys = Object.keys(intake.answers);
+        if (answerKeys.length > 0) {
+          const { data: questions } = await supabase
+            .from("symptom_questions")
+            .select("question_key, question_text")
+            .eq("symptom_key", intake.symptom.key)
+            .in("question_key", answerKeys);
+
+          if (questions) {
+            const qMap: Record<string, string> = {};
+            questions.forEach((q: any) => {
+              qMap[q.question_key] = q.question_text;
+            });
+            setQuestionMap(qMap);
+          }
+        }
+      }
 
       const { data: q, error: qErr } = await supabase
         .from("quotes")
@@ -701,13 +723,7 @@ export default function CustomerJobDetails() {
 
                     <View style={{ gap: spacing.sm }}>
                       {Object.entries(answers).map(([key, value], idx) => {
-                        const questionLabels: Record<string, string> = {
-                          q1: "What's happening?",
-                          q2: "When did it start?",
-                          q3: "Any warning lights?",
-                          q4: "Additional details",
-                        };
-                        const label = questionLabels[key] || `Question ${idx + 1}`;
+                        const label = questionMap[key] || `Question ${idx + 1}`;
                         return (
                           <View key={key}>
                             <Text style={{ ...text.muted, fontSize: 12 }}>{label}</Text>
@@ -943,6 +959,7 @@ export default function CustomerJobDetails() {
                         userId={q.mechanic_id}
                         variant="mini"
                         context="quote_list"
+                        onPressViewProfile={() => setSelectedMechanicId(q.mechanic_id)}
                       />
                     </View>
 
@@ -951,17 +968,17 @@ export default function CustomerJobDetails() {
                         style={{
                           backgroundColor:
                             q.status === "accepted"
-                              ? "#10b98115"
+                              ? `${colors.success}15`
                               : q.status === "pending"
                               ? `${colors.accent}15`
-                              : "#ef444415",
+                              : `${colors.error}15`,
                           borderWidth: 1,
                           borderColor:
                             q.status === "accepted"
-                              ? "#10b98140"
+                              ? `${colors.success}40`
                               : q.status === "pending"
                               ? `${colors.accent}40`
-                              : "#ef444440",
+                              : `${colors.error}40`,
                           borderRadius: 8,
                           paddingHorizontal: 10,
                           paddingVertical: 6,
@@ -972,7 +989,7 @@ export default function CustomerJobDetails() {
                             fontSize: 11,
                             fontWeight: "900",
                             color:
-                              q.status === "accepted" ? "#10b981" : q.status === "pending" ? colors.accent : "#ef4444",
+                              q.status === "accepted" ? colors.success : q.status === "pending" ? colors.accent : colors.error,
                           }}
                         >
                           {(q.status || "pending").toUpperCase()}

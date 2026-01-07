@@ -231,9 +231,10 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   stepLabel: {
-    fontSize: 10,
+    fontSize: 11,
     textAlign: 'center',
     paddingHorizontal: 2,
+    lineHeight: 14,
   },
   stepTime: {
     fontSize: 9,

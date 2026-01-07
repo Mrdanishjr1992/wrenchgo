@@ -190,7 +190,7 @@ export default function QuoteReview() {
           "Please set up your payout account before sending quotes.",
           [
             { text: "Cancel", style: "cancel" },
-            { text: "Set Up Payout", onPress: () => router.push("/(mechanic)/payout-setup") },
+            { text: "Set Up Payout", onPress: () => router.push("/(mechanic)/stripe-onboarding") },
           ]
         );
         setSubmitting(false);

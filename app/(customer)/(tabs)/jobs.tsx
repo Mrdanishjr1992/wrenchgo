@@ -33,6 +33,11 @@ type Job = {
   preferred_time: string | null;
   created_at: string;
   accepted_mechanic_id: string | null;
+  vehicle?: {
+    year: number;
+    make: string;
+    model: string;
+  } | null;
 };
 
 type JobWithQuoteSummary = Job & { quoteSummary: QuoteSummary };
@@ -47,6 +52,7 @@ export default function CustomerJobs() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<JobWithQuoteSummary[]>([]);
+  const [canceling, setCanceling] = useState<string | null>(null);
 
   const statusColor = useCallback(
     (status: string) => {
@@ -71,7 +77,7 @@ export default function CustomerJobs() {
   const statusHint = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "searching") return "Waiting for quotes…";
-    if (s === "quoted") return "Quotes ready — tap to review";
+    if (s === "quoted") return "Waiting for customer response";
     if (s === "accepted") return "Mechanic assigned";
     if (s === "work_in_progress") return "Work in progress";
     if (s === "completed") return "Job completed";
@@ -139,7 +145,7 @@ export default function CustomerJobs() {
 
       const { data: jobRows, error: jobsErr } = await supabase
         .from("jobs")
-        .select("id,title,status,preferred_time,created_at,accepted_mechanic_id")
+        .select("id,title,status,preferred_time,created_at,accepted_mechanic_id,vehicle:vehicles(year,make,model)")
         .eq("customer_id", userId)
         .order("created_at", { ascending: false });
 
@@ -262,6 +268,36 @@ export default function CustomerJobs() {
     setRefreshing(false);
   }, [load]);
 
+  const handleCancelJob = useCallback(async (jobId: string) => {
+    Alert.alert(
+      "Cancel Request",
+      "Are you sure you want to cancel this service request?",
+      [
+        { text: "No", style: "cancel" },
+        {
+          text: "Yes, Cancel",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setCanceling(jobId);
+              const { error } = await supabase
+                .from("jobs")
+                .update({ status: "canceled", canceled_at: new Date().toISOString() })
+                .eq("id", jobId);
+
+              if (error) throw error;
+              await load();
+            } catch (e: any) {
+              Alert.alert("Error", e?.message ?? "Failed to cancel job");
+            } finally {
+              setCanceling(null);
+            }
+          },
+        },
+      ]
+    );
+  }, [load]);
+
   const waitingForQuote = useMemo(
     () => jobs.filter((j) => ["searching", "draft", "quoted"].includes((j.status || "").toLowerCase())),
     [jobs]
@@ -276,9 +312,10 @@ export default function CustomerJobs() {
   );
 
   const JobCard = ({ item }: { item: JobWithQuoteSummary }) => {
-    const c = statusColor(item.status || "searching");
     const qs = item.quoteSummary;
     const s = (item.status || "").toLowerCase();
+    const isQuoted = s === "quoted" || s === "searching" && qs.hasQuotes;
+    const isSearching = s === "searching" && !qs.hasQuotes;
 
     return (
       <Pressable
@@ -291,7 +328,7 @@ export default function CustomerJobs() {
             borderRadius: radius.lg,
             gap: spacing.sm,
             borderWidth: 1,
-            borderColor: pressed ? colors.accent : colors.border,
+            borderColor: pressed ? (isQuoted ? "#f59e0b" : colors.accent) : colors.border,
             backgroundColor: colors.surface,
           },
         ]}
@@ -303,20 +340,51 @@ export default function CustomerJobs() {
           </View>
           <View style={{ alignItems: "flex-end", gap: 8 }}>
             <Text style={text.muted}>{fmtShort(item.created_at)}</Text>
-            <StatusPill status={item.status || "searching"} />
+            {isQuoted ? (
+              <View
+                style={{
+                  paddingHorizontal: 10,
+                  paddingVertical: 5,
+                  borderRadius: 999,
+                  backgroundColor: "#f59e0b22",
+                  borderWidth: 1,
+                  borderColor: "#f59e0b55",
+                }}
+              >
+                <Text style={{ fontSize: 11, fontWeight: "900", color: "#f59e0b" }}>QUOTE SENT</Text>
+              </View>
+            ) : (
+              <StatusPill status={item.status || "searching"} />
+            )}
           </View>
         </View>
 
-        {s === "searching" && qs.hasQuotes && (
-          <View style={{ backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
-              💬 {qs.quoteCount} quote{qs.quoteCount > 1 ? "s" : ""} waiting
-              {qs.minQuote !== null && ` — ${qs.minQuote === qs.maxQuote ? formatPrice(qs.minQuote) : `${formatPrice(qs.minQuote)}–${formatPrice(qs.maxQuote!)}`}`}
+        {item.vehicle && (
+          <View style={{ backgroundColor: `${colors.textMuted}10`, borderWidth: 1, borderColor: `${colors.textMuted}30`, borderRadius: 8, padding: 10 }}>
+            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>
+              🚗 {item.vehicle.year} {item.vehicle.make} {item.vehicle.model}
             </Text>
           </View>
         )}
 
-        {(s === "accepted" || s === "work_in_progress") && qs.acceptedMechanicName && (
+        {isQuoted && qs.acceptedMechanicName && (
+          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+            <View style={{ flex: 1, backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
+              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
+                👤 {qs.acceptedMechanicName}
+              </Text>
+            </View>
+            {qs.minQuote !== null && (
+              <View style={{ backgroundColor: "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b40", borderRadius: 8, padding: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: "700", color: "#f59e0b" }}>
+                  💰 {formatPrice(qs.minQuote)}
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {!isQuoted && (s === "accepted" || s === "work_in_progress") && qs.acceptedMechanicName && (
           <View style={{ backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
             <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
               ✓ {qs.acceptedMechanicName}
@@ -330,8 +398,36 @@ export default function CustomerJobs() {
           <Text style={text.body}>
             {item.preferred_time ? `Preferred: ${item.preferred_time}` : "No time preference"}
           </Text>
-          <Text style={{ color: colors.accent, fontWeight: "900" }}>Open →</Text>
+          <Text style={{ color: isQuoted ? "#f59e0b" : colors.accent, fontWeight: "900" }}>
+            {isQuoted ? "View Quote →" : "Open →"}
+          </Text>
         </View>
+
+        {isSearching && (
+          <>
+            <View style={{ height: 1, backgroundColor: colors.border, opacity: 0.5 }} />
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+                handleCancelJob(item.id);
+              }}
+              disabled={canceling === item.id}
+              style={({ pressed }) => [
+                {
+                  padding: spacing.sm,
+                  borderRadius: radius.md,
+                  backgroundColor: pressed ? colors.error + "20" : "transparent",
+                  alignItems: "center",
+                  opacity: canceling === item.id ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: colors.error, fontWeight: "700", fontSize: 13 }}>
+                {canceling === item.id ? "Canceling..." : "Cancel Request"}
+              </Text>
+            </Pressable>
+          </>
+        )}
       </Pressable>
     );
   };
@@ -355,19 +451,19 @@ export default function CustomerJobs() {
         ListHeaderComponent={
           <View style={{ padding: spacing.md, paddingTop: spacing.xl }}>
             <Text style={text.title}>My Jobs</Text>
-            <Text style={{ ...text.muted, marginTop: 4 }}>Track your service requests and progress</Text>
+            <Text style={{ ...text.muted, marginTop: 4 }}>Jobs assigned to you</Text>
 
             <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.border }}>
-                <Text style={{ ...text.muted, fontSize: 11 }}>Waiting</Text>
-                <Text style={{ ...text.title, fontSize: 22, color: colors.textMuted }}>{waitingForQuote.length}</Text>
-              </View>
               <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.accent + "40" }}>
                 <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
                 <Text style={{ ...text.title, fontSize: 22, color: colors.accent }}>{active.length}</Text>
               </View>
+              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#f59e0b40" }}>
+                <Text style={{ ...text.muted, fontSize: 11 }}>Waiting</Text>
+                <Text style={{ ...text.title, fontSize: 22, color: "#f59e0b" }}>{waitingForQuote.length}</Text>
+              </View>
               <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#10b98140" }}>
-                <Text style={{ ...text.muted, fontSize: 11 }}>Done</Text>
+                <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
                 <Text style={{ ...text.title, fontSize: 22, color: "#10b981" }}>{completed.length}</Text>
               </View>
             </View>
@@ -391,9 +487,10 @@ export default function CustomerJobs() {
         }
         renderItem={() => (
           <View style={{ paddingHorizontal: spacing.md }}>
-            <SectionHeader title="Waiting for Quote" count={waitingForQuote.length} />
+            {/* Waiting Section */}
+            <SectionHeader title="Waiting" count={waitingForQuote.length} />
             {waitingForQuote.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>No jobs waiting for quotes.</Text>
+              <Text style={{ marginTop: 6, ...text.muted }}>No pending quotes.</Text>
             ) : (
               <View style={{ marginTop: spacing.md, gap: spacing.md }}>
                 {waitingForQuote.map((item) => <JobCard key={item.id} item={item} />)}

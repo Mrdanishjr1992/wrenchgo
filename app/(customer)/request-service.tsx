@@ -164,6 +164,8 @@ export default function RequestService() {
   const [savedLat, setSavedLat] = useState<number | null>(null);
   const [savedLng, setSavedLng] = useState<number | null>(null);
   const [savedAddress, setSavedAddress] = useState<string | null>(null);
+  const [loadingLocation, setLoadingLocation] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   // Typography helpers
   const text = useMemo(
@@ -284,6 +286,60 @@ export default function RequestService() {
     })();
   }, [symptomKey, fetchQuestionsFromDB]);
 
+  // Get current location when reaching details step
+  useEffect(() => {
+    if (step === "details" && !savedLat && !savedLng && !loadingLocation) {
+      getCurrentLocation();
+    }
+  }, [step, savedLat, savedLng, loadingLocation]);
+
+  const getCurrentLocation = async () => {
+    setLoadingLocation(true);
+    setLocationError(null);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocationError("Location permission denied");
+        setLoadingLocation(false);
+        return;
+      }
+
+      const position = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+
+      const { latitude, longitude } = position.coords;
+      setSavedLat(latitude);
+      setSavedLng(longitude);
+
+      // Reverse geocode to get address
+      try {
+        const addresses = await Location.reverseGeocodeAsync({ latitude, longitude });
+        if (addresses && addresses.length > 0) {
+          const addr = addresses[0];
+          const addressStr = [
+            addr.street,
+            addr.city,
+            addr.region,
+            addr.postalCode,
+          ]
+            .filter(Boolean)
+            .join(", ");
+          setSavedAddress(addressStr);
+          setLocation(addressStr);
+        }
+      } catch (e) {
+        console.warn("Reverse geocoding failed:", e);
+        setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
+      }
+    } catch (error: any) {
+      console.error("Error getting location:", error);
+      setLocationError("Failed to get location");
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
   // If no questions, jump to details after load
   useEffect(() => {
     if (!symptomKey) return;
@@ -338,23 +394,41 @@ export default function RequestService() {
   );
 
   const generateProblemDescription = useCallback((): string => {
+    const intake = {
+      symptom: symptomKey ? { key: symptomKey, label: symptomLabel || symptomKey } : undefined,
+      vehicle: vehicleId ? {
+        id: vehicleId,
+        year: parseInt(safeString(params.vehicleYear)) || 0,
+        make: safeString(params.vehicleMake),
+        model: safeString(params.vehicleModel),
+        nickname: safeString(params.vehicleNickname) || null,
+      } : undefined,
+      answers: Object.keys(answers).length > 0 ? answers : undefined,
+      context: {
+        additional_details: additionalDetails.trim() || undefined,
+      },
+    };
+    return JSON.stringify(intake);
+  }, [answers, additionalDetails, symptomKey, symptomLabel, vehicleId, params.vehicleYear, params.vehicleMake, params.vehicleModel, params.vehicleNickname]);
+
+  const getHumanReadableSummary = useCallback((): string => {
     const answerTexts = Object.entries(answers)
       .map(([, v]) => v)
       .filter(Boolean);
 
-    let description = symptomKey ? `Symptom: ${symptomKey}\n` : "";
-    if (vehicleSummary) description += `Vehicle: ${vehicleSummary}\n`;
+    let summary = symptomLabel || symptomKey ? `Issue: ${symptomLabel || symptomKey}\n` : "";
+    if (vehicleSummary) summary += `Vehicle: ${vehicleSummary}\n`;
 
     if (answerTexts.length > 0) {
-      description += `\nAnswers:\n- ${answerTexts.join("\n- ")}`;
+      summary += `\nAnswers:\n- ${answerTexts.join("\n- ")}`;
     }
 
     if (additionalDetails.trim()) {
-      description += `\n\nAdditional details:\n${additionalDetails.trim()}`;
+      summary += `\n\nAdditional details:\n${additionalDetails.trim()}`;
     }
 
-    return description.trim();
-  }, [answers, additionalDetails, symptomKey, vehicleSummary]);
+    return summary.trim();
+  }, [answers, additionalDetails, symptomKey, symptomLabel, vehicleSummary]);
 
   const handleSubmit = useCallback(async () => {
     if (!userId) {
@@ -380,8 +454,8 @@ export default function RequestService() {
       Alert.alert("Missing info", "Please select a vehicle first.");
       return;
     }
-    if (!location.trim()) {
-      Alert.alert("Missing Information", "Please enter your location.");
+    if (!location.trim() && !savedLat && !savedLng) {
+      Alert.alert("Missing Information", "Please allow location access to continue.");
       return;
     }
 
@@ -390,23 +464,26 @@ export default function RequestService() {
     try {
       const description = generateProblemDescription();
 
-      // Geocode the address to get lat/lng
-      let locationLat: number | null = null;
-      let locationLng: number | null = null;
+      // Use saved location coordinates
+      let locationLat: number | null = savedLat;
+      let locationLng: number | null = savedLng;
+      let locationAddress = savedAddress || location.trim();
 
-      try {
-        // Append USA for better geocoding of zip codes
-        const searchLocation = /^\d{5}$/.test(location.trim())
-          ? `${location.trim()}, USA`
-          : location.trim();
-        const geocoded = await Location.geocodeAsync(searchLocation);
-        if (geocoded && geocoded.length > 0) {
-          locationLat = geocoded[0].latitude;
-          locationLng = geocoded[0].longitude;
+      // If no saved coordinates, try geocoding the location text
+      if (!locationLat || !locationLng) {
+        try {
+          const searchLocation = /^\d{5}$/.test(location.trim())
+            ? `${location.trim()}, USA`
+            : location.trim();
+          const geocoded = await Location.geocodeAsync(searchLocation);
+          if (geocoded && geocoded.length > 0) {
+            locationLat = geocoded[0].latitude;
+            locationLng = geocoded[0].longitude;
+          }
+          console.log('Geocoded', searchLocation, 'to', locationLat, locationLng);
+        } catch (geoError) {
+          console.warn("Geocoding failed:", geoError);
         }
-        console.log('Geocoded', searchLocation, 'to', locationLat, locationLng);
-      } catch (geoError) {
-        console.warn("Geocoding failed:", geoError);
       }
 
       const { error } = await supabase
@@ -415,7 +492,7 @@ export default function RequestService() {
           customer_id: userId,
           title: symptomLabel || symptomKey || "Service Request",
           description,
-          location_address: location.trim(),
+          location_address: locationAddress,
           location_lat: locationLat,
           location_lng: locationLng,
           status: "searching",
@@ -438,7 +515,7 @@ export default function RequestService() {
     } finally {
       setLoadingSubmit(false);
     }
-  }, [userId, hasPaymentMethod, symptomKey, symptomLabel, vehicleId, location, generateProblemDescription]);
+  }, [userId, hasPaymentMethod, symptomKey, symptomLabel, vehicleId, location, savedLat, savedLng, savedAddress, generateProblemDescription]);
 
   const renderTopHeader = () => (
     <View
@@ -619,27 +696,87 @@ export default function RequestService() {
         }}
       >
         <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Summary</Text>
-        <Text style={{ ...text.muted, lineHeight: 18 }}>{generateProblemDescription()}</Text>
+        <Text style={{ ...text.muted, lineHeight: 18 }}>{getHumanReadableSummary()}</Text>
       </View>
 
-      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Where is your vehicle located?</Text>
-      <TextInput
-        style={{
-          backgroundColor: colors.surface,
-          padding: spacing.lg,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderColor: colors.border,
-          color: colors.textPrimary,
-          marginBottom: spacing.lg,
-          fontSize: 16,
-          fontWeight: "600",
-        }}
-        placeholder="Address or zip code"
-        placeholderTextColor={colors.textSecondary}
-        value={location}
-        onChangeText={setLocation}
-      />
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Your Location</Text>
+      {loadingLocation ? (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            padding: spacing.lg,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.lg,
+            alignItems: "center",
+            justifyContent: "center",
+            minHeight: 50,
+          }}
+        >
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={{ ...text.muted, marginTop: spacing.sm }}>Getting your location…</Text>
+        </View>
+      ) : locationError ? (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            padding: spacing.lg,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.lg,
+          }}
+        >
+          <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.sm }}>
+            <Ionicons name="alert-circle" size={20} color={colors.error} style={{ marginRight: spacing.sm }} />
+            <Text style={{ ...text.body, color: colors.error, flex: 1 }}>
+              {locationError}
+            </Text>
+          </View>
+          <TouchableOpacity
+            onPress={getCurrentLocation}
+            style={{
+              backgroundColor: colors.accent,
+              padding: spacing.md,
+              borderRadius: 8,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{ ...text.body, fontWeight: "700", color: "#000" }}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <View
+          style={{
+            backgroundColor: colors.surface,
+            padding: spacing.lg,
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: colors.border,
+            marginBottom: spacing.lg,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.xs }}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.accent} style={{ marginRight: spacing.sm }} />
+              <Text style={{ ...text.body, color: colors.accent, fontWeight: "700" }}>
+                Location detected
+              </Text>
+            </View>
+            <Text style={{ ...text.muted }}>{location || "Getting address…"}</Text>
+          </View>
+          <TouchableOpacity
+            onPress={getCurrentLocation}
+            style={{ marginLeft: spacing.md }}
+          >
+            <Ionicons name="refresh" size={24} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>
         Anything else we should know? (Optional)

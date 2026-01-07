@@ -20,6 +20,7 @@ import { UserProfileCard } from "../../../components/profile/UserProfileCardQuot
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import React from "react";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 type QuoteType = "diagnostic_only" | "range" | "fixed";
 
@@ -46,6 +47,7 @@ export default function QuoteComposer() {
   const params = useLocalSearchParams<{ id: string }>();
   const { colors, text, spacing, radius } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [job, setJob] = useState<Job | null>(null);
@@ -372,7 +374,7 @@ export default function QuoteComposer() {
         }}
       />
 
-      <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}>
+      <ScrollView contentContainerStyle={{ paddingTop: spacing.md, paddingHorizontal: spacing.md, paddingBottom: Math.max(insets.bottom, spacing.md), gap: spacing.md }}>
         <View
           style={[
             card,

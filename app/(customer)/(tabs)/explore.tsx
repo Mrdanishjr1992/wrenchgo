@@ -554,7 +554,7 @@ export default function Explore() {
 
                             <View style={{ flex: 1 }}>
                               <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
-                                <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary }}>
+                                <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
                                   {symptom.symptom_label}
                                 </Text>
                                 {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}

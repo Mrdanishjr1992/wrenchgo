@@ -392,7 +392,7 @@ export default function CustomerHome() {
 
           <View style={{ gap: spacing.sm }}>
             <Pressable
-              onPress={() => router.push("/explore")}
+              onPress={() => router.push("/(customer)/education")}
               style={({ pressed }) => [
                 {
                   backgroundColor: colors.bg,
@@ -427,7 +427,7 @@ export default function CustomerHome() {
             </Pressable>
 
             <Pressable
-              onPress={() => router.push("/explore")}
+              onPress={() => router.push("/(customer)/education")}
               style={({ pressed }) => [
                 {
                   backgroundColor: colors.bg,
@@ -462,7 +462,7 @@ export default function CustomerHome() {
             </Pressable>
 
             <Pressable
-              onPress={() => router.push("/explore")}
+              onPress={() => router.push("/(customer)/education")}
               style={({ pressed }) => [
                 {
                   backgroundColor: colors.bg,

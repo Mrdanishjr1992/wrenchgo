@@ -14,7 +14,7 @@ interface InvoiceViewProps {
 }
 
 export function InvoiceView({ invoice, role, onRefresh, showPendingActions = true }: InvoiceViewProps) {
-  const { colors, text, spacing } = useTheme();
+  const { colors } = useTheme();
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const handleApprove = async (item: InvoiceLineItem) => {

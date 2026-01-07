@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { createCard } from '../../../src/ui/styles';
 import {
@@ -23,6 +24,7 @@ export default function EarningsBreakdownScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ jobId?: string }>();
   const jobId = Array.isArray(params.jobId) ? params.jobId[0] : params.jobId;
+  const insets = useSafeAreaInsets();
 
   const { colors, text, spacing } = useTheme();
   const card = createCard(colors);
@@ -69,7 +71,7 @@ export default function EarningsBreakdownScreen() {
 
   if (!payment) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.md }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.md, paddingTop: insets.top + spacing.md }}>
         <Pressable
           onPress={() => router.back()}
           hitSlop={12}
@@ -96,7 +98,11 @@ export default function EarningsBreakdownScreen() {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      contentContainerStyle={{ padding: spacing.md }}
+      contentContainerStyle={{
+        padding: spacing.md,
+        paddingTop: insets.top + spacing.md,
+        paddingBottom: insets.bottom + spacing.md
+      }}
       refreshControl={
         <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={colors.accent} />
       }

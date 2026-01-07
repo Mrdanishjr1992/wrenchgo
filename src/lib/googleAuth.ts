@@ -29,8 +29,8 @@ export async function signInWithGoogle(): Promise<{ idToken: string | null; erro
       // Ignore if not signed in
     }
 
-    // Sign in and get user info
-    const userInfo = await GoogleSignin.signIn();
+    // Sign in
+    await GoogleSignin.signIn();
 
     // Get tokens - idToken is needed for Supabase
     const tokens = await GoogleSignin.getTokens();

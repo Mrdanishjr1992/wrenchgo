@@ -22,7 +22,7 @@ type Notif = {
   type: string;
   entity_type: string | null;
   entity_id: string | null;
-  read: boolean;
+  is_read: boolean;
   created_at: string;
   // internal: where it came from
   source: "notifications_table" | "generated";

@@ -366,7 +366,7 @@ export default function MechanicJobDetails() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
         contentContainerStyle={{
           paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
+          paddingBottom: spacing.md + insets.bottom,
           gap: spacing.md,
         }}
       >
