@@ -15,6 +15,8 @@ import { useTheme } from "../../../src/ui/theme-context";
 import { createCard, cardPressed } from "../../../src/ui/styles";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
+import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
+import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 
 type QuoteSummary = {
   quoteCount: number;
@@ -37,7 +39,11 @@ type Job = {
     year: number;
     make: string;
     model: string;
-  } | null;
+  } | null | Array<{
+    year: number;
+    make: string;
+    model: string;
+  }>;
 };
 
 type JobWithQuoteSummary = Job & { quoteSummary: QuoteSummary };
@@ -53,6 +59,7 @@ export default function CustomerJobs() {
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<JobWithQuoteSummary[]>([]);
   const [canceling, setCanceling] = useState<string | null>(null);
+  const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
 
   const statusColor = useCallback(
     (status: string) => {
@@ -158,6 +165,7 @@ export default function CustomerJobs() {
           j.accepted_mechanic_id && ["searching", "draft", "quoted"].includes(j.status ?? "")
             ? "accepted"
             : j.status ?? "searching",
+        vehicle: Array.isArray(j.vehicle) && j.vehicle.length > 0 ? j.vehicle[0] : j.vehicle ?? null,
       }));
 
       if (jobsData.length === 0) {
@@ -226,6 +234,9 @@ export default function CustomerJobs() {
       });
 
       setJobs(jobsWithQuotes);
+
+      const prompts = await getPendingReviewPrompts(userId);
+      setReviewPrompts(prompts);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load jobs.");
     } finally {
@@ -282,7 +293,7 @@ export default function CustomerJobs() {
               setCanceling(jobId);
               const { error } = await supabase
                 .from("jobs")
-                .update({ status: "canceled", canceled_at: new Date().toISOString() })
+                .update({ status: "cancelled", canceled_at: new Date().toISOString() })
                 .eq("id", jobId);
 
               if (error) throw error;
@@ -487,6 +498,23 @@ export default function CustomerJobs() {
         }
         renderItem={() => (
           <View style={{ paddingHorizontal: spacing.md }}>
+            {reviewPrompts.length > 0 && (
+              <>
+                <SectionHeader title="Pending Reviews" count={reviewPrompts.length} />
+                <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                  {reviewPrompts.map((prompt) => (
+                    <ReviewPromptBanner
+                      key={prompt.id}
+                      jobId={prompt.job_id}
+                      targetName={prompt.target_name}
+                      expiresAt={prompt.expires_at}
+                      userRole="customer"
+                    />
+                  ))}
+                </View>
+              </>
+            )}
+
             {/* Waiting Section */}
             <SectionHeader title="Waiting" count={waitingForQuote.length} />
             {waitingForQuote.length === 0 ? (

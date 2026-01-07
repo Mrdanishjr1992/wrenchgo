@@ -15,6 +15,8 @@ import { createCard, cardPressed } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
+import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
+import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 
 type Job = {
   id: string;
@@ -46,6 +48,7 @@ export default function MechanicJobs() {
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [waitingJobs, setWaitingJobs] = useState<WaitingJob[]>([]);
+  const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
 
   const statusColor = useCallback(
     (status: string) => {
@@ -228,6 +231,9 @@ export default function MechanicJobs() {
           customer_name: nameById.get(j.customer_id) || null,
         }))
       );
+
+      const prompts = await getPendingReviewPrompts(mechanicId);
+      setReviewPrompts(prompts);
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load jobs.");
       setJobs([]);
@@ -453,6 +459,23 @@ export default function MechanicJobs() {
         }
         renderItem={() => (
           <View style={{ paddingHorizontal: spacing.md }}>
+            {reviewPrompts.length > 0 && (
+              <>
+                <SectionHeader title="Pending Reviews" count={reviewPrompts.length} />
+                <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                  {reviewPrompts.map((prompt) => (
+                    <ReviewPromptBanner
+                      key={prompt.id}
+                      jobId={prompt.job_id}
+                      targetName={prompt.target_name}
+                      expiresAt={prompt.expires_at}
+                      userRole="mechanic"
+                    />
+                  ))}
+                </View>
+              </>
+            )}
+
             {/* Waiting Section - Quotes sent, waiting for customer */}
             <SectionHeader title="Waiting" count={waitingJobs.length} />
             {waitingJobs.length === 0 ? (

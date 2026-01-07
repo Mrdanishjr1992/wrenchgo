@@ -27,12 +27,36 @@ export async function acceptQuoteAndCreateContract(
     p_quote_id: quoteId,
     p_customer_id: customerId,
   });
-  
+
   if (error) {
     console.error('Accept quote error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  // Notify mechanic that their quote was accepted
+  try {
+    const { data: quoteData } = await supabase
+      .from('quotes')
+      .select('mechanic_id, job_id, jobs(title)')
+      .eq('id', quoteId)
+      .single();
+
+    if (quoteData?.mechanic_id) {
+      const { notifyUser } = await import('./notify');
+      const jobTitle = (quoteData as any).jobs?.title || 'Job';
+      await notifyUser({
+        userId: quoteData.mechanic_id,
+        title: 'Quote Accepted!',
+        body: `Your quote for "${jobTitle}" has been accepted. The customer is ready to proceed.`,
+        type: 'quote_accepted',
+        entityType: 'job',
+        entityId: quoteData.job_id,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to send notification:', e);
+  }
+
   return data as AcceptQuoteResponse;
 }
 
@@ -50,11 +74,11 @@ export async function mechanicMarkDeparted(
 ): Promise<JobActionResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const mechanicId = userData.user?.id;
-  
+
   if (!mechanicId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('mechanic_mark_departed', {
     p_job_id: jobId,
     p_mechanic_id: mechanicId,
@@ -62,12 +86,35 @@ export async function mechanicMarkDeparted(
     p_departure_lng: options?.departureLng ?? null,
     p_estimated_arrival_minutes: options?.estimatedArrivalMinutes ?? null,
   });
-  
+
   if (error) {
     console.error('Mark departed error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  // Notify customer
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('customer_id, title')
+      .eq('id', jobId)
+      .single();
+
+    if (jobData?.customer_id) {
+      const { notifyUser } = await import('./notify');
+      await notifyUser({
+        userId: jobData.customer_id,
+        title: 'Mechanic On The Way',
+        body: `Your mechanic is heading to your location${options?.estimatedArrivalMinutes ? ` (ETA: ${options.estimatedArrivalMinutes} min)` : ''}`,
+        type: 'mechanic_departed',
+        entityType: 'job',
+        entityId: jobId,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to send notification:', e);
+  }
+
   return data as JobActionResponse;
 }
 
@@ -80,44 +127,90 @@ export async function mechanicMarkArrived(
 ): Promise<JobActionResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const mechanicId = userData.user?.id;
-  
+
   if (!mechanicId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('mechanic_mark_arrived', {
     p_job_id: jobId,
     p_mechanic_id: mechanicId,
     p_arrival_lat: options?.arrivalLat ?? null,
     p_arrival_lng: options?.arrivalLng ?? null,
   });
-  
+
   if (error) {
     console.error('Mark arrived error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  // Notify customer
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('customer_id, title')
+      .eq('id', jobId)
+      .single();
+
+    if (jobData?.customer_id) {
+      const { notifyUser } = await import('./notify');
+      await notifyUser({
+        userId: jobData.customer_id,
+        title: 'Mechanic Has Arrived',
+        body: 'Your mechanic has arrived at your location. Please confirm their arrival to begin work.',
+        type: 'mechanic_arrived',
+        entityType: 'job',
+        entityId: jobId,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to send notification:', e);
+  }
+
   return data as JobActionResponse;
 }
 
 export async function mechanicStartWork(jobId: string): Promise<JobActionResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const mechanicId = userData.user?.id;
-  
+
   if (!mechanicId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('mechanic_start_work', {
     p_job_id: jobId,
     p_mechanic_id: mechanicId,
   });
-  
+
   if (error) {
     console.error('Start work error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  // Notify customer
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('customer_id, title')
+      .eq('id', jobId)
+      .single();
+
+    if (jobData?.customer_id) {
+      const { notifyUser } = await import('./notify');
+      await notifyUser({
+        userId: jobData.customer_id,
+        title: 'Work Started',
+        body: 'Your mechanic has started working on your vehicle.',
+        type: 'work_started',
+        entityType: 'job',
+        entityId: jobId,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to send notification:', e);
+  }
+
   return data as JobActionResponse;
 }
 
@@ -127,22 +220,45 @@ export async function mechanicMarkComplete(
 ): Promise<JobActionResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const mechanicId = userData.user?.id;
-  
+
   if (!mechanicId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('mechanic_mark_complete', {
     p_job_id: jobId,
     p_mechanic_id: mechanicId,
     p_work_summary: workSummary ?? null,
   });
-  
+
   if (error) {
     console.error('Mark complete error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  // Notify customer
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('customer_id, title')
+      .eq('id', jobId)
+      .single();
+
+    if (jobData?.customer_id) {
+      const { notifyUser } = await import('./notify');
+      await notifyUser({
+        userId: jobData.customer_id,
+        title: 'Work Completed',
+        body: 'Your mechanic has completed the work. Please review and confirm.',
+        type: 'work_completed',
+        entityType: 'job',
+        entityId: jobId,
+      });
+    }
+  } catch (e) {
+    console.error('Failed to send notification:', e);
+  }
+
   return data as JobActionResponse;
 }
 

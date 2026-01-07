@@ -2,270 +2,260 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
-  TextInput,
-  TouchableOpacity,
   ScrollView,
+  TextInput,
+  Pressable,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import type { CreateReviewPayload } from '@/src/types/reviews';
+import { useTheme } from '../../src/ui/theme-context';
+import { supabase } from '../../src/lib/supabase';
 
-interface ReviewFormProps {
+type ReviewFormProps = {
   jobId: string;
   revieweeId: string;
+  revieweeName: string;
   reviewerRole: 'customer' | 'mechanic';
-  revieweeRole: 'customer' | 'mechanic';
-  onSubmit: (payload: CreateReviewPayload) => Promise<void>;
-  onCancel?: () => void;
-}
+  onSubmitSuccess?: () => void;
+};
 
-export function ReviewForm({
+export default function ReviewForm({
   jobId,
   revieweeId,
+  revieweeName,
   reviewerRole,
-  revieweeRole,
-  onSubmit,
-  onCancel,
+  onSubmitSuccess,
 }: ReviewFormProps) {
-  const textColor = useThemeColor({}, 'text');
-  const iconColor = useThemeColor({}, 'icon');
-  const backgroundColor = useThemeColor({}, 'background');
-  const tintColor = useThemeColor({}, 'tint');
+  const { colors, text, spacing } = useTheme();
+  const router = useRouter();
 
-  const [overallRating, setOverallRating] = useState(0);
-  const [performanceRating, setPerformanceRating] = useState(0);
-  const [timingRating, setTimingRating] = useState(0);
-  const [costRating, setCostRating] = useState(0);
+  const [rating, setRating] = useState(0);
+  const [professionalismRating, setProfessionalismRating] = useState(0);
+  const [communicationRating, setCommunicationRating] = useState(0);
+  const [wouldRecommend, setWouldRecommend] = useState<boolean | null>(null);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (overallRating === 0) {
-      Alert.alert('Rating Required', 'Please provide an overall rating');
+    if (rating === 0) {
+      Alert.alert('Rating Required', 'Please select an overall rating');
       return;
     }
-    if (performanceRating === 0 || timingRating === 0 || costRating === 0) {
-      Alert.alert('All Ratings Required', 'Please rate all categories');
+
+    if (wouldRecommend === null) {
+      Alert.alert('Recommendation Required', 'Please indicate if you would recommend');
       return;
     }
 
     setSubmitting(true);
+
     try {
-      await onSubmit({
-        job_id: jobId,
-        reviewee_id: revieweeId,
-        reviewer_role: reviewerRole,
-        reviewee_role: revieweeRole,
-        overall_rating: overallRating,
-        performance_rating: performanceRating,
-        timing_rating: timingRating,
-        cost_rating: costRating,
-        comment: comment.trim() || undefined,
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData.user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.rpc('submit_review', {
+        p_job_id: jobId,
+        p_reviewer_id: userData.user.id,
+        p_reviewee_id: revieweeId,
+        p_rating: rating,
+        p_comment: comment.trim() || null,
+        p_professionalism_rating: professionalismRating || null,
+        p_communication_rating: communicationRating || null,
+        p_would_recommend: wouldRecommend,
       });
-    } catch (error) {
-      Alert.alert('Error', 'Failed to submit review. Please try again.');
+
+      if (error) throw error;
+
+      const result = data as { published: boolean; blind_deadline: string };
+
+      Alert.alert(
+        'Review Submitted',
+        result.published
+          ? 'Your review has been published.'
+          : 'Your review will be published once the other party submits their review, or after 7 days.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              onSubmitSuccess?.();
+              router.back();
+            },
+          },
+        ]
+      );
+    } catch (err: any) {
+      console.error('Review submission error:', err);
+      Alert.alert('Error', err.message || 'Failed to submit review');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const isValid =
-    overallRating > 0 &&
-    performanceRating > 0 &&
-    timingRating > 0 &&
-    costRating > 0;
+  const renderStars = (
+    currentRating: number,
+    onPress: (rating: number) => void,
+    label: string
+  ) => (
+    <View style={{ marginBottom: spacing.md }}>
+      <Text style={[text.muted, { marginBottom: spacing.xs }]}>
+        {label}
+      </Text>
+      <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+        {[1, 2, 3, 4, 5].map((star) => (
+          <Pressable key={star} onPress={() => onPress(star)}>
+            <Ionicons
+              name={star <= currentRating ? 'star' : 'star-outline'}
+              size={32}
+              color={star <= currentRating ? '#FFB800' : colors.border}
+            />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor }]}>
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Overall Rating</Text>
-        <StarSelector
-          rating={overallRating}
-          onRatingChange={setOverallRating}
-          size={32}
-        />
-      </View>
+    <ScrollView
+      style={{ flex: 1, backgroundColor: colors.bg }}
+      contentContainerStyle={{ padding: spacing.lg }}
+    >
+      <Text style={[text.title, { marginBottom: spacing.xs }]}>
+        Review {revieweeName}
+      </Text>
+      <Text style={[text.muted, { marginBottom: spacing.xl }]}>
+        Your honest feedback helps improve the WrenchGo community
+      </Text>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Performance</Text>
-        <Text style={[styles.sectionDescription, { color: iconColor }]}>
-          Quality of work and professionalism
+      {renderStars(rating, setRating, 'Overall Rating *')}
+
+      {renderStars(
+        professionalismRating,
+        setProfessionalismRating,
+        'Professionalism (Optional)'
+      )}
+
+      {renderStars(
+        communicationRating,
+        setCommunicationRating,
+        'Communication (Optional)'
+      )}
+
+      <View style={{ marginBottom: spacing.md }}>
+        <Text style={[text.muted, { marginBottom: spacing.xs }]}>
+          Would you recommend? *
         </Text>
-        <StarSelector
-          rating={performanceRating}
-          onRatingChange={setPerformanceRating}
-          size={24}
-        />
+        <View style={{ flexDirection: 'row', gap: spacing.md }}>
+          <Pressable
+            onPress={() => setWouldRecommend(true)}
+            style={{
+              flex: 1,
+              padding: spacing.md,
+              borderRadius: 8,
+              borderWidth: 2,
+              borderColor: wouldRecommend === true ? colors.primary : colors.border,
+              backgroundColor: wouldRecommend === true ? colors.primary + '10' : 'transparent',
+            }}
+          >
+            <Text
+              style={[
+                text.body,
+                {
+                  textAlign: 'center',
+                  fontWeight: wouldRecommend === true ? '600' : '400',
+                  color: wouldRecommend === true ? colors.primary : colors.text,
+                },
+              ]}
+            >
+              Yes
+            </Text>
+          </Pressable>
+          <Pressable
+            onPress={() => setWouldRecommend(false)}
+            style={{
+              flex: 1,
+              padding: spacing.md,
+              borderRadius: 8,
+              borderWidth: 2,
+              borderColor: wouldRecommend === false ? colors.error : colors.border,
+              backgroundColor: wouldRecommend === false ? colors.error + '10' : 'transparent',
+            }}
+          >
+            <Text
+              style={[
+                text.body,
+                {
+                  textAlign: 'center',
+                  fontWeight: wouldRecommend === false ? '600' : '400',
+                  color: wouldRecommend === false ? colors.error : colors.text,
+                },
+              ]}
+            >
+              No
+            </Text>
+          </Pressable>
+        </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Timing</Text>
-        <Text style={[styles.sectionDescription, { color: iconColor }]}>
-          Punctuality and time management
-        </Text>
-        <StarSelector
-          rating={timingRating}
-          onRatingChange={setTimingRating}
-          size={24}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>Cost</Text>
-        <Text style={[styles.sectionDescription, { color: iconColor }]}>
-          Value for money and pricing fairness
-        </Text>
-        <StarSelector
-          rating={costRating}
-          onRatingChange={setCostRating}
-          size={24}
-        />
-      </View>
-
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: textColor }]}>
-          Your Review (Optional)
+      <View style={{ marginBottom: spacing.xl }}>
+        <Text style={[text.muted, { marginBottom: spacing.xs }]}>
+          Written Feedback (Optional)
         </Text>
         <TextInput
-          style={[
-            styles.commentInput,
-            { color: textColor, borderColor: iconColor },
-          ]}
-          placeholder="Share your experience..."
-          placeholderTextColor={iconColor}
-          multiline
-          numberOfLines={6}
           value={comment}
           onChangeText={setComment}
-          maxLength={1000}
+          placeholder={
+            reviewerRole === 'customer'
+              ? 'Share your experience with this mechanic...'
+              : 'Share your experience with this customer...'
+          }
+          placeholderTextColor={colors.textSecondary}
+          multiline
+          numberOfLines={4}
+          style={[
+            text.body,
+            {
+              borderWidth: 1,
+              borderColor: colors.border,
+              borderRadius: 8,
+              padding: spacing.md,
+              minHeight: 100,
+              textAlignVertical: 'top',
+              color: colors.text,
+            },
+          ]}
         />
-        <Text style={[styles.characterCount, { color: iconColor }]}>
-          {comment.length}/1000
-        </Text>
       </View>
 
-      <View style={styles.buttonContainer}>
-        {onCancel && (
-          <TouchableOpacity
-            style={[styles.button, styles.cancelButton]}
-            onPress={onCancel}
-            disabled={submitting}
-          >
-            <Text style={[styles.buttonText, { color: iconColor }]}>Cancel</Text>
-          </TouchableOpacity>
+      <Pressable
+        onPress={handleSubmit}
+        disabled={submitting || rating === 0 || wouldRecommend === null}
+        style={{
+          backgroundColor:
+            submitting || rating === 0 || wouldRecommend === null
+              ? colors.border
+              : colors.primary,
+          padding: spacing.md,
+          borderRadius: 8,
+          alignItems: 'center',
+        }}
+      >
+        {submitting ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={[text.button, { color: '#fff' }]}>Submit Review</Text>
         )}
-        <TouchableOpacity
-          style={[
-            styles.button,
-            styles.submitButton,
-            { backgroundColor: tintColor },
-            (!isValid || submitting) && styles.buttonDisabled,
-          ]}
-          onPress={handleSubmit}
-          disabled={!isValid || submitting}
-        >
-          <Text style={styles.submitButtonText}>
-            {submitting ? 'Submitting...' : 'Submit Review'}
-          </Text>
-        </TouchableOpacity>
-      </View>
+      </Pressable>
+
+      <Text
+        style={[
+          text.muted,
+          { fontSize: 11, textAlign: 'center', marginTop: spacing.md },
+        ]}
+      >
+        Reviews are hidden until both parties submit, or after 7 days
+      </Text>
     </ScrollView>
   );
 }
-
-interface StarSelectorProps {
-  rating: number;
-  onRatingChange: (rating: number) => void;
-  size?: number;
-}
-
-function StarSelector({ rating, onRatingChange, size = 24 }: StarSelectorProps) {
-  return (
-    <View style={styles.starSelector}>
-      {[1, 2, 3, 4, 5].map((star) => (
-        <TouchableOpacity
-          key={star}
-          onPress={() => onRatingChange(star)}
-          style={styles.starButton}
-        >
-          <Ionicons
-            name={star <= rating ? 'star' : 'star-outline'}
-            size={size}
-            color="#FFB800"
-          />
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 16,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
-  },
-  sectionDescription: {
-    fontSize: 14,
-    marginBottom: 12,
-  },
-  starSelector: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  starButton: {
-    padding: 4,
-  },
-  commentInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    textAlignVertical: 'top',
-    minHeight: 120,
-  },
-  characterCount: {
-    fontSize: 12,
-    textAlign: 'right',
-    marginTop: 4,
-  },
-  buttonContainer: {
-    flexDirection: 'row',
-    gap: 12,
-    marginTop: 8,
-    marginBottom: 32,
-  },
-  button: {
-    flex: 1,
-    paddingVertical: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: '#E0E0E0',
-  },
-  submitButton: {
-    flex: 2,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  submitButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});

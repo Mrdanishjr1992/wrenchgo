@@ -237,6 +237,25 @@ export default function QuoteReview() {
 
       if (error) throw error;
 
+      // Get customer_id from job to send notification
+      const { data: jobData } = await supabase
+        .from("jobs")
+        .select("customer_id, title")
+        .eq("id", params.jobId)
+        .single();
+
+      if (jobData?.customer_id) {
+        const { notifyUser } = await import("../../src/lib/notify");
+        await notifyUser({
+          userId: jobData.customer_id,
+          title: "New Quote Received",
+          body: `You received a quote for ${getDisplayTitle(jobData.title) || "your job"}: $${(priceCents / 100).toFixed(0)}`,
+          type: "quote_received",
+          entityType: "job",
+          entityId: params.jobId,
+        });
+      }
+
       // Update job status to "quoted" - handle any prior status except accepted/completed/cancelled
       const { error: updateError } = await supabase
         .from("jobs")
