@@ -26,15 +26,15 @@ When you hire a mechanic through WrenchGo, you pay:
 **What Mechanics Pay:**
 When a mechanic completes a job through WrenchGo, they pay:
 
-**Platform Commission:** 12% of the quoted price, with a maximum of $50 per transaction
+**Platform Commission:** 12% of labor charges only (parts excluded), with a maximum of $50 per transaction
 
 **Examples:**
-- Job quote: $100 → Commission: $12 (12%)
-- Job quote: $500 → Commission: $50 (capped at maximum)
-- Job quote: $1,000 → Commission: $50 (capped at maximum)
+- Labor: $100, Parts: $50 → Commission: $12 (12% of labor only)
+- Labor: $500, Parts: $200 → Commission: $50 (capped at maximum)
+- Labor: $1,000, Parts: $300 → Commission: $50 (capped at maximum)
 
 **Mechanic Receives:**
-Quoted price minus platform commission
+Labor amount minus commission, plus full parts reimbursement
 
 ## Promotional Discounts
 

@@ -30,7 +30,7 @@ BEGIN
     type,
     entity_type,
     entity_id,
-    read,
+    is_read,
     created_at
   ) VALUES (
     p_user_id,
@@ -43,7 +43,7 @@ BEGIN
     now()
   )
   RETURNING id INTO v_notification_id;
-  
+
   RETURN v_notification_id;
 END;
 $$;

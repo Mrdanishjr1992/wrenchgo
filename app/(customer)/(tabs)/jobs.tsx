@@ -380,7 +380,7 @@ export default function CustomerJobs() {
                 <Text style={text.section}>No jobs yet</Text>
                 <Text style={{ ...text.muted, textAlign: "center" }}>Request a mechanic from the Home tab to get started</Text>
                 <Pressable
-                  onPress={() => router.push("/(customer)/(tabs)/explore" as any)}
+                  onPress={() => router.push("/explore")}
                   style={{ marginTop: spacing.sm, backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14 }}
                 >
                   <Text style={{ fontWeight: "900", color: "#000" }}>REQUEST A MECHANIC</Text>

@@ -183,7 +183,7 @@ export default function EarningsBreakdownScreen() {
             }}
           >
             <Text style={{ ...text.muted, fontSize: 12 }}>
-              12% platform fee (capped at $50 per job)
+              12% fee on labor only (parts excluded), capped at $50
             </Text>
           </View>
 

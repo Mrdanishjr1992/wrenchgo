@@ -66,7 +66,7 @@ Mechanics may undergo background checks. These checks:
 - All payments are processed securely through Stripe
 
 **Mechanic Fees:**
-- Platform commission of 12% of the quoted price
+- Platform commission of 12% on labor charges only (parts excluded)
 - Maximum commission of $50 per transaction
 - Fees may be reduced or waived during promotional periods
 

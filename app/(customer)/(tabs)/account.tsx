@@ -697,7 +697,7 @@ export default function CustomerAccount() {
                 </View>
                 {vehicles.length > 0 && (
                   <Pressable
-                    onPress={() => router.push("/(customer)/garage/new")}
+                    onPress={() => router.push("/(customer)/garage/add")}
                     style={{ flexDirection: "row", alignItems: "center", gap: 4 }}
                   >
                     <Ionicons name="add-circle-outline" size={18} color={colors.accent} />
@@ -713,7 +713,7 @@ export default function CustomerAccount() {
                     Add your vehicles for faster service requests
                   </Text>
                   <Pressable
-                    onPress={() => router.push("/(customer)/garage/new")}
+                    onPress={() => router.push("/(customer)/garage/add")}
                     style={({ pressed }) => ({
                       marginTop: spacing.md,
                       paddingVertical: 10,

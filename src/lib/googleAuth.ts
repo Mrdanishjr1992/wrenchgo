@@ -25,35 +25,40 @@ export async function signInWithGoogle(): Promise<{ idToken: string | null; erro
     // Sign out first to force account selection
     try {
       await GoogleSignin.signOut();
-    } catch (signOutError) {
-      // Ignore if not signed in
-      if (__DEV__) console.log("No previous Google session to sign out");
-    }
-
-    // IMPORTANT: ensure clean state if a previous attempt got stuck
-    try {
-      await GoogleSignin.signInSilently();
-      // If silently works, tokens should exist
     } catch {
-      // ignore
+      // Ignore if not signed in
     }
 
-    await GoogleSignin.signIn();
+    // Sign in and get user info
+    const userInfo = await GoogleSignin.signIn();
 
-    // Always get idToken via getTokens in modern versions
+    // Get tokens - idToken is needed for Supabase
     const tokens = await GoogleSignin.getTokens();
     const idToken = tokens?.idToken ?? null;
 
     if (!idToken) {
-      return { idToken: null, error: "Missing Google ID token (getTokens returned none)" };
+      return { idToken: null, error: "Failed to get ID token from Google" };
     }
 
     return { idToken };
   } catch (e: any) {
     const code = e?.code ?? e?.statusCode;
-    if (code === statusCodes.SIGN_IN_CANCELLED) return { idToken: null, error: "Sign-in cancelled" };
-    if (code === statusCodes.IN_PROGRESS) return { idToken: null, error: "Sign-in already in progress" };
-    if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) return { idToken: null, error: "Play Services not available" };
-    return { idToken: null, error: e?.message || "Google sign-in failed" };
+    const msg = e?.message || "";
+
+    if (code === statusCodes.SIGN_IN_CANCELLED) {
+      return { idToken: null, error: "Sign-in cancelled" };
+    }
+    if (code === statusCodes.IN_PROGRESS) {
+      return { idToken: null, error: "Sign-in already in progress" };
+    }
+    if (code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+      return { idToken: null, error: "Play Services not available" };
+    }
+
+    if (__DEV__) {
+      console.error("Google Sign-In error:", { code, msg, full: e });
+    }
+
+    return { idToken: null, error: msg || "Google sign-in failed" };
   }
 }

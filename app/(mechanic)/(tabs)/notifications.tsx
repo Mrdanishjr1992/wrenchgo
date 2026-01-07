@@ -134,7 +134,7 @@ export default function Notifications() {
       if (!n.is_read) await markRead(n.id);
 
       if (n.entity_type === "job" && n.entity_id) {
-        router.push(`/(mechanic)/job/${n.entity_id}` as any);
+        router.push(`/(mechanic)/job-details/${n.entity_id}` as any);
         return;
       }
     },

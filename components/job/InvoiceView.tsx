@@ -163,10 +163,8 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
 
   const { contract, approved_items, pending_items, rejected_items } = invoice;
 
-  // Filter out platform_fee items for mechanics
-  const filteredApprovedItems = role === 'mechanic'
-    ? approved_items.filter(item => item.item_type !== 'platform_fee')
-    : approved_items;
+  // Filter out platform_fee items - shown separately in summary
+  const filteredApprovedItems = approved_items.filter(item => item.item_type !== 'platform_fee');
 
   return (
     <View style={styles.container}>
@@ -262,10 +260,10 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
             <View style={[styles.totalRow, { marginTop: 4 }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
-                  Service Fee ({Math.round((contract.mechanic_commission_cents / contract.subtotal_cents) * 100)}%)
+                  Service Fee (12%, max $50)
                 </Text>
                 <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                  WrenchGo platform commission
+                  On labor only, parts excluded
                 </Text>
               </View>
               <Text style={[styles.totalValue, { color: '#EF4444' }]}>

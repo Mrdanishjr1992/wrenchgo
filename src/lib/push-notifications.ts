@@ -1,46 +1,59 @@
-import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 
-// Configure notification handling
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-  }),
-});
+let Notifications: typeof import('expo-notifications') | null = null;
+let notificationsAvailable = false;
+
+// Try to load expo-notifications - will fail in Expo Go
+try {
+  Notifications = require('expo-notifications');
+  notificationsAvailable = true;
+
+  if (Notifications) {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+      }),
+    });
+  }
+} catch (error) {
+  console.log('Push notifications not available in this environment');
+}
 
 export async function registerForPushNotificationsAsync(): Promise<string | null> {
-  if (!Device.isDevice) {
-    console.log('Push notifications require a physical device');
+  if (!notificationsAvailable || !Notifications) {
     return null;
   }
-
-  // Check existing permissions
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-
-  // Request permissions if not granted
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
-  }
-
-  if (finalStatus !== 'granted') {
-    console.log('Push notification permission not granted');
-    return null;
-  }
-
-  // Get the Expo push token
+  
   try {
+    if (!Device.isDevice) {
+      console.log('Push notifications require a physical device');
+      return null;
+    }
+
+    const { status: existingStatus } = await Notifications.getPermissionsAsync();
+    let finalStatus = existingStatus;
+
+    if (existingStatus !== 'granted') {
+      const { status } = await Notifications.requestPermissionsAsync();
+      finalStatus = status;
+    }
+
+    if (finalStatus !== 'granted') {
+      console.log('Push notification permission not granted');
+      return null;
+    }
+
     const tokenData = await Notifications.getExpoPushTokenAsync({
       projectId: process.env.EXPO_PUBLIC_PROJECT_ID,
     });
     const token = tokenData.data;
 
-    // Set up Android notification channel
     if (Platform.OS === 'android') {
       await Notifications.setNotificationChannelAsync('default', {
         name: 'Default',
@@ -52,7 +65,7 @@ export async function registerForPushNotificationsAsync(): Promise<string | null
 
     return token;
   } catch (error) {
-    console.error('Error getting push token:', error);
+    console.log('Push notifications not available:', error);
     return null;
   }
 }
@@ -86,14 +99,33 @@ export async function clearPushToken(userId: string): Promise<void> {
   }
 }
 
-export function addNotificationReceivedListener(
-  callback: (notification: Notifications.Notification) => void
-) {
-  return Notifications.addNotificationReceivedListener(callback);
+export function addNotificationReceivedListener(callback: (notification: any) => void) {
+  if (!notificationsAvailable || !Notifications) {
+    return null;
+  }
+  try {
+    return Notifications.addNotificationReceivedListener(callback);
+  } catch (error) {
+    return null;
+  }
 }
 
-export function addNotificationResponseReceivedListener(
-  callback: (response: Notifications.NotificationResponse) => void
-) {
-  return Notifications.addNotificationResponseReceivedListener(callback);
+export function addNotificationResponseReceivedListener(callback: (response: any) => void) {
+  if (!notificationsAvailable || !Notifications) {
+    return null;
+  }
+  try {
+    return Notifications.addNotificationResponseReceivedListener(callback);
+  } catch (error) {
+    return null;
+  }
+}
+
+export function removeNotificationSubscription(subscription: any) {
+  if (!subscription) return;
+  try {
+    subscription.remove();
+  } catch (error) {
+    // Ignore
+  }
 }
