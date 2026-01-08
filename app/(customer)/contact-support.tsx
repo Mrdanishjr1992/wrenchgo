@@ -14,11 +14,11 @@ import {
 import { useRouter, useLocalSearchParams, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { useTheme } from '../../../src/ui/theme-context';
-import { submitSupportRequest, uploadSupportScreenshot } from '../../../src/lib/support';
-import { SUPPORT_CATEGORIES } from '../../../src/types/support';
-import type { SupportCategory } from '../../../src/types/support';
-import { supabase } from '../../../src/lib/supabase';
+import { useTheme } from '../../src/ui/theme-context';
+import { submitSupportRequest, uploadSupportScreenshot } from '../../src/lib/support';
+import { SUPPORT_CATEGORIES } from '../../src/types/support';
+import type { SupportCategory } from '../../src/types/support';
+import { supabase } from '../../src/lib/supabase';
 
 export default function ContactSupportScreen() {
   const router = useRouter();
