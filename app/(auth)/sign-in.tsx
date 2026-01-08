@@ -293,7 +293,7 @@ export default function SignIn() {
         return;
       }
 
-      console.log("✅ Got Google ID token, length:", idToken.length);
+     // console.log("✅ Got Google ID token, length:", idToken.length);
       await handleGoogleSignIn(idToken);
     } catch (e: any) {
       console.error("❌ Google Sign-In exception:", {
