@@ -16,6 +16,11 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
+import { scanMessageBeforeSend, getChatStatus, logMessageAudit } from "../../src/lib/chat-moderation";
+import { ChatModerationWarning } from "./ChatModerationWarning";
+import { ChatStatusBanner } from "./ChatStatusBanner";
+import { ChatPolicyModal } from "./ChatPolicyModal";
+import type { ScanMessageResponse, ChatStatusResponse } from "../../src/types/chat-moderation";
 
 type Msg = {
   id: string;
@@ -82,10 +87,14 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
 
+  const [moderationWarning, setModerationWarning] = useState<ScanMessageResponse | null>(null);
+  const [chatStatus, setChatStatus] = useState<ChatStatusResponse | null>(null);
+  const [showPolicyModal, setShowPolicyModal] = useState(false);
+
   const listRef = useRef<FlatList<MessageGroup>>(null);
   const canSend = useMemo(
-    () => input.trim().length > 0 && !sending && !!me && !!jobId && !!recipientId,
-    [input, sending, me, jobId, recipientId]
+    () => input.trim().length > 0 && !sending && !!me && !!jobId && !!recipientId && chatStatus?.can_send !== false,
+    [input, sending, me, jobId, recipientId, chatStatus]
   );
 
   const load = useCallback(async () => {
@@ -120,6 +129,10 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
             .single();
           setOtherPartyName(profile?.full_name || null);
         }
+
+        const conversationId = `${jobId}-${uid}-${recipientIdVal}`;
+        const status = await getChatStatus(conversationId, uid, jobId);
+        setChatStatus(status);
       }
 
       const { data, error } = await supabase
@@ -172,8 +185,42 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     const content = input.trim();
     if (!content) return;
 
+    const conversationId = `${jobId}-${me}-${recipientId}`;
+
+    const scanResult = await scanMessageBeforeSend({
+      conversation_id: conversationId,
+      sender_id: me,
+      message_text: content,
+      job_id: jobId,
+    });
+
+    if (scanResult.action === 'blocked') {
+      setModerationWarning(scanResult);
+      Alert.alert(
+        'Message Blocked',
+        scanResult.message || 'This message contains contact information and cannot be sent.',
+        [
+          { text: 'Learn More', onPress: () => setShowPolicyModal(true) },
+          { text: 'OK', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    if (scanResult.action === 'warned') {
+      setModerationWarning(scanResult);
+    }
+
     setSending(true);
     setInput("");
+
+    const finalContent = scanResult.action === 'masked' && scanResult.masked_text
+      ? scanResult.masked_text
+      : content;
+
+    if (scanResult.action === 'masked') {
+      setModerationWarning(scanResult);
+    }
 
     const tempId = `temp-${Date.now()}`;
     const temp: Msg = {
@@ -181,7 +228,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       job_id: jobId,
       sender_id: me,
       recipient_id: recipientId,
-      body: content,
+      body: finalContent,
       created_at: new Date().toISOString(),
     };
     setItems((prev) => [...prev, temp]);
@@ -190,7 +237,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       job_id: jobId,
       sender_id: me,
       recipient_id: recipientId,
-      body: content,
+      body: finalContent,
     });
 
     if (error) {
@@ -199,6 +246,15 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       Alert.alert("Send failed", error.message ?? "Failed to send message.");
     } else {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
+
+      await logMessageAudit(
+        conversationId,
+        me,
+        content,
+        scanResult,
+        scanResult.action,
+        scanResult.masked_text
+      );
     }
 
     setSending(false);
@@ -355,6 +411,30 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
         }
       />
 
+      {chatStatus && chatStatus.chat_state !== 'open' && (
+        <ChatStatusBanner
+          chatState={chatStatus.chat_state}
+          restrictionType={chatStatus.restriction_type}
+          message={chatStatus.message}
+          expiresAt={chatStatus.expires_at}
+          showButtons={chatStatus.show_buttons}
+          buttonActions={chatStatus.button_actions}
+          onButtonPress={(action) => {
+            setInput(action);
+          }}
+        />
+      )}
+
+      {moderationWarning && moderationWarning.show_warning && (
+        <ChatModerationWarning
+          action={moderationWarning.action}
+          message={moderationWarning.warning_message}
+          detectedPatterns={moderationWarning.detected_patterns}
+          onDismiss={() => setModerationWarning(null)}
+          onLearnMore={() => setShowPolicyModal(true)}
+        />
+      )}
+
       {/* Composer */}
       <View style={[styles.composer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <View
@@ -366,12 +446,13 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Type a message..."
+            placeholder={chatStatus?.can_send === false ? "Chat is restricted" : "Type a message..."}
             placeholderTextColor={colors.textMuted}
             style={[styles.input, { color: colors.textPrimary }]}
             multiline
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
+            editable={chatStatus?.can_send !== false}
           />
         </View>
 
@@ -390,6 +471,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
           )}
         </Pressable>
       </View>
+
+      <ChatPolicyModal visible={showPolicyModal} onClose={() => setShowPolicyModal(false)} />
     </KeyboardAvoidingView>
   );
 }

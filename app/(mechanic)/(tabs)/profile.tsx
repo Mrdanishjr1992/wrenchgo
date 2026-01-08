@@ -22,6 +22,7 @@ import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
+import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 
@@ -1807,6 +1808,8 @@ export default function MechanicProfile() {
             </Pressable>
           </>
         )}
+
+        <HelpSupportSection variant="card" />
 
         <Pressable
           onPress={() => router.push("/(mechanic)/legal")}

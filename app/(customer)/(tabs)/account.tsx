@@ -23,6 +23,7 @@ import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
+import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import * as ImagePicker from "expo-image-picker";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useStripe } from "@stripe/stripe-react-native";
@@ -1116,6 +1117,8 @@ export default function CustomerAccount() {
             </Pressable>
           </View>
         )}
+
+        <HelpSupportSection variant="card" />
 
         <Pressable
           onPress={goToLegal}
