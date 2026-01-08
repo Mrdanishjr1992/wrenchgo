@@ -132,6 +132,14 @@ export default function CustomerLayout() {
 
     const init = async () => {
       const { data, error } = await supabase.auth.getSession();
+
+      // Handle invalid refresh token error
+      if (error?.message?.includes("Refresh Token")) {
+        await supabase.auth.signOut();
+        router.replace("/(auth)/sign-in");
+        return;
+      }
+
       if (error) {
         if (alive && mountedRef.current) setChecking(false);
         return;
@@ -149,8 +157,8 @@ export default function CustomerLayout() {
     init();
 
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      // ✅ only kick user out on explicit sign-out events
-      if (event === "SIGNED_OUT" || event === "USER_DELETED") {
+      // ✅ kick user out on explicit sign-out or token refresh failure
+      if (event === "SIGNED_OUT" || (event === "TOKEN_REFRESHED" && !session)) {
         router.replace("/(auth)/sign-in");
         return;
       }

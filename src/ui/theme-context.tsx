@@ -118,9 +118,17 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     const init = async () => {
       try {
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+
+        // Handle invalid refresh token - sign out silently
+        if (error?.message?.includes("Refresh Token")) {
+          await supabase.auth.signOut();
+          if (mounted) {
+            setCurrentUserId(null);
+            setModeState(getSystemMode());
+          }
+          return;
+        }
 
         if (!mounted) return;
 

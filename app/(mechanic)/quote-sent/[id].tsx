@@ -6,7 +6,6 @@ import {
   Pressable,
   ActivityIndicator,
   Alert,
-  Linking,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -38,7 +37,6 @@ type Job = {
   } | null;
   customer: {
     full_name: string | null;
-    phone: string | null;
   } | null;
 };
 
@@ -81,7 +79,7 @@ export default function QuoteSent() {
           title,
           customer_id,
           vehicle:vehicles(year, make, model),
-          customer:profiles!jobs_customer_id_fkey(full_name, phone)
+          customer:profiles!jobs_customer_id_fkey(full_name)
         `
         )
         .eq("id", params.id)
@@ -109,14 +107,6 @@ export default function QuoteSent() {
   const getPriceDisplay = () => {
     if (!quote || !quote.price_cents) return "$0";
     return `$${(quote.price_cents / 100).toFixed(0)}`;
-  };
-
-  const handleCall = () => {
-    if (job?.customer?.phone) {
-      Linking.openURL(`tel:${job.customer.phone}`);
-    } else {
-      Alert.alert("No phone number", "Customer phone number not available");
-    }
   };
 
   const handleBackToJobs = () => {
@@ -333,32 +323,7 @@ export default function QuoteSent() {
                 <Text style={{ ...text.muted, fontSize: 13 }}>Name</Text>
                 <Text style={{ ...text.body, fontSize: 16, marginTop: 2 }}>{customerName}</Text>
               </View>
-
-              {job.customer?.phone && (
-                <View>
-                  <Text style={{ ...text.muted, fontSize: 13 }}>Phone</Text>
-                  <Text style={{ ...text.body, fontSize: 16, marginTop: 2 }}>{job.customer.phone}</Text>
-                </View>
-              )}
             </View>
-
-            <Pressable
-              onPress={handleCall}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 6,
-                paddingVertical: 12,
-                borderRadius: radius.md,
-                backgroundColor: colors.accent,
-                marginTop: spacing.xs,
-                opacity: pressed ? 0.85 : 1,
-              })}
-            >
-              <Ionicons name="call" size={18} color="#000" />
-              <Text style={{ fontWeight: "700", fontSize: 15, color: "#000" }}>Call Customer</Text>
-            </Pressable>
           </View>
         )}
 

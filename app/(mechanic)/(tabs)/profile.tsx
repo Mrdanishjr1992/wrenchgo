@@ -525,30 +525,9 @@ export default function MechanicProfile() {
   const refreshPayoutStatus = useCallback(async (silent = false) => {
     try {
       setLoadingPayout(true);
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
-
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-connect-refresh-status`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
-            "Content-Type": "application/json",
-          },
-        }
-      );
-
-      const data = await response.json();
-
-      if (response.ok) {
-        await load();
-        if (!silent) {
-          Alert.alert("Success", "Payout account status updated");
-        }
-      } else {
-        throw new Error(data.error || "Failed to refresh status");
+      await load();
+      if (!silent) {
+        Alert.alert("Success", "Payout status refreshed");
       }
     } catch (e: any) {
       if (!silent) {

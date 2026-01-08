@@ -68,7 +68,7 @@ type Quote = {
   cancel_reason?: string | null;
   cancel_note?: string | null;
   cancellation_fee_cents?: number | null;
-  mechanic?: { full_name: string | null; phone: string | null } | null;
+  mechanic?: { full_name: string | null } | null;
 };
 
 type Job = {
@@ -79,7 +79,7 @@ type Job = {
   status: string;
   created_at: string;
   accepted_mechanic_id: string | null;
-  accepted_mechanic: { full_name: string | null; phone: string | null } | null;
+  accepted_mechanic: { full_name: string | null } | null;
   vehicle_id: string | null;
   vehicle: { year: number; make: string; model: string } | null;
   canceled_at: string | null;
@@ -1109,13 +1109,6 @@ export default function CustomerJobDetails() {
                           >
                             <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>Mechanic Note</Text>
                             <Text style={{ ...text.body, marginTop: 4 }}>{q.notes}</Text>
-                          </View>
-                        ) : null}
-
-                        {q.mechanic?.phone ? (
-                          <View>
-                            <Text style={{ ...text.muted, fontSize: 12 }}>Contact</Text>
-                            <Text style={{ ...text.body, marginTop: 2 }}>{q.mechanic.phone}</Text>
                           </View>
                         ) : null}
                       </View>

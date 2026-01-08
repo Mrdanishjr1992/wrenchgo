@@ -12,8 +12,6 @@ export const configureGoogleSignIn = () => {
     forceCodeForRefreshToken: false,
     scopes: ["email", "profile"],
   });
-
-  if (__DEV__) console.log("✅ Google Sign-In configured:", WEB_CLIENT_ID);
 };
 
 export async function signInWithGoogle(): Promise<{ idToken: string | null; error?: string }> {

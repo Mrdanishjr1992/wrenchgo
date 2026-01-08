@@ -446,7 +446,7 @@ export default function RequestService() {
         "Please add a payment method before requesting service.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Add Payment", onPress: () => router.push("/(customer)/(tabs)/account") },
+          { text: "Add Payment", onPress: () => router.push("/(customer)/payment-setup") },
         ]
       );
       return;

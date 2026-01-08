@@ -177,34 +177,24 @@ export default function QuoteReview() {
         return;
       }
 
-      // Check if mechanic has payment method (required for all transactional actions)
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("payment_method_status")
+      // Check if mechanic has payout setup - check both tables
+      const { data: mechProfile } = await supabase
+        .from("mechanic_profiles")
+        .select("stripe_account_id, stripe_onboarding_complete")
         .eq("id", userData.user.id)
-        .single();
+        .maybeSingle();
 
-      if (profile?.payment_method_status !== 'active') {
-        Alert.alert(
-          "Payment Method Required",
-          "To use this feature, please add a payment method.",
-          [
-            { text: "Not now", style: "cancel" },
-            { text: "Add Payment Method", onPress: () => router.push("/(mechanic)/payment-setup") },
-          ]
-        );
-        setSubmitting(false);
-        return;
-      }
-
-      // Check if mechanic has payout setup
       const { data: stripeAccount } = await supabase
         .from("mechanic_stripe_accounts")
-        .select("id, stripe_account_id")
+        .select("id, stripe_account_id, onboarding_complete")
         .eq("mechanic_id", userData.user.id)
         .maybeSingle();
 
-      if (!stripeAccount?.stripe_account_id) {
+      const hasPayoutSetup =
+        (stripeAccount?.stripe_account_id) ||
+        (mechProfile?.stripe_account_id);
+
+      if (!hasPayoutSetup) {
         Alert.alert(
           "Payout Setup Required",
           "Please set up your payout account before sending quotes.",
@@ -216,6 +206,7 @@ export default function QuoteReview() {
         setSubmitting(false);
         return;
       }
+
 
 
       const arrivalTimeStr =
@@ -256,13 +247,14 @@ export default function QuoteReview() {
       if (error) throw error;
 
       if (!result?.success) {
-        if (result?.code === 'PAYMENT_METHOD_REQUIRED') {
+        // For mechanics, any payment-related error means payout not set up
+        if (result?.code === 'PAYMENT_METHOD_REQUIRED' || result?.code === 'PAYOUT_NOT_SETUP') {
           Alert.alert(
-            "Payment Method Required",
-            "To use this feature, please add a payment method.",
+            "Payout Setup Required",
+            "Please set up your payout account before sending quotes.",
             [
-              { text: "Not now", style: "cancel" },
-              { text: "Add Payment Method", onPress: () => router.push("/(mechanic)/payment-setup") },
+              { text: "Cancel", style: "cancel" },
+              { text: "Set Up Payout", onPress: () => router.push("/(mechanic)/stripe-onboarding") },
             ]
           );
           return;
