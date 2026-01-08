@@ -159,9 +159,9 @@ BEGIN
   SET status = 'accepted', updated_at = now()
   WHERE id = p_quote_id;
   
-  -- Reject all other quotes for this job
+  -- Decline all other quotes for this job
   UPDATE public.quotes
-  SET status = 'rejected', updated_at = now()
+  SET status = 'declined', updated_at = now()
   WHERE job_id = v_quote.job_id AND id != p_quote_id;
   
   -- Update job status

@@ -160,6 +160,7 @@ DECLARE
   v_completed_jobs int;
   v_recent_violations int;
   v_job_stage text;
+  v_patterns text[];
 BEGIN
   v_sender_id := auth.uid();
   
@@ -168,12 +169,12 @@ BEGIN
   END IF;
   
   -- Get sender context
-  SELECT 
+  SELECT
     EXTRACT(DAY FROM (now() - p.created_at))::int,
     COALESCE(COUNT(DISTINCT j.id), 0)
   INTO v_sender_age_days, v_completed_jobs
   FROM profiles p
-  LEFT JOIN jobs j ON (j.customer_id = p.id OR j.mechanic_id = p.id) 
+  LEFT JOIN jobs j ON (j.customer_id = p.id OR j.accepted_mechanic_id = p.id)
     AND j.status = 'completed'
   WHERE p.id = v_sender_id
   GROUP BY p.created_at;
@@ -188,7 +189,12 @@ BEGIN
   IF p_job_id IS NOT NULL THEN
     SELECT status INTO v_job_stage FROM jobs WHERE id = p_job_id;
   END IF;
-  
+
+  -- Parse patterns from JSONB array to text[]
+  SELECT COALESCE(array_agg(elem::text), '{}')
+  INTO v_patterns
+  FROM jsonb_array_elements_text(COALESCE(p_risk_result->'patterns_detected', '[]'::jsonb)) AS elem;
+
   -- Insert audit log
   INSERT INTO message_audit_logs (
     message_id,
@@ -213,18 +219,18 @@ BEGIN
     p_recipient_id,
     p_original_content,
     p_displayed_content,
-    COALESCE((p_risk_result->>'patterns_detected')::text[], '{}'),
-    (p_risk_result->>'risk_score')::numeric,
+    v_patterns,
+    COALESCE((p_risk_result->>'risk_score')::numeric, 0),
     p_action::message_action,
     p_job_id,
     v_job_stage,
-    v_sender_age_days,
-    v_completed_jobs,
-    v_recent_violations,
-    (p_risk_result->>'risk_score')::numeric >= 70
+    COALESCE(v_sender_age_days, 0),
+    COALESCE(v_completed_jobs, 0),
+    COALESCE(v_recent_violations, 0),
+    COALESCE((p_risk_result->>'risk_score')::numeric, 0) >= 70
   )
   RETURNING id INTO v_audit_id;
-  
+
   RETURN v_audit_id;
 END;
 $$;

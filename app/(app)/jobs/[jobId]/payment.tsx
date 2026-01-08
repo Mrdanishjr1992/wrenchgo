@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native'
-import { useState, useEffect } from 'react'
-import { useLocalSearchParams, router } from 'expo-router'
+import { useState, useEffect, useCallback } from 'react'
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router'
 import { useStripe } from '@stripe/stripe-react-native'
 import { supabase } from '@/lib/supabase'
 
@@ -10,10 +10,62 @@ export default function PaymentScreen() {
   const { initPaymentSheet, presentPaymentSheet } = useStripe()
   const [loading, setLoading] = useState(false)
   const [invoice, setInvoice] = useState<any>(null)
+  const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean>(false)
+  const [checkingPayment, setCheckingPayment] = useState(true)
 
-  useEffect(() => {
-    loadInvoice()
-  }, [])
+  useFocusEffect(
+    useCallback(() => {
+      loadInvoice()
+      checkPaymentMethod()
+    }, [])
+  )
+
+  const checkPaymentMethod = async () => {
+    try {
+      setCheckingPayment(true)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        router.replace('/(auth)/sign-in')
+        return
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('payment_method_status')
+        .eq('id', session.user.id)
+        .single()
+
+      const hasMethod = profile?.payment_method_status === 'active'
+      setHasPaymentMethod(hasMethod)
+
+      if (!hasMethod) {
+        Alert.alert(
+          'Payment Method Required',
+          'Please add a payment method to continue with payment.',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => router.back()
+            },
+            {
+              text: 'Add Payment Method',
+              onPress: () => {
+                router.push({
+                  pathname: '/(customer)/payment-setup',
+                  params: { returnTo: `/jobs/${jobId}/payment` }
+                } as any)
+              }
+            }
+          ]
+        )
+      }
+    } catch (error) {
+      console.error('Error checking payment method:', error)
+    } finally {
+      setCheckingPayment(false)
+    }
+  }
 
   const loadInvoice = async () => {
     const { data, error } = await supabase
@@ -31,6 +83,25 @@ export default function PaymentScreen() {
   }
 
   const handlePayment = async () => {
+    if (!hasPaymentMethod) {
+      Alert.alert(
+        'Payment Method Required',
+        'Please add a payment method first.',
+        [
+          {
+            text: 'Add Payment Method',
+            onPress: () => {
+              router.push({
+                pathname: '/(customer)/payment-setup',
+                params: { returnTo: `/jobs/${jobId}/payment` }
+              } as any)
+            }
+          }
+        ]
+      )
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -85,6 +156,14 @@ export default function PaymentScreen() {
     }
   }
 
+  if (checkingPayment) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.title}>Loading...</Text>
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Payment</Text>
@@ -102,10 +181,29 @@ export default function PaymentScreen() {
         Your payment will be processed securely through Stripe. The mechanic will receive their payment at the end of the week.
       </Text>
 
+      {!hasPaymentMethod && (
+        <View style={styles.warningCard}>
+          <Text style={styles.warningText}>
+            ⚠️ Payment method required. Please add a payment method to continue.
+          </Text>
+          <TouchableOpacity
+            style={styles.addPaymentButton}
+            onPress={() => {
+              router.push({
+                pathname: '/(customer)/payment-setup',
+                params: { returnTo: `/jobs/${jobId}/payment` }
+              } as any)
+            }}
+          >
+            <Text style={styles.addPaymentButtonText}>Add Payment Method</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       <TouchableOpacity
-        style={[styles.button, loading && styles.buttonDisabled]}
+        style={[styles.button, (loading || !hasPaymentMethod) && styles.buttonDisabled]}
         onPress={handlePayment}
-        disabled={loading}
+        disabled={loading || !hasPaymentMethod}
       >
         <Text style={styles.buttonText}>
           {loading ? 'Processing...' : 'Pay Now'}
@@ -148,6 +246,31 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 32,
     lineHeight: 24,
+  },
+  warningCard: {
+    backgroundColor: '#fff3cd',
+    padding: 16,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+    marginBottom: 24,
+  },
+  warningText: {
+    fontSize: 14,
+    color: '#856404',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  addPaymentButton: {
+    backgroundColor: '#ffc107',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  addPaymentButtonText: {
+    color: '#000',
+    fontSize: 16,
+    fontWeight: '600',
   },
   button: {
     backgroundColor: '#4CAF50',

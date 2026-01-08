@@ -130,8 +130,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
           setOtherPartyName(profile?.full_name || null);
         }
 
-        const conversationId = `${jobId}-${uid}-${recipientIdVal}`;
-        const status = await getChatStatus(conversationId, uid, jobId);
+        const status = await getChatStatus(jobId, jobId);
         setChatStatus(status);
       }
 
@@ -187,12 +186,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
 
     const conversationId = `${jobId}-${me}-${recipientId}`;
 
-    const scanResult = await scanMessageBeforeSend({
-      conversation_id: conversationId,
-      sender_id: me,
-      message_text: content,
-      job_id: jobId,
-    });
+    const scanResult = await scanMessageBeforeSend(content, recipientId, jobId);
 
     if (scanResult.action === 'blocked') {
       setModerationWarning(scanResult);
@@ -214,8 +208,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     setSending(true);
     setInput("");
 
-    const finalContent = scanResult.action === 'masked' && scanResult.masked_text
-      ? scanResult.masked_text
+    const finalContent = scanResult.action === 'masked' && scanResult.masked_content
+      ? scanResult.masked_content
       : content;
 
     if (scanResult.action === 'masked') {
@@ -233,12 +227,12 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     };
     setItems((prev) => [...prev, temp]);
 
-    const { error } = await supabase.from("messages").insert({
+    const { data: insertedMessage, error } = await supabase.from("messages").insert({
       job_id: jobId,
       sender_id: me,
       recipient_id: recipientId,
       body: finalContent,
-    });
+    }).select('id').single();
 
     if (error) {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
@@ -247,14 +241,18 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     } else {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
 
-      await logMessageAudit(
-        conversationId,
-        me,
-        content,
-        scanResult,
-        scanResult.action,
-        scanResult.masked_text
-      );
+      if (insertedMessage?.id && scanResult.action !== 'allowed') {
+        await logMessageAudit(
+          insertedMessage.id,
+          jobId,
+          recipientId,
+          content,
+          finalContent,
+          scanResult.action,
+          scanResult,
+          jobId
+        );
+      }
     }
 
     setSending(false);
@@ -425,11 +423,11 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
         />
       )}
 
-      {moderationWarning && moderationWarning.show_warning && (
+      {moderationWarning && moderationWarning.show_soft_warning && (
         <ChatModerationWarning
           action={moderationWarning.action}
           message={moderationWarning.warning_message}
-          detectedPatterns={moderationWarning.detected_patterns}
+          detectedPatterns={moderationWarning.patterns_detected}
           onDismiss={() => setModerationWarning(null)}
           onLearnMore={() => setShowPolicyModal(true)}
         />

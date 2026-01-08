@@ -120,6 +120,7 @@ export default function MechanicJobDetails() {
   const [job, setJob] = useState<Job | null>(null);
   const [quoteRequest, setQuoteRequest] = useState<QuoteRequest | null>(null);
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [mechanicId, setMechanicId] = useState<string | null>(null);
 
   const [contract, setContract] = useState<JobContract | null>(null);
   const [progress, setProgress] = useState<JobProgress | null>(null);
@@ -211,12 +212,14 @@ export default function MechanicJobDetails() {
       setLoading(true);
       const { data: userData, error: authErr } = await supabase.auth.getUser();
       if (authErr) throw authErr;
-      const mechanicId = userData.user?.id;
+      const currentMechanicId = userData.user?.id;
 
-      if (!mechanicId) {
+      if (!currentMechanicId) {
         router.replace("/(auth)/sign-in");
         return;
       }
+
+      setMechanicId(currentMechanicId);
 
       // First try to get job where mechanic is accepted
       let { data, error } = await supabase
@@ -229,7 +232,7 @@ export default function MechanicJobDetails() {
         `
         )
         .eq("id", id)
-        .eq("accepted_mechanic_id", mechanicId)
+        .eq("accepted_mechanic_id", currentMechanicId)
         .single();
 
       // If not found, try to get job without mechanic filter (for notifications about new jobs)
@@ -263,14 +266,14 @@ export default function MechanicJobDetails() {
         .from("quotes")
         .select("id,job_id,status,price_cents,estimated_hours,notes,created_at,updated_at,cancel_reason,cancel_note,cancellation_fee_cents")
         .eq("job_id", id)
-        .eq("mechanic_id", mechanicId)
+        .eq("mechanic_id", currentMechanicId)
         .single();
 
       if (quoteData) {
         setQuoteRequest(quoteData as any as QuoteRequest);
       }
 
-      if (data?.accepted_mechanic_id === mechanicId) {
+      if (data?.accepted_mechanic_id === currentMechanicId) {
         const lifecycleData = await getContractWithDetails(id);
         setContract(lifecycleData.contract);
         setProgress(lifecycleData.progress);
@@ -800,8 +803,29 @@ export default function MechanicJobDetails() {
             onPressViewProfile={() => setSelectedCustomerId(job.customer_id)}
           />
 
-          {/* Cancel Job button for mechanic - only show for active jobs */}
-          {job.status !== "completed" && job.status !== "canceled" && (
+          {/* Submit Quote button - show when no quote exists and job is searching */}
+          {!quoteRequest && job.status === "searching" && (
+            <Pressable
+              onPress={() => {
+                router.push(`/(mechanic)/quote-composer/${id}` as any);
+              }}
+              style={({ pressed }) => [
+                {
+                  marginTop: spacing.md,
+                  paddingVertical: 14,
+                  backgroundColor: colors.accent,
+                  borderRadius: 14,
+                  alignItems: "center",
+                },
+                pressed && { opacity: 0.7 },
+              ]}
+            >
+              <Text style={{ fontWeight: "900", color: "#FFFFFF", fontSize: 15 }}>Submit Quote</Text>
+            </Pressable>
+          )}
+
+          {/* Cancel Job button for mechanic - only show for active jobs where mechanic is accepted */}
+          {job.status !== "completed" && job.status !== "canceled" && job.accepted_mechanic_id === mechanicId && (
             <Pressable
               onPress={() => {
                 Alert.alert(

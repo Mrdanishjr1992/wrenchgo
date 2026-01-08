@@ -101,22 +101,26 @@ switch (scanResult.action) {
     showWarning(scanResult.warning_message);
     await sendMessage(messageText);
     break;
-    
+
   case 'allowed':
     // Send normally
     await sendMessage(messageText);
     break;
 }
 
-// Log the audit trail
-await logMessageAudit(
-  conversationId,
-  userId,
-  messageText,
-  scanResult,
-  scanResult.action,
-  scanResult.masked_text
-);
+// Log the audit trail (only for non-allowed actions)
+if (scanResult.action !== 'allowed') {
+  await logMessageAudit(
+    messageId,           // UUID of the inserted message
+    conversationId,      // Conversation UUID
+    recipientId,         // Recipient UUID
+    messageText,         // Original content
+    displayedContent,    // What was actually shown (masked or original)
+    scanResult.action,   // 'blocked', 'masked', 'warned'
+    scanResult,          // Full risk result object
+    jobId                // Optional job UUID
+  );
+}
 ```
 
 ### Check Chat Status

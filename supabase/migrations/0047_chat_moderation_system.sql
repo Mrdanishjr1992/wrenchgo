@@ -371,12 +371,12 @@ BEGIN
   END IF;
   
   -- Get sender context
-  SELECT 
+  SELECT
     EXTRACT(DAY FROM (now() - p.created_at))::int,
     COALESCE(COUNT(DISTINCT j.id), 0)
   INTO v_sender_age_days, v_completed_jobs
   FROM profiles p
-  LEFT JOIN jobs j ON (j.customer_id = p.id OR j.mechanic_id = p.id) 
+  LEFT JOIN jobs j ON (j.customer_id = p.id OR j.accepted_mechanic_id = p.id)
     AND j.status = 'completed'
   WHERE p.id = p_sender_id
   GROUP BY p.created_at;

@@ -98,20 +98,25 @@ export interface ChatLifecycleConfig {
 }
 
 export interface ScanMessageRequest {
-  conversation_id: string;
-  sender_id: string;
   message_text: string;
+  recipient_id: string;
   job_id?: string;
 }
 
 export interface ScanMessageResponse {
+  allowed: boolean;
   action: MessageAction;
-  risk_score: number;
+  reason?: string;
   message?: string;
-  masked_text?: string;
-  detected_patterns?: DetectedPattern[];
-  show_warning?: boolean;
+  risk_score?: number;
+  patterns_detected?: DetectedPattern[];
+  original_content?: string;
+  masked_content?: string;
   warning_message?: string;
+  show_soft_warning?: boolean;
+  show_rebook_button?: boolean;
+  restriction_expires_at?: string;
+  requires_human_review?: boolean;
 }
 
 export interface ChatStatusResponse {

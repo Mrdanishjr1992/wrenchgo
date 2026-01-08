@@ -71,15 +71,19 @@ export async function submitSupportRequest(
       ...payload.metadata,
     };
 
-    const { data, error } = await supabase.functions.invoke('support-request', {
-      body: {
+    const { data, error } = await supabase
+      .from('support_requests')
+      .insert({
+        user_id: userData.user.id,
         category: payload.category,
         message: payload.message,
-        job_id: payload.job_id,
-        screenshot_url: payload.screenshot_url,
+        job_id: payload.job_id || null,
+        screenshot_url: payload.screenshot_url || null,
         metadata,
-      },
-    });
+        status: 'open',
+      })
+      .select()
+      .single();
 
     if (error) {
       console.error('Support request error:', error);
@@ -89,8 +93,12 @@ export async function submitSupportRequest(
       };
     }
 
-    return data as SupportRequestResponse;
-  } catch (error) {
+    return {
+      success: true,
+      request_id: data.id,
+      message: 'Support request submitted successfully',
+    };
+  } catch (error: any) {
     console.error('Support request exception:', error);
     return {
       success: false,

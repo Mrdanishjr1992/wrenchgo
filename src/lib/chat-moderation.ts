@@ -13,18 +13,20 @@ import type {
 } from '../types/chat-moderation';
 
 export async function scanMessageBeforeSend(
-  request: ScanMessageRequest
+  messageText: string,
+  recipientId: string,
+  jobId?: string
 ): Promise<ScanMessageResponse> {
   const { data, error } = await supabase.rpc('scan_message_before_send', {
-    p_conversation_id: request.conversation_id,
-    p_sender_id: request.sender_id,
-    p_message_text: request.message_text,
-    p_job_id: request.job_id ?? null,
+    p_message_text: messageText,
+    p_recipient_id: recipientId,
+    p_job_id: jobId ?? null,
   });
 
   if (error) {
     console.error('Error scanning message:', error);
     return {
+      allowed: true,
       action: 'allowed',
       risk_score: 0,
       message: 'Message scan failed, allowing by default',
@@ -35,25 +37,32 @@ export async function scanMessageBeforeSend(
 }
 
 export async function logMessageAudit(
+  messageId: string,
   conversationId: string,
-  senderId: string,
-  messageText: string,
-  riskAssessment: any,
-  actionTaken: string,
-  maskedText?: string
-): Promise<void> {
-  const { error } = await supabase.rpc('log_message_audit', {
+  recipientId: string,
+  originalContent: string,
+  displayedContent: string,
+  action: string,
+  riskResult: any,
+  jobId?: string
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc('log_message_audit', {
+    p_message_id: messageId,
     p_conversation_id: conversationId,
-    p_sender_id: senderId,
-    p_message_text: messageText,
-    p_risk_assessment: riskAssessment,
-    p_action_taken: actionTaken,
-    p_masked_text: maskedText ?? null,
+    p_recipient_id: recipientId,
+    p_original_content: originalContent,
+    p_displayed_content: displayedContent,
+    p_action: action,
+    p_risk_result: riskResult,
+    p_job_id: jobId ?? null,
   });
 
   if (error) {
     console.error('Error logging message audit:', error);
+    return null;
   }
+
+  return data as string;
 }
 
 export async function recordViolation(
@@ -89,13 +98,11 @@ export async function getUserViolationHistory(userId: string): Promise<Violation
 
 export async function getChatStatus(
   conversationId: string,
-  userId: string,
-  jobId?: string
+  jobId: string
 ): Promise<ChatStatusResponse> {
   const { data, error } = await supabase.rpc('get_chat_status', {
     p_conversation_id: conversationId,
-    p_user_id: userId,
-    p_job_id: jobId ?? null,
+    p_job_id: jobId,
   });
 
   if (error) {

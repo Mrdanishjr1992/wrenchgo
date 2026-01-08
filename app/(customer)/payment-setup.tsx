@@ -126,6 +126,8 @@ export default function PaymentSetup() {
         }
       );
 
+      await checkPaymentStatus();
+
       Alert.alert("Success", "Payment method added successfully", [
         {
           text: "OK",
@@ -144,7 +146,7 @@ export default function PaymentSetup() {
     } finally {
       setLoading(false);
     }
-  }, [initPaymentSheet, presentPaymentSheet, params.returnTo]);
+  }, [initPaymentSheet, presentPaymentSheet, params.returnTo, checkPaymentStatus]);
 
   const handleLearnMore = () => {
     router.push("/app-info");
