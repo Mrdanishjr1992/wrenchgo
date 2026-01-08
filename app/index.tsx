@@ -38,6 +38,18 @@ export default function Index() {
         }
 
         if (!role) {
+          // Fallback: try direct profile query
+          const { data: profileData } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .single();
+
+          if (profileData?.role) {
+            router.replace(profileData.role === "mechanic" ? "/(mechanic)/(tabs)/leads" : "/(customer)/(tabs)");
+            return;
+          }
+
           router.replace("/(auth)/choose-role");
           return;
         }

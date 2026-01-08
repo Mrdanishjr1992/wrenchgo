@@ -271,7 +271,7 @@ export function JobActions({
       )}
 
       {/* Start Work */}
-      {progress?.customer_confirmed_arrival_at && !progress?.work_started_at && (
+      {phase === 'ready_to_start' && (
         <View style={styles.actionCard}>
           <View style={[styles.actionHeader, { backgroundColor: '#10B98115' }]}>
             <Ionicons name="construct" size={24} color="#10B981" />

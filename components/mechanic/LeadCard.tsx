@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
-import { getDisplayTitle } from '@/src/lib/format-symptom';
+import { getDisplayTitle, formatAddressWithoutStreet } from '@/src/lib/format-symptom';
 import type { MechanicLead } from '@/src/types/mechanic-leads';
 
 interface LeadCardProps {
@@ -132,7 +132,7 @@ export function LeadCard({ lead, onPressView, onPressQuote }: LeadCardProps) {
               <View style={styles.infoRow}>
                 <Ionicons name="location-outline" size={16} color={colors.textMuted} />
                 <Text style={[styles.infoText, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {lead.location_address}
+                  {formatAddressWithoutStreet(lead.location_address)}
                 </Text>
               </View>
             )}

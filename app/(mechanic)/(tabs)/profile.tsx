@@ -200,7 +200,7 @@ export default function MechanicProfile() {
 
       setPayoutAccount(payoutData);
 
-      const { data: reviewsData } = await supabase
+      const { data: reviewsData, count: totalReviewCount } = await supabase
         .from("reviews")
         .select(`
           id,
@@ -208,7 +208,7 @@ export default function MechanicProfile() {
           comment,
           created_at,
           reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
-        `)
+        `, { count: 'exact' })
         .eq("reviewee_id", userId)
         .eq("is_hidden", false)
         .is("deleted_at", null)
@@ -216,7 +216,7 @@ export default function MechanicProfile() {
         .limit(5);
 
       setReviews(reviewsData || []);
-      setReviewCount(reviewsData?.length || 0);
+      setReviewCount(totalReviewCount || 0);
 
       setIsDirty(false);
     } catch (e: any) {

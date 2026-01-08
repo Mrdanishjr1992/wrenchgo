@@ -26,6 +26,11 @@ type Msg = {
   created_at: string;
 };
 
+type MessageGroup = {
+  date: string;
+  messages: Msg[];
+};
+
 type ChatRoomProps = {
   jobId: string;
   role: "customer" | "mechanic";
@@ -77,7 +82,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
 
-  const listRef = useRef<FlatList<Msg>>(null);
+  const listRef = useRef<FlatList<MessageGroup>>(null);
   const canSend = useMemo(
     () => input.trim().length > 0 && !sending && !!me && !!jobId && !!recipientId,
     [input, sending, me, jobId, recipientId]
@@ -265,7 +270,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       </View>
 
       {/* Messages */}
-      <FlatList
+      <FlatList<MessageGroup>
         ref={listRef}
         contentContainerStyle={styles.messageList}
         data={groupedMessages}

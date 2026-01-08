@@ -371,7 +371,7 @@ export async function reportReview(params: {
 
     const { error } = await supabase.from('review_reports').insert({
       review_id: params.review_id,
-      reporter_id: user.id,
+      reported_by: user.id,
       reason: params.reason,
       details: params.details,
     });

@@ -150,7 +150,7 @@ export default function CustomerAccount() {
 
       setJobStats({ active: activeCount || 0, completed: completedCount || 0 });
 
-      const { data: reviewsData } = await supabase
+      const { data: reviewsData, count: totalReviewCount } = await supabase
         .from("reviews")
         .select(`
           id,
@@ -161,16 +161,18 @@ export default function CustomerAccount() {
           comment,
           created_at,
           reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
-        `)
+        `, { count: 'exact' })
         .eq("reviewee_id", data.id)
+        .eq("is_hidden", false)
+        .is("deleted_at", null)
         .order("created_at", { ascending: false })
         .limit(10);
 
       setReviews(reviewsData || []);
 
-      const reviewCount = reviewsData?.length || 0;
-      const avgRating = reviewCount > 0
-        ? reviewsData!.reduce((sum: number, r: any) => sum + (r.overall_rating || 0), 0) / reviewCount
+      const reviewCount = totalReviewCount || 0;
+      const avgRating = reviewCount > 0 && reviewsData && reviewsData.length > 0
+        ? reviewsData.reduce((sum: number, r: any) => sum + (r.overall_rating || 0), 0) / reviewsData.length
         : 0;
       setRatingStats({ avg: avgRating, count: reviewCount });
 

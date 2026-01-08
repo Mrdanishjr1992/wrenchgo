@@ -359,10 +359,11 @@ export interface CancelJobResponse {
 // UI STATE TYPES
 // =====================================================
 
-export type JobPhase = 
+export type JobPhase =
   | 'quote_accepted'      // Contract created, awaiting mechanic departure
   | 'mechanic_en_route'   // Mechanic departed, heading to location
   | 'awaiting_arrival_confirmation'  // Mechanic arrived, awaiting customer confirmation
+  | 'ready_to_start'      // Arrival confirmed, ready to start work
   | 'work_in_progress'    // Work has started
   | 'awaiting_completion' // One party confirmed, waiting for other
   | 'completed'           // Both confirmed, job done
@@ -371,32 +372,36 @@ export type JobPhase =
 
 export function getJobPhase(progress: JobProgress | null, contract: JobContract | null): JobPhase {
   if (!contract) return 'quote_accepted';
-  
+
   if (contract.status === 'cancelled') return 'cancelled';
   if (contract.status === 'disputed') return 'disputed';
   if (contract.status === 'completed') return 'completed';
-  
+
   if (!progress) return 'quote_accepted';
-  
+
   if (progress.finalized_at) return 'completed';
   if (progress.mechanic_completed_at || progress.customer_completed_at) return 'awaiting_completion';
   if (progress.work_started_at) return 'work_in_progress';
+  if (progress.customer_confirmed_arrival_at) return 'ready_to_start';
   if (progress.mechanic_arrived_at && !progress.customer_confirmed_arrival_at) return 'awaiting_arrival_confirmation';
   if (progress.mechanic_departed_at) return 'mechanic_en_route';
-  
+
   return 'quote_accepted';
 }
+
 
 export function getPhaseLabel(phase: JobPhase): string {
   switch (phase) {
     case 'quote_accepted': return 'Quote Accepted';
     case 'mechanic_en_route': return 'Mechanic En Route';
     case 'awaiting_arrival_confirmation': return 'Confirm Arrival';
+    case 'ready_to_start': return 'Ready to Start';
     case 'work_in_progress': return 'Work In Progress';
     case 'awaiting_completion': return 'Awaiting Confirmation';
     case 'completed': return 'Completed';
     case 'cancelled': return 'Cancelled';
     case 'disputed': return 'Under Dispute';
+    default: return 'Unknown';
   }
 }
 

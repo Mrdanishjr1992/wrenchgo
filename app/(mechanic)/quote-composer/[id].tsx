@@ -19,7 +19,7 @@ import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
-import { getDisplayTitle } from "../../../src/lib/format-symptom";
+import { getDisplayTitle, formatAddressWithoutStreet } from "../../../src/lib/format-symptom";
 import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -445,7 +445,7 @@ export default function QuoteComposer() {
                     <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
                       <Ionicons name="location-outline" size={12} color={colors.surface + "AA"} />
                       <Text numberOfLines={1} style={{ ...text.muted, fontSize: 11, color: colors.surface + "AA" }}>
-                        {job.location_address}
+                        {formatAddressWithoutStreet(job.location_address)}
                       </Text>
                     </View>
                   )}

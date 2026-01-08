@@ -313,8 +313,20 @@ BEGIN
     p.id AS customer_id,
     p.full_name AS customer_name,
     p.avatar_url AS customer_photo_url,
-    0::numeric AS customer_rating,
-    0::bigint AS customer_review_count,
+    COALESCE((
+      SELECT AVG(r.overall_rating)::numeric
+      FROM reviews r
+      WHERE r.reviewee_id = p.id
+        AND r.is_hidden = false
+        AND r.deleted_at IS NULL
+    ), 0) AS customer_rating,
+    COALESCE((
+      SELECT COUNT(*)::bigint
+      FROM reviews r
+      WHERE r.reviewee_id = p.id
+        AND r.is_hidden = false
+        AND r.deleted_at IS NULL
+    ), 0) AS customer_review_count,
     j.vehicle_id,
     v.year AS vehicle_year,
     v.make AS vehicle_make,

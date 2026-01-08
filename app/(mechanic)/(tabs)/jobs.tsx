@@ -64,7 +64,7 @@ export default function MechanicJobs() {
   const statusColor = useCallback(
     (status: string) => {
       const s = (status || "").toLowerCase();
-      if (s === "accepted" || s === "in_progress" || s === "work_in_progress") return colors.accent;
+      if (s === "accepted" || s === "scheduled" || s === "in_progress" || s === "work_in_progress") return colors.accent;
       if (s === "completed") return "#10b981";
       if (s === "canceled") return "#EF4444";
       if (s === "pending" || s === "quoted" || s === "searching") return "#f59e0b";
@@ -76,6 +76,7 @@ export default function MechanicJobs() {
   const statusLabel = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "accepted") return "ASSIGNED";
+    if (s === "scheduled") return "ON THE WAY";
     if (s === "in_progress" || s === "work_in_progress") return "IN PROGRESS";
     if (s === "completed") return "COMPLETED";
     return (status || "unknown").toUpperCase();
@@ -84,6 +85,7 @@ export default function MechanicJobs() {
   const statusHint = (status: string) => {
     const s = (status || "").toLowerCase();
     if (s === "accepted") return "Ready to start";
+    if (s === "scheduled") return "En route to location";
     if (s === "in_progress" || s === "work_in_progress") return "Work in progress";
     if (s === "completed") return "Job completed";
     if (s === "canceled") return "Canceled";
@@ -153,7 +155,7 @@ export default function MechanicJobs() {
         .from("jobs")
         .select("id,title,status,preferred_time,created_at,customer_id")
         .eq("accepted_mechanic_id", mId)
-        .in("status", ["accepted", "in_progress", "work_in_progress", "completed"])
+        .in("status", ["accepted", "scheduled", "in_progress", "work_in_progress", "completed"])
         .order("created_at", { ascending: false });
 
       if (error) throw error;
@@ -356,7 +358,7 @@ export default function MechanicJobs() {
   }, [load]);
 
   const active = useMemo(
-    () => jobs.filter((j) => ["accepted", "in_progress", "work_in_progress"].includes((j.status || "").toLowerCase())),
+    () => jobs.filter((j) => ["accepted", "scheduled", "in_progress", "work_in_progress"].includes((j.status || "").toLowerCase())),
     [jobs]
   );
   const completed = useMemo(

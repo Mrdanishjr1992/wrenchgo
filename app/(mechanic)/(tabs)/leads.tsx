@@ -80,10 +80,7 @@ export default function MechanicLeadsPage() {
   }, [filter, sortBy, mechanicId, location?.latitude, location?.longitude]);
 
   const handleViewJob = (jobId: string) => {
-    const lead = leads.find(l => l.job_id === jobId);
-    if (lead) {
-      router.push(`/profile/${lead.customer_id}`);
-    }
+    router.push(`/(mechanic)/job-details/${jobId}` as any);
   };
 
   const handleQuoteJob = (jobId: string) => {

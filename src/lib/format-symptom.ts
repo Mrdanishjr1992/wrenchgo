@@ -4,12 +4,12 @@
  */
 export function formatSymptomKey(key: string): string {
   if (!key) return "Service Request";
-  
+
   // Remove common prefixes
   let cleaned = key
     .replace(/^(elec_|eng_|brake_|trans_|susp_|cool_|fuel_|ac_|start_)/, "")
     .replace(/_/g, " ");
-  
+
   // Title case
   return cleaned
     .split(" ")
@@ -22,6 +22,20 @@ export function formatSymptomKey(key: string): string {
  */
 export function isRawSymptomKey(title: string): boolean {
   return /^[a-z]+_[a-z_]+$/.test(title);
+}
+
+/**
+ * Formats an address to hide the street, showing only city, state, zip
+ * Example: "123 Main St, Austin, TX 78701" -> "Austin, TX 78701"
+ */
+export function formatAddressWithoutStreet(address: string | null | undefined): string {
+  if (!address) return "";
+
+  const parts = address.split(",").map(p => p.trim());
+
+  if (parts.length <= 1) return address;
+
+  return parts.slice(1).join(", ");
 }
 
 /**
