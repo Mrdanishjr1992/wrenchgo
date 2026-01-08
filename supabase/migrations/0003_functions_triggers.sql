@@ -193,9 +193,9 @@ SET search_path = public
 AS $$
 BEGIN
   UPDATE public.mechanic_profiles
-  SET 
+  SET
     rating_avg = (
-      SELECT COALESCE(AVG(rating)::numeric(3,2), 0)
+      SELECT COALESCE(AVG(overall_rating)::numeric(3,2), 0)
       FROM public.reviews
       WHERE reviewee_id = NEW.reviewee_id AND deleted_at IS NULL
     ),

@@ -192,6 +192,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       setItems((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content);
       Alert.alert("Send failed", error.message ?? "Failed to send message.");
+    } else {
+      setItems((prev) => prev.filter((m) => m.id !== tempId));
     }
 
     setSending(false);
