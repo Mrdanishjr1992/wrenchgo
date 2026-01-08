@@ -1,13 +1,8 @@
 import React from 'react';
-import { View, Text, Pressable, LayoutAnimation, Platform, UIManager } from 'react-native';
+import { View, Text, Pressable, LayoutAnimation } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../ui/theme-context';
 import { getCategoryIconComponent } from '../utils/categoryIcons';
-
-// Enable LayoutAnimation on Android
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 
 type CollapsibleCategorySectionProps = {
   category: string;

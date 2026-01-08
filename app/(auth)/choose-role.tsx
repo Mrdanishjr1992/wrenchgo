@@ -183,7 +183,7 @@ export default function ChooseRole() {
         keyboardShouldPersistTaps="handled"
       >
         <LinearGradient
-          colors={["rgba(13,148,136,0.22)", "rgba(13,148,136,0.00)"]}
+          colors={[`${colors.accent}22`, `${colors.accent}00`]}
           style={{
             paddingTop: spacing.xl,
             paddingBottom: spacing.lg,
@@ -223,9 +223,9 @@ export default function ChooseRole() {
             })}
           >
             {saving ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "900", color: "#000", letterSpacing: 0.6 }}>CONTINUE</Text>
+              <Text style={{ fontWeight: "900", color: "#fff", letterSpacing: 0.6 }}>CONTINUE</Text>
             )}
           </Pressable>
 

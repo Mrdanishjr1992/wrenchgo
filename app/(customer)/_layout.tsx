@@ -84,13 +84,7 @@ export default function CustomerLayout() {
           title: "Legal",
         }}
       />
-      <Stack.Screen
-        name="inbox"
-        options={{
-          headerShown: true,
-          title: "Inbox",
-        }}
-      />
+
       <Stack.Screen name="request-service" />
       <Stack.Screen name="garage" />
       <Stack.Screen name="job/[id]" />

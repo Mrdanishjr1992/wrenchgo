@@ -33,12 +33,20 @@ export default function InfoPage() {
     }
   );
 
+  useEffect(() => {
+    if (!playerMuted) return;
+    const sub = playerMuted.addListener("playToEnd", () => {
+      playerMuted.currentTime = playerMuted.duration - 0.05;
+      playerMuted.pause();
+    });
+    return () => sub.remove();
+  }, [playerMuted]);
+
   const playerSound = useVideoPlayer(
     adVideoUrl || "",
     (player) => {
-      player.muted = true;
+      player.muted = false;
       player.loop = false;
-      player.play();
     }
   );
 
@@ -71,20 +79,24 @@ export default function InfoPage() {
             variant="link"
           />
 
-          <VideoView
-            player={playerMuted}
-            style={{ 
-              width: width * 0.9, 
-              height: 120, 
-              borderRadius: radius.lg, 
-              backgroundColor: colors.bg,
-              borderColor: "transparent",
-              marginBottom: spacing.xl,
-              elevation: 5
-            }}
-            nativeControls={false}
-            fullscreenOptions={{ enable: false }}
-          />
+          <View style={{
+            width: width * 0.9,
+            height: 120,
+            borderRadius: radius.lg,
+            overflow: "hidden",
+            marginBottom: spacing.xl,
+            backgroundColor: colors.surface,
+          }}>
+            <VideoView
+              player={playerMuted}
+              style={{ 
+                width: "100%", 
+                height: "100%",
+              }}
+              nativeControls={false}
+              contentFit="cover"
+            />
+          </View>
 
           <View style={{ 
             width: "100%", 
@@ -117,10 +129,10 @@ export default function InfoPage() {
               marginBottom: spacing.md,
               lineHeight: 24
             }]}>
-              I&apos;m a mechanic with over 15 years of hands‑on experience in the industry.
-              I&apos;ve seen both sides of the problem — the struggles mechanics face trying to
+              I'm a mechanic with over 15 years of hands‑on experience in the industry.
+              I've seen both sides of the problem — the struggles mechanics face trying to
               find consistent, honest work, and the frustration customers feel when they
-              don&apos;t know who to trust.
+              don't know who to trust.
             </Text>
 
             <Text style={[text.body, { 
@@ -172,8 +184,8 @@ export default function InfoPage() {
               marginBottom: spacing.md,
               lineHeight: 24
             }]}>
-              WrenchGo is for both sides. It&apos;s for mechanics who want consistent work
-              without compromising their integrity. And it&apos;s for customers who want
+              WrenchGo is for both sides. It's for mechanics who want consistent work
+              without compromising their integrity. And it's for customers who want
               their cars fixed without fear or uncertainty.
             </Text>
 
@@ -198,27 +210,29 @@ export default function InfoPage() {
                 textAlign: "center",
                 lineHeight: 24
               }]}>
-                There&apos;s no risk — only the chance to help build something better for everyone.
+                There's no risk — only the chance to help build something better for everyone.
               </Text>
             </View>
           </View>
 
-          <VideoView
-            player={playerSound}
-            style={{
-              width: width * 0.9,
-              height: 220,
-              borderRadius: radius.lg,
-              marginBottom: spacing.lg,
-              shadowColor: "#000",
-              shadowOffset: { width: 0, height: 4 },
-              shadowOpacity: 0.1,
-              shadowRadius: 8,
-              elevation: 5
-            }}
-            nativeControls={true}
-            fullscreenOptions={{ enable: true }}
-          />
+          <View style={{
+            width: width * 0.9,
+            height: 220,
+            borderRadius: radius.lg,
+            overflow: "hidden",
+            marginBottom: spacing.lg,
+            backgroundColor: colors.surface,
+          }}>
+            <VideoView
+              player={playerSound}
+              style={{
+                width: "100%",
+                height: "100%",
+              }}
+              nativeControls={true}
+              contentFit="contain"
+            />
+          </View>
         </>
       }
     />

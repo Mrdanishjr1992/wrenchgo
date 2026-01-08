@@ -64,7 +64,7 @@ export default function InviteScreen() {
     if (!inviteCode) return;
     try {
       await Share.share({
-        message: `Join WrenchGo and get mobile mechanic service! Use my invite code: ${inviteCode}\n\nDownload the app: https://wrenchgo.app`,
+        message: `Join WrenchGo and get mobile mechanic service! Use my invite code: ${inviteCode}\n\nDownload the app: https://wrenchgoapp.com`,
       });
     } catch (error) {
       console.error("Error sharing:", error);

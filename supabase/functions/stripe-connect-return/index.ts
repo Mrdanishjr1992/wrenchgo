@@ -3,17 +3,17 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 serve(async (req) => {
   console.log("=== Stripe Connect Return ===");
   console.log("URL:", req.url);
-  
+
   const url = new URL(req.url);
   const searchParams = url.searchParams;
-  
+
   console.log("Query params:", Object.fromEntries(searchParams.entries()));
-  
+
   const appScheme = Deno.env.get("APP_SCHEME") || "wrenchgo";
   const deepLink = `${appScheme}://stripe-connect-return?${searchParams.toString()}`;
-  
+
   console.log("Redirecting to app:", deepLink);
-  
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -38,10 +38,13 @@ p{margin:0 0 30px 0;font-size:16px;opacity:0.9}
 <p style="font-size:14px;opacity:0.7">If the app doesn't open automatically:</p>
 <a href="${deepLink}" class="button">Open WrenchGo</a>
 </div>
-<script>window.location.href="${deepLink}";setTimeout(function(){window.location.href="${deepLink}"},1000);</script>
+<script>
+window.location.href="${deepLink}";
+setTimeout(function(){window.location.href="${deepLink}"},1000);
+</script>
 </body>
 </html>`;
-  
+
   return new Response(html, {
     status: 200,
     headers: {

@@ -911,54 +911,7 @@ export default function CustomerAccount() {
               )}
             </View>
 
-            <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="location-outline" size={16} color="#f59e0b" />
-                </View>
-                <Text style={text.section}>Home Location</Text>
-              </View>
-              <Text style={{ ...text.muted, fontSize: 13 }}>
-                Set your home location for faster service requests
-              </Text>
-              {homeLat && homeLng && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
-                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
-                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
-                    {locationDisplay}
-                  </Text>
-                </View>
-              )}
-              <Pressable
-                onPress={fetchCurrentLocation}
-                disabled={loadingLocation}
-                style={({ pressed }) => ({
-                  marginTop: spacing.xs,
-                  paddingVertical: 12,
-                  paddingHorizontal: 16,
-                  borderRadius: radius.md,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  backgroundColor: colors.surface,
-                  opacity: pressed || loadingLocation ? 0.7 : 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: 8,
-                })}
-              >
-                {loadingLocation ? (
-                  <ActivityIndicator color={colors.accent} size="small" />
-                ) : (
-                  <>
-                    <Ionicons name="navigate" size={18} color={colors.accent} />
-                    <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
-                      {homeLat && homeLng ? "Update Location" : "Use Current Location"}
-                    </Text>
-                  </>
-                )}
-              </Pressable>
-            </View>
+
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
@@ -1079,6 +1032,55 @@ export default function CustomerAccount() {
                   fontSize: 15,
                 }}
               />
+            </View>
+
+            <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="location-outline" size={16} color="#f59e0b" />
+                </View>
+                <Text style={{ ...text.muted, fontSize: 13, fontWeight: "600" }}>Home Location</Text>
+              </View>
+              <Text style={{ ...text.muted, fontSize: 13 }}>
+                Set your home location for faster service requests
+              </Text>
+              {homeLat && homeLng && (
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
+                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                  <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
+                    {locationDisplay}
+                  </Text>
+                </View>
+              )}
+              <Pressable
+                onPress={fetchCurrentLocation}
+                disabled={loadingLocation}
+                style={({ pressed }) => ({
+                  marginTop: spacing.xs,
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  borderRadius: radius.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  opacity: pressed || loadingLocation ? 0.7 : 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                })}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator color={colors.accent} size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="navigate" size={18} color={colors.accent} />
+                    <Text style={{ fontWeight: "700", color: colors.textPrimary }}>
+                      {homeLat && homeLng ? "Update Location" : "Use Current Location"}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
             </View>
 
             <Pressable

@@ -11,14 +11,14 @@ import {
   ScrollView,
 } from "react-native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
-import { Image } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 
 export default function ResetPassword() {
   const router = useRouter();
-  const { colors, text, spacing } = useTheme();
+  const { colors, text, spacing, radius } = useTheme();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -28,16 +28,19 @@ export default function ResetPassword() {
 
   const strength = useMemo(() => {
     const p = password;
-    if (!p) return { label: "—", score: 0 };
+    if (!p) return { label: "", score: 0, color: colors.border };
     const hasLen = p.length >= 8;
     const hasUpper = /[A-Z]/.test(p);
     const hasLower = /[a-z]/.test(p);
     const hasNum = /\d/.test(p);
     const hasSym = /[^A-Za-z0-9]/.test(p);
     const score = [hasLen, hasUpper, hasLower, hasNum, hasSym].filter(Boolean).length;
-    const label = score <= 2 ? "Weak" : score === 3 ? "Okay" : score === 4 ? "Good" : "Strong";
-    return { label, score };
-  }, [password]);
+    
+    if (score <= 2) return { label: "Weak", score, color: "#ef4444" };
+    if (score === 3) return { label: "Fair", score, color: "#f59e0b" };
+    if (score === 4) return { label: "Good", score, color: "#10b981" };
+    return { label: "Strong", score, color: colors.accent };
+  }, [password, colors]);
 
   const canSubmit = useMemo(() => {
     const pOk = password.length >= 6;
@@ -78,7 +81,7 @@ export default function ResetPassword() {
         return;
       }
       if (password !== confirm) {
-        Alert.alert("Doesn't match", "Passwords do not match.");
+        Alert.alert("Passwords don't match", "Please make sure both passwords are the same.");
         return;
       }
 
@@ -86,7 +89,7 @@ export default function ResetPassword() {
       const { error } = await supabase.auth.updateUser({ password });
       if (error) throw error;
 
-      Alert.alert("Password updated", "You can now sign in.");
+      Alert.alert("Password updated", "Your password has been changed. You can now sign in with your new password.");
       await supabase.auth.signOut();
       router.replace("/(auth)/sign-in");
     } catch (e: any) {
@@ -101,95 +104,140 @@ export default function ResetPassword() {
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <ScrollView contentContainerStyle={{ padding: spacing.lg, paddingBottom: 32 }}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
         <LinearGradient
-          colors={["rgba(59,130,246,0.16)", "rgba(59,130,246,0.02)", "rgba(0,0,0,0)"]}
+          colors={[`${colors.accent}22`, `${colors.accent}00`]}
           style={{
-            borderRadius: 24,
-            padding: spacing.lg,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.surface,
-            overflow: "hidden",
+            paddingTop: spacing.xl * 2,
+            paddingBottom: spacing.xl,
+            paddingHorizontal: spacing.lg,
+            alignItems: "center",
           }}
         >
-          <View style={{ alignItems: "center" }}>
-            <View style={{ width: 190, height: 190, borderRadius: 20, alignItems: "center", justifyContent: "center" }}>
-              <Image
-                source={require("../../assets/wave.png")}
-                style={{ width: "100%", height: "100%" }}
-                resizeMode="contain"
-              />
-            </View>
-            <Text style={{ ...text.title, marginTop: spacing.sm }}>Set a new password</Text>
-            <Text style={{ ...text.muted, marginTop: 6, textAlign: "center" }}>
-              {hasRecoverySession === false
-                ? "Open the reset link from your email on this device, then come back here."
-                : "Enter your new password below."}
-            </Text>
+          <View
+            style={{
+              width: 120,
+              height: 120,
+              borderRadius: 60,
+              backgroundColor: `${colors.accent}15`,
+              alignItems: "center",
+              justifyContent: "center",
+              marginBottom: spacing.lg,
+            }}
+          >
+            <Ionicons name="lock-closed-outline" size={56} color={colors.accent} />
           </View>
+          <Text style={text.title}>Set new password</Text>
+          <Text style={{ ...text.muted, textAlign: "center", marginTop: spacing.sm }}>
+            {hasRecoverySession === false
+              ? "Open the reset link from your email first"
+              : "Create a strong password for your account"}
+          </Text>
         </LinearGradient>
 
-        <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
+        {hasRecoverySession === false && (
+          <View
+            style={{
+              margin: spacing.lg,
+              padding: spacing.md,
+              borderRadius: radius.md,
+              backgroundColor: "#fef3c7",
+              borderWidth: 1,
+              borderColor: "#f59e0b40",
+            }}
+          >
+            <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+              <Ionicons name="warning-outline" size={20} color="#d97706" />
+              <Text style={{ ...text.body, flex: 1, color: "#92400e" }}>
+                Please open the password reset link from your email on this device, then return here.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        <View style={{ padding: spacing.lg, gap: spacing.md }}>
           <View
             style={{
               backgroundColor: colors.surface,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 16,
+              borderRadius: radius.lg,
               padding: spacing.md,
-              gap: 10,
+              gap: spacing.sm,
             }}
           >
-            <Text style={text.section}>New password</Text>
+            <Text style={{ ...text.muted, fontWeight: "600" }}>New password</Text>
             <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
               <TextInput
-                placeholder="New password"
+                placeholder="Enter new password"
                 placeholderTextColor={colors.textMuted}
                 secureTextEntry={!showPass}
                 value={password}
                 onChangeText={setPassword}
+                editable={hasRecoverySession !== false}
                 style={{
                   flex: 1,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 14,
+                  borderRadius: radius.md,
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                   color: colors.textPrimary,
                   backgroundColor: colors.bg,
+                  fontSize: 16,
                 }}
               />
               <Pressable
                 onPress={() => setShowPass((v) => !v)}
                 hitSlop={10}
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  borderRadius: 14,
+                  padding: 12,
+                  borderRadius: radius.md,
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.bg,
                 }}
               >
-                <Text style={{ fontWeight: "900", color: colors.textPrimary }}>{showPass ? "HIDE" : "SHOW"}</Text>
+                <Ionicons
+                  name={showPass ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color={colors.textMuted}
+                />
               </Pressable>
             </View>
 
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View style={{ flex: 1, height: 10, borderRadius: 999, overflow: "hidden", backgroundColor: colors.bg }}>
-                <View
-                  style={{
-                    width: `${(strength.score / 5) * 100}%`,
-                    height: "100%",
-                    backgroundColor: colors.accent,
-                  }}
-                />
+            {password.length > 0 && (
+              <View style={{ gap: 6 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View
+                    style={{
+                      flex: 1,
+                      height: 6,
+                      borderRadius: 3,
+                      overflow: "hidden",
+                      backgroundColor: colors.border,
+                    }}
+                  >
+                    <View
+                      style={{
+                        width: `${(strength.score / 5) * 100}%`,
+                        height: "100%",
+                        backgroundColor: strength.color,
+                      }}
+                    />
+                  </View>
+                  <Text style={{ ...text.muted, fontWeight: "700", color: strength.color, minWidth: 50 }}>
+                    {strength.label}
+                  </Text>
+                </View>
+                <Text style={{ ...text.muted, fontSize: 12 }}>
+                  Use 8+ characters with uppercase, numbers, and symbols
+                </Text>
               </View>
-              <Text style={{ ...text.muted, fontWeight: "800" }}>{strength.label}</Text>
-            </View>
-
-            <Text style={text.muted}>Tip: 8+ chars with a number and symbol is best.</Text>
+            )}
           </View>
 
           <View
@@ -197,12 +245,12 @@ export default function ResetPassword() {
               backgroundColor: colors.surface,
               borderWidth: 1,
               borderColor: colors.border,
-              borderRadius: 16,
+              borderRadius: radius.lg,
               padding: spacing.md,
-              gap: 10,
+              gap: spacing.sm,
             }}
           >
-            <Text style={text.section}>Confirm password</Text>
+            <Text style={{ ...text.muted, fontWeight: "600" }}>Confirm password</Text>
             <View style={{ flexDirection: "row", gap: 10, alignItems: "center" }}>
               <TextInput
                 placeholder="Confirm new password"
@@ -210,63 +258,87 @@ export default function ResetPassword() {
                 secureTextEntry={!showConfirm}
                 value={confirm}
                 onChangeText={setConfirm}
+                editable={hasRecoverySession !== false}
                 style={{
                   flex: 1,
                   borderWidth: 1,
                   borderColor: colors.border,
-                  borderRadius: 14,
+                  borderRadius: radius.md,
                   paddingHorizontal: 14,
                   paddingVertical: 12,
                   color: colors.textPrimary,
                   backgroundColor: colors.bg,
+                  fontSize: 16,
                 }}
               />
               <Pressable
                 onPress={() => setShowConfirm((v) => !v)}
                 hitSlop={10}
                 style={{
-                  paddingHorizontal: 12,
-                  paddingVertical: 12,
-                  borderRadius: 14,
+                  padding: 12,
+                  borderRadius: radius.md,
                   borderWidth: 1,
                   borderColor: colors.border,
                   backgroundColor: colors.bg,
                 }}
               >
-                <Text style={{ fontWeight: "900", color: colors.textPrimary }}>{showConfirm ? "HIDE" : "SHOW"}</Text>
+                <Ionicons
+                  name={showConfirm ? "eye-off-outline" : "eye-outline"}
+                  size={20}
+                  color={colors.textMuted}
+                />
               </Pressable>
             </View>
 
-            {confirm.length > 0 ? (
-              <Text style={{ ...text.muted, fontWeight: "800", color: password === confirm ? colors.success : "#ef4444" }}>
-                {password === confirm ? "Passwords match ✓" : "Passwords don't match"}
-              </Text>
-            ) : null}
+            {confirm.length > 0 && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Ionicons
+                  name={password === confirm ? "checkmark-circle" : "close-circle"}
+                  size={16}
+                  color={password === confirm ? "#10b981" : "#ef4444"}
+                />
+                <Text
+                  style={{
+                    ...text.muted,
+                    fontWeight: "600",
+                    color: password === confirm ? "#10b981" : "#ef4444",
+                  }}
+                >
+                  {password === confirm ? "Passwords match" : "Passwords don't match"}
+                </Text>
+              </View>
+            )}
           </View>
 
           <Pressable
             onPress={updatePassword}
             disabled={!canSubmit}
-            style={{
+            style={({ pressed }) => ({
               backgroundColor: colors.accent,
               paddingVertical: 16,
-              borderRadius: 18,
+              borderRadius: radius.md,
               alignItems: "center",
-              opacity: canSubmit ? 1 : 0.6,
-            }}
+              opacity: canSubmit ? (pressed ? 0.8 : 1) : 0.5,
+              marginTop: spacing.sm,
+            })}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "900", color: "#fff" }}>
-                {hasRecoverySession === false ? "OPEN RESET LINK FIRST" : "UPDATE PASSWORD"}
+              <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>
+                {hasRecoverySession === false ? "Open reset link first" : "Update password"}
               </Text>
             )}
           </Pressable>
 
-          <Pressable onPress={() => router.replace("/(auth)/sign-in")} hitSlop={10} style={{ alignSelf: "center" }}>
-            <Text style={{ ...text.muted }}>
-              Back to <Text style={{ color: colors.accent, fontWeight: "900" }}>Sign in</Text>
+          <Pressable
+            onPress={() => router.replace("/(auth)/sign-in")}
+            hitSlop={10}
+            style={{ marginTop: spacing.md }}
+          >
+            <Text style={{ textAlign: "center", ...text.muted }}>
+              <Ionicons name="arrow-back" size={14} color={colors.textMuted} /> Back to{" "}
+              <Text style={{ color: colors.accent, fontWeight: "700" }}>Sign in</Text>
             </Text>
           </Pressable>
         </View>

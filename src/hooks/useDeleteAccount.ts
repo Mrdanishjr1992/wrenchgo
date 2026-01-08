@@ -72,20 +72,15 @@ export const useDeleteAccount = () => {
         throw new Error(data?.error || "Failed to delete account");
       }
 
+      // Clear saved credentials
+      const AsyncStorage = (await import("@react-native-async-storage/async-storage")).default;
+      await AsyncStorage.removeItem("@saved_email");
+
       // Sign out locally
       await supabase.auth.signOut();
 
-      // Navigate to index (landing/login page)
-      router.replace("/");
-
-      // Show success message after navigation
-      setTimeout(() => {
-        Alert.alert(
-          "Account Deleted",
-          "Your account has been successfully deleted.",
-          [{ text: "OK" }]
-        );
-      }, 500);
+      // Navigate to account deleted confirmation screen
+      router.replace("/account-deleted");
 
       return { success: true };
     } catch (error: any) {

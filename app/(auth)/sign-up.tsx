@@ -123,7 +123,7 @@ export default function SignUp() {
         contentContainerStyle={{ flexGrow: 1, backgroundColor: colors.bg }}
       >
         <LinearGradient
-          colors={["rgba(13,148,136,0.22)", "rgba(13,148,136,0.00)"]}
+          colors={[`${colors.accent}22`, `${colors.accent}00`]}
           style={{
             paddingTop: spacing.xl,
             paddingBottom: spacing.lg,

@@ -166,6 +166,9 @@ export default function RequestService() {
   const [savedAddress, setSavedAddress] = useState<string | null>(null);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
+  const [canMove, setCanMove] = useState<string | null>(null);
+  const [vehicleLocation, setVehicleLocation] = useState<string | null>(null);
+  const [timePreference, setTimePreference] = useState<string | null>(null);
 
   // Typography helpers
   const text = useMemo(
@@ -404,11 +407,14 @@ export default function RequestService() {
       } : undefined,
       answers: Object.keys(answers).length > 0 ? answers : undefined,
       context: {
+        can_move: canMove || "Not sure",
+        location: vehicleLocation || "Not specified",
+        time_preference: timePreference || "Flexible",
         additional_details: additionalDetails.trim() || undefined,
       },
     };
     return JSON.stringify(intake);
-  }, [answers, additionalDetails, symptomKey, symptomLabel, vehicleId, params.vehicleYear, params.vehicleMake, params.vehicleModel, params.vehicleNickname]);
+  }, [answers, additionalDetails, symptomKey, symptomLabel, vehicleId, params.vehicleYear, params.vehicleMake, params.vehicleModel, params.vehicleNickname, canMove, vehicleLocation, timePreference]);
 
   const getHumanReadableSummary = useCallback((): string => {
     const answerTexts = Object.entries(answers)
@@ -492,6 +498,7 @@ export default function RequestService() {
         p_location_lat: locationLat,
         p_location_lng: locationLng,
         p_vehicle_id: vehicleId,
+        p_preferred_time: timePreference || null,
       });
 
       if (error) throw error;
@@ -704,6 +711,85 @@ export default function RequestService() {
       >
         <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Summary</Text>
         <Text style={{ ...text.muted, lineHeight: 18 }}>{getHumanReadableSummary()}</Text>
+      </View>
+
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Can the vehicle move?</Text>
+      <View style={{ flexDirection: "row", gap: spacing.sm, marginBottom: spacing.lg }}>
+        {["Yes", "No", "Not sure"].map((option) => (
+          <TouchableOpacity
+            key={option}
+            onPress={() => setCanMove(option)}
+            style={{
+              flex: 1,
+              backgroundColor: canMove === option ? colors.accent : colors.surface,
+              padding: spacing.md,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: canMove === option ? colors.accent : colors.border,
+              alignItems: "center",
+            }}
+          >
+            <Text style={{
+              ...text.body,
+              fontWeight: "700",
+              color: canMove === option ? "#fff" : colors.textPrimary
+            }}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Where is the vehicle?</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg }}>
+        {["Driveway", "Street", "Parking lot", "Garage", "Other"].map((option) => (
+          <TouchableOpacity
+            key={option}
+            onPress={() => setVehicleLocation(option)}
+            style={{
+              backgroundColor: vehicleLocation === option ? colors.accent : colors.surface,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: vehicleLocation === option ? colors.accent : colors.border,
+            }}
+          >
+            <Text style={{
+              ...text.body,
+              fontWeight: "700",
+              color: vehicleLocation === option ? "#fff" : colors.textPrimary
+            }}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>When do you need service?</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.lg }}>
+        {["ASAP", "Today", "This week", "Flexible"].map((option) => (
+          <TouchableOpacity
+            key={option}
+            onPress={() => setTimePreference(option)}
+            style={{
+              backgroundColor: timePreference === option ? colors.accent : colors.surface,
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              borderRadius: 12,
+              borderWidth: 1,
+              borderColor: timePreference === option ? colors.accent : colors.border,
+            }}
+          >
+            <Text style={{
+              ...text.body,
+              fontWeight: "700",
+              color: timePreference === option ? "#fff" : colors.textPrimary
+            }}>
+              {option}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Your Location</Text>

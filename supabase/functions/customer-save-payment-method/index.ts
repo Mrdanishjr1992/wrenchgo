@@ -89,6 +89,15 @@ serve(async (req) => {
 
     if (insertError) throw new Error("Failed to save payment method");
 
+    await supabase
+      .from("profiles")
+      .update({
+        payment_method_status: "active",
+        stripe_customer_id: customerId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
     return new Response(JSON.stringify({ success: true }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
     });

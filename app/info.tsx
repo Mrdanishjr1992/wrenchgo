@@ -108,7 +108,7 @@ export default function InfoPage() {
           lineHeight: 24
         }]}>
           I'm a mechanic with over 15 years of hands-on experience in the industry.
-          I've seen both sides of the problem — the struggles mechanics face trying to
+          I've seen both sides of the problem the struggles mechanics face trying to
           find consistent, honest work, and the frustration customers feel when they
           don't know who to trust.
         </Text>
@@ -153,7 +153,7 @@ export default function InfoPage() {
           marginBottom: spacing.md,
           lineHeight: 24
         }]}>
-          This platform exists to rebuild trust — by creating a space where customers
+          This platform exists to rebuild trust by creating a space where customers
           can confidently connect with mechanics, and mechanics can find steady,
           honest work without pressure or shortcuts.
         </Text>
@@ -188,7 +188,7 @@ export default function InfoPage() {
             textAlign: "center",
             lineHeight: 24
           }]}>
-            There's no risk — only the chance to help build something better for everyone.
+            There's no risk only the chance to help build something better for everyone.
           </Text>
         </View>
       </View>

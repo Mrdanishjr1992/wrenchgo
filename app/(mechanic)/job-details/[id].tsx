@@ -25,17 +25,16 @@ import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoic
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
-
 type JobIntake = {
   symptom?: { key: string; label: string };
   answers?: Record<string, string>;
   context?: {
     can_move?: string;
     location_type?: string;
+    location?: string;
+    time_preference?: string;
     mileage?: string | null;
+    additional_details?: string;
   };
   vehicle?: {
     id: string;
@@ -518,7 +517,8 @@ export default function MechanicJobDetails() {
             const context = intake.context || {};
 
             const canMoveText = normalizeCanMove(context.can_move);
-            const locationText = normalizeLocation(context.location_type);
+            const locationText = normalizeLocation(context.location || context.location_type);
+            const timeText = context.time_preference || job.preferred_time || "Not specified";
 
             return (
               <View style={{ gap: spacing.md }}>
@@ -619,8 +619,13 @@ export default function MechanicJobDetails() {
                     </View>
 
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Location</Text>
+                      <Text style={{ ...text.muted, fontSize: 13 }}>Vehicle location</Text>
                       <Text style={{ ...text.body, fontWeight: "900" }}>{locationText}</Text>
+                    </View>
+
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={{ ...text.muted, fontSize: 13 }}>Time preference</Text>
+                      <Text style={{ ...text.body, fontWeight: "900" }}>{timeText}</Text>
                     </View>
 
                     {context.mileage ? (

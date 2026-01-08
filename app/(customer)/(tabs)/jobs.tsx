@@ -377,7 +377,7 @@ export default function CustomerJobs() {
         {item.vehicle && (
           <View style={{ backgroundColor: `${colors.textMuted}10`, borderWidth: 1, borderColor: `${colors.textMuted}30`, borderRadius: 8, padding: 10 }}>
             <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>
-              🚗 {item.vehicle.year} {item.vehicle.make} {item.vehicle.model}
+              🚗 {Array.isArray(item.vehicle) ? (item.vehicle[0] ? `${item.vehicle[0].year} ${item.vehicle[0].make} ${item.vehicle[0].model}` : '') : `${item.vehicle.year} ${item.vehicle.make} ${item.vehicle.model}`}
             </Text>
           </View>
         )}
