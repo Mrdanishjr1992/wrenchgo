@@ -172,8 +172,8 @@ export default function MechanicLeadsPage() {
     if (profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea) {
       return (
         <View style={styles.emptyContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
-            <Ionicons name="map-outline" size={48} color="#D97706" />
+          <View style={[styles.iconCircle, { backgroundColor: colors.warningBg || colors.surface2 }]}>
+            <Ionicons name="map-outline" size={48} color={colors.warning || colors.textMuted} />
           </View>
           <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Service coming soon</Text>
           <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
@@ -219,7 +219,7 @@ export default function MechanicLeadsPage() {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerTitleRow}>
-            <Ionicons name="briefcase" size={24} color="#fff" />
+            <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
             <Text style={styles.headerTitle}>Leads</Text>
           </View>
         </View>
@@ -297,29 +297,29 @@ export default function MechanicLeadsPage() {
 
       {showLocationBanner && (
         <TouchableOpacity
-          style={[styles.setLocationBanner, { backgroundColor: '#FEF3C7' }]}
+          style={[styles.setLocationBanner, { backgroundColor: colors.warningBg || colors.surface2 }]}
           onPress={handleSetHomeLocation}
         >
-          <Ionicons name="location-outline" size={20} color="#D97706" />
-          <Text style={[styles.setLocationText, { color: '#D97706' }]}>
+          <Ionicons name="location-outline" size={20} color={colors.warning || colors.textMuted} />
+          <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
             Tap to set your service location
           </Text>
-          <Ionicons name="chevron-forward" size={20} color="#D97706" />
+          <Ionicons name="chevron-forward" size={20} color={colors.warning || colors.textMuted} />
         </TouchableOpacity>
       )}
 
       {showServiceAreaBanner && (
-        <View style={[styles.setLocationBanner, { backgroundColor: '#DBEAFE' }]}>
-          <Ionicons name="information-circle-outline" size={20} color="#2563EB" />
-          <Text style={[styles.setLocationText, { color: '#2563EB' }]}>
+        <View style={[styles.setLocationBanner, { backgroundColor: colors.infoBg || colors.surface2 }]}>
+          <Ionicons name="information-circle-outline" size={20} color={colors.info || colors.textMuted} />
+          <Text style={[styles.setLocationText, { color: colors.info || colors.textPrimary }]}>
             WrenchGo service is expanding to your area soon
           </Text>
         </View>
       )}
 
       {error && (
-        <View style={[styles.errorBanner, { backgroundColor: '#FEE2E2' }]}>
-          <Text style={styles.errorText}>{error}</Text>
+        <View style={[styles.errorBanner, { backgroundColor: colors.errorBg || colors.surface2 }]}>
+          <Text style={[styles.errorText, { color: colors.error || colors.textPrimary }]}>{error}</Text>
         </View>
       )}
 
@@ -367,7 +367,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: 16,
     paddingBottom: 12,
-    shadowColor: '#000',
+    shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -428,7 +428,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   errorText: {
-    color: '#DC2626',
     fontSize: 14,
   },
   content: {

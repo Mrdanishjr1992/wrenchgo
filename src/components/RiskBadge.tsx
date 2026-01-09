@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text } from 'react-native';
+import { useTheme } from '../ui/theme-context';
 
 type RiskLevel = 'high' | 'medium' | 'low';
 
@@ -8,25 +9,27 @@ type RiskBadgeProps = {
   size?: 'small' | 'medium';
 };
 
-const riskConfig: Record<RiskLevel, { color: string; label: string; bgColor: string }> = {
-  high: {
-    color: '#ef4444',
-    bgColor: '#ef444415',
-    label: 'High Risk',
-  },
-  medium: {
-    color: '#f59e0b',
-    bgColor: '#f59e0b15',
-    label: 'Medium Risk',
-  },
-  low: {
-    color: '#10b981',
-    bgColor: '#10b98115',
-    label: 'Low Risk',
-  },
-};
-
 export function RiskBadge({ riskLevel, size = 'small' }: RiskBadgeProps) {
+  const { colors } = useTheme();
+  
+  const riskConfig: Record<RiskLevel, { color: string; label: string; bgColor: string }> = {
+    high: {
+      color: colors.error,
+      bgColor: colors.errorBg,
+      label: 'High Risk',
+    },
+    medium: {
+      color: colors.warning,
+      bgColor: colors.warningBg,
+      label: 'Medium Risk',
+    },
+    low: {
+      color: colors.success,
+      bgColor: colors.successBg,
+      label: 'Low Risk',
+    },
+  };
+
   const normalizedLevel = riskLevel.toLowerCase() as RiskLevel;
   const config = riskConfig[normalizedLevel] || riskConfig.low;
 

@@ -1,109 +1,111 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
+import { corsHeadersFor, json, requireEnv } from "../_shared/helpers.ts";
 
-const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
+  apiVersion: "2023-10-16",
+  httpClient: Stripe.createFetchHttpClient(),
+});
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-async function stripeGet(endpoint: string) {
-  const res = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
-    method: "GET",
-    headers: { "Authorization": `Bearer ${STRIPE_SECRET_KEY}` },
-  });
-  return res.json();
-}
+const supabaseUrl = requireEnv("SUPABASE_URL");
+const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const headers = corsHeadersFor(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) throw new Error("Missing authorization header");
+    if (!authHeader) return json(401, { error: "Missing authorization header" }, headers);
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
-    if (userError || !user) throw new Error("Unauthorized");
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
 
-    const { setupIntentId } = await req.json();
-    if (!setupIntentId) throw new Error("Missing required field: setupIntentId");
+    const body = await req.json().catch(() => null);
+    const setupIntentId = body?.setupIntentId;
+    if (!setupIntentId) return json(400, { error: "Missing required field: setupIntentId" }, headers);
 
-    let { data: profile } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id")
+      .select("id, stripe_customer_id")
       .eq("id", user.id)
       .single();
 
-    if (!profile) {
-      const { data: newProfile, error: createError } = await supabase
-        .from("profiles")
-        .upsert({ id: user.id, email: user.email, full_name: user.user_metadata?.full_name || "", role: "customer" })
-        .select("id")
-        .single();
-      if (createError || !newProfile) throw new Error("Profile not found");
-      profile = newProfile;
+    if (profileError || !profile) return json(404, { error: "Profile not found" }, headers);
+    if (!profile.stripe_customer_id) return json(400, { error: "No Stripe customer found. Add a card first." }, headers);
+
+    // Verify SI belongs to this user + customer
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+
+    if (setupIntent.status !== "succeeded") {
+      return json(400, { error: "SetupIntent not succeeded", status: setupIntent.status }, headers);
     }
 
-    const setupIntent = await stripeGet(`setup_intents/${setupIntentId}`);
-    if (!setupIntent.payment_method) throw new Error("No payment method attached to setup intent");
+    const siCustomer = setupIntent.customer as string | null;
+    if (!siCustomer || siCustomer !== profile.stripe_customer_id) {
+      return json(403, { error: "SetupIntent customer mismatch" }, headers);
+    }
 
-    const paymentMethodId = setupIntent.payment_method;
-    const customerId = setupIntent.customer;
+    const siUserId = (setupIntent.metadata?.user_id || "").toString();
+    if (siUserId && siUserId !== user.id) {
+      return json(403, { error: "SetupIntent metadata mismatch" }, headers);
+    }
 
-    const paymentMethod = await stripeGet(`payment_methods/${paymentMethodId}`);
-    if (!paymentMethod.card) throw new Error("Invalid payment method");
+    const paymentMethodId = setupIntent.payment_method as string | null;
+    if (!paymentMethodId) return json(400, { error: "No payment method attached to setup intent" }, headers);
 
-    const { data: existingMethod } = await supabase
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.type !== "card" || !pm.card) return json(400, { error: "Invalid payment method type" }, headers);
+
+    // If already saved, return success
+    const { data: existing } = await supabase
       .from("customer_payment_methods")
-      .select("id")
+      .select("id, deleted_at")
       .eq("customer_id", profile.id)
       .eq("stripe_payment_method_id", paymentMethodId)
       .maybeSingle();
 
-    if (existingMethod) {
-      return new Response(JSON.stringify({ success: true, message: "Payment method already saved" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
-      });
+    if (existing && !existing.deleted_at) {
+      await supabase.from("profiles").update({ payment_method_status: "active" }).eq("id", profile.id);
+      return json(200, { success: true, message: "Payment method already saved" }, headers);
     }
 
-    await supabase.from("customer_payment_methods").update({ is_default: false }).eq("customer_id", profile.id);
+    // Clear defaults
+    await supabase
+      .from("customer_payment_methods")
+      .update({ is_default: false, updated_at: new Date().toISOString() })
+      .eq("customer_id", profile.id)
+      .is("deleted_at", null);
 
+    // Insert new default PM row
     const { error: insertError } = await supabase.from("customer_payment_methods").insert({
       customer_id: profile.id,
-      stripe_customer_id: customerId,
+      stripe_customer_id: profile.stripe_customer_id,
       stripe_payment_method_id: paymentMethodId,
-      card_brand: paymentMethod.card.brand,
-      card_last4: paymentMethod.card.last4,
-      card_exp_month: paymentMethod.card.exp_month,
-      card_exp_year: paymentMethod.card.exp_year,
+      card_brand: pm.card.brand,
+      card_last4: pm.card.last4,
+      card_exp_month: pm.card.exp_month,
+      card_exp_year: pm.card.exp_year,
       is_default: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
-    if (insertError) throw new Error("Failed to save payment method");
+    if (insertError) return json(500, { error: "Failed to save payment method", details: insertError.message }, headers);
 
-    await supabase
-      .from("profiles")
-      .update({
-        payment_method_status: "active",
-        stripe_customer_id: customerId,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", user.id);
+    await supabase.from("profiles").update({
+      payment_method_status: "active",
+      updated_at: new Date().toISOString(),
+    }).eq("id", profile.id);
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200,
-    });
-  } catch (error) {
-    return new Response(JSON.stringify({ error: error.message || "Internal server error" }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400,
-    });
+    return json(200, { success: true }, headers);
+  } catch (e: any) {
+    console.error("[SAVE_PM] Error:", e?.message || e);
+    return json(500, { error: e?.message || "Internal server error" }, headers);
   }
 });

@@ -313,9 +313,9 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
 
         <Pressable
           onPress={isRecording ? stopRecording : startRecording}
-          style={[card, { padding: spacing.lg, backgroundColor: isRecording ? "#ef4444" : colors.accent, alignItems: "center" }]}
+          style={[card, { padding: spacing.lg, backgroundColor: isRecording ? colors.error : colors.accent, alignItems: "center" }]}
         >
-          <Text style={{ fontSize: 15, fontWeight: "900", color: "#fff" }}>
+          <Text style={{ fontSize: 15, fontWeight: "900", color: colors.white }}>
             {isRecording ? "⏹️ Stop Recording" : "🎤 Start Recording"}
           </Text>
         </Pressable>
@@ -325,7 +325,7 @@ export default function QuestionRenderer({ question, value, onAnswer }: Question
           disabled={!uri || isRecording}
           style={[card, { padding: spacing.md, backgroundColor: uri && !isRecording ? colors.accent : colors.border, alignItems: "center" }]}
         >
-          <Text style={{ fontSize: 15, fontWeight: "900", color: uri && !isRecording ? "#fff" : colors.textMuted }}>Continue</Text>
+          <Text style={{ fontSize: 15, fontWeight: "900", color: uri && !isRecording ? colors.white : colors.textMuted }}>Continue</Text>
         </Pressable>
       </View>
     );

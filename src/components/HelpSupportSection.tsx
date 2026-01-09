@@ -163,8 +163,8 @@ export function HelpSupportSection({ variant = 'card' }: HelpSupportSectionProps
           </View>
           <ScrollView style={styles.modalContent} contentContainerStyle={styles.modalContentContainer}>
             <View style={[styles.slaItem, { backgroundColor: colors.surface, borderRadius: radius.md }]}>
-              <View style={[styles.slaIcon, { backgroundColor: '#ef4444' + '20' }]}>
-                <Ionicons name="flash" size={24} color="#ef4444" />
+              <View style={[styles.slaIcon, { backgroundColor: colors.errorBg }]}>
+                <Ionicons name="flash" size={24} color={colors.error} />
               </View>
               <View style={styles.slaText}>
                 <Text style={[styles.slaTitle, { color: colors.textPrimary }]}>
@@ -178,8 +178,8 @@ export function HelpSupportSection({ variant = 'card' }: HelpSupportSectionProps
             </View>
 
             <View style={[styles.slaItem, { backgroundColor: colors.surface, borderRadius: radius.md }]}>
-              <View style={[styles.slaIcon, { backgroundColor: '#f59e0b' + '20' }]}>
-                <Ionicons name="construct" size={24} color="#f59e0b" />
+              <View style={[styles.slaIcon, { backgroundColor: colors.warningBg }]}>
+                <Ionicons name="construct" size={24} color={colors.warning} />
               </View>
               <View style={styles.slaText}>
                 <Text style={[styles.slaTitle, { color: colors.textPrimary }]}>
@@ -193,8 +193,8 @@ export function HelpSupportSection({ variant = 'card' }: HelpSupportSectionProps
             </View>
 
             <View style={[styles.slaItem, { backgroundColor: colors.surface, borderRadius: radius.md }]}>
-              <View style={[styles.slaIcon, { backgroundColor: '#3b82f6' + '20' }]}>
-                <Ionicons name="bug" size={24} color="#3b82f6" />
+              <View style={[styles.slaIcon, { backgroundColor: colors.infoBg }]}>
+                <Ionicons name="bug" size={24} color={colors.info} />
               </View>
               <View style={styles.slaText}>
                 <Text style={[styles.slaTitle, { color: colors.textPrimary }]}>

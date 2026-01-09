@@ -31,8 +31,8 @@ export function ChatStatusBanner({
     if (restrictionType === 'suspended') {
       return {
         icon: 'ban' as const,
-        color: '#ef4444',
-        bgColor: '#fef2f2',
+        color: colors.error,
+        bgColor: colors.errorBg,
         title: 'Chat Suspended',
         defaultMessage: 'Your chat access has been temporarily suspended due to policy violations.',
       };
@@ -41,8 +41,8 @@ export function ChatStatusBanner({
     if (restrictionType === 'templated_only') {
       return {
         icon: 'list' as const,
-        color: '#f59e0b',
-        bgColor: '#fffbeb',
+        color: colors.warning,
+        bgColor: colors.warningBg,
         title: 'Limited Chat Access',
         defaultMessage: 'You can only send pre-approved messages. Use the quick reply buttons below.',
       };
@@ -52,24 +52,24 @@ export function ChatStatusBanner({
       case 'read_only':
         return {
           icon: 'eye' as const,
-          color: '#6b7280',
-          bgColor: '#f9fafb',
+          color: colors.textMuted,
+          bgColor: colors.surface2,
           title: 'Read-Only Mode',
           defaultMessage: 'This conversation is now read-only. You can view messages but cannot send new ones.',
         };
       case 'closed':
         return {
           icon: 'lock-closed' as const,
-          color: '#6b7280',
-          bgColor: '#f9fafb',
+          color: colors.textMuted,
+          bgColor: colors.surface2,
           title: 'Chat Closed',
           defaultMessage: 'This conversation has been closed. Start a new job to chat again.',
         };
       case 'restricted':
         return {
           icon: 'warning' as const,
-          color: '#f59e0b',
-          bgColor: '#fffbeb',
+          color: colors.warning,
+          bgColor: colors.warningBg,
           title: 'Chat Restricted',
           defaultMessage: 'Chat access is currently restricted for this conversation.',
         };

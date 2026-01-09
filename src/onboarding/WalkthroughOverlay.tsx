@@ -180,9 +180,9 @@ export function WalkthroughOverlay() {
     return null;
   }
 
-  const tooltipBg = isDark ? '#1F2937' : '#FFFFFF';
-  const tooltipTextColor = isDark ? '#F9FAFB' : '#111827';
-  const tooltipBodyColor = isDark ? '#D1D5DB' : '#4B5563';
+  const tooltipBg = isDark ? colors.surface2 : colors.surface;
+  const tooltipTextColor = colors.textPrimary;
+  const tooltipBodyColor = colors.textSecondary;
 
   const isFirstStep = currentStepIndex === 0;
   const isLastStep = currentStepIndex === totalSteps - 1;
@@ -195,15 +195,15 @@ export function WalkthroughOverlay() {
       {/* Dim overlay with spotlight cutout */}
       <View style={styles.dimOverlay} pointerEvents="box-none">
         {/* We use a semi-transparent background and position a "hole" */}
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.55)' }]} />
-        
+        <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
+
         {/* Spotlight highlight */}
         {targetMeasurement && (
           <Animated.View
             style={[styles.spotlight, spotlightAnimatedStyle]}
             pointerEvents="none"
           >
-            <View style={styles.spotlightInner} />
+            <View style={[styles.spotlightInner, { borderColor: colors.highlight, shadowColor: colors.highlight }]} />
           </Animated.View>
         )}
       </View>
@@ -218,7 +218,7 @@ export function WalkthroughOverlay() {
             left: (SCREEN_WIDTH - TOOLTIP_WIDTH) / 2,
             width: TOOLTIP_WIDTH,
             backgroundColor: tooltipBg,
-            shadowColor: '#000',
+            shadowColor: colors.black,
           },
         ]}
         onLayout={(e) => setTooltipHeight(e.nativeEvent.layout.height)}
@@ -309,9 +309,9 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
     borderWidth: 3,
-    borderColor: '#FFD60A',
+    // Note: highlight color is applied dynamically via style prop
     borderRadius: SPOTLIGHT_BORDER_RADIUS - 2,
-    shadowColor: '#FFD60A',
+    // Note: shadowColor is applied dynamically via style prop
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
     shadowRadius: 10,

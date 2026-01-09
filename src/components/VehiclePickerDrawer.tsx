@@ -115,7 +115,7 @@ const VehicleItem = React.memo(({ vehicle, isSelected, onSelect, colors, spacing
             justifyContent: "center",
           }}
         >
-          <Text style={{ fontSize: 16, color: colors.bg === "#121212" ? "#121212" : "#FFFFFF" }}>
+          <Text style={{ fontSize: 16, color: colors.buttonText }}>
             ✓
           </Text>
         </View>
@@ -295,7 +295,7 @@ export function VehiclePickerDrawer({
                     style={{
                       fontSize: 16,
                       fontWeight: "900",
-                      color: colors.bg === "#121212" ? "#121212" : "#FFFFFF",
+                      color: colors.buttonText,
                     }}
                   >
                     🔄 Try Again
@@ -353,7 +353,7 @@ export function VehiclePickerDrawer({
                   style={{
                     fontSize: 16,
                     fontWeight: "900",
-                    color: colors.bg === "#121212" ? "#121212" : "#FFFFFF",
+                    color: colors.buttonText,
                   }}
                 >
                   + Add Your First Vehicle
@@ -445,7 +445,7 @@ export function VehiclePickerDrawer({
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: 16, color: colors.bg === "#121212" ? "#121212" : "#FFFFFF" }}>
+                        <Text style={{ fontSize: 16, color: colors.buttonText }}>
                           ✓
                         </Text>
                       </View>

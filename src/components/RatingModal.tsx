@@ -68,7 +68,7 @@ export function RatingModal({
             tint={mode === 'dark' ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}
           />
-          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.4)' }]} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.overlay }]} />
         </Animated.View>
 
         <Pressable style={StyleSheet.absoluteFill} onPress={onDismiss} />
@@ -104,8 +104,8 @@ export function RatingModal({
                   style={[styles.primaryButton, { backgroundColor: colors.accent }]}
                   onPress={onRateApp}
                 >
-                  <Ionicons name="star" size={18} color="#fff" />
-                  <Text style={styles.primaryButtonText}>Rate WrenchGo</Text>
+                  <Ionicons name="star" size={18} color={colors.white} />
+                  <Text style={[styles.primaryButtonText, { color: colors.white }]}>Rate WrenchGo</Text>
                 </Pressable>
 
                 <Pressable
@@ -127,8 +127,8 @@ export function RatingModal({
             </>
           ) : (
             <>
-              <View style={[styles.iconContainer, { backgroundColor: '#10B98115' }]}>
-                <Ionicons name="checkmark-circle" size={36} color="#10B981" />
+              <View style={[styles.iconContainer, { backgroundColor: colors.successBg }]}>
+                <Ionicons name="checkmark-circle" size={36} color={colors.success} />
               </View>
 
               <Text style={[styles.title, { color: colors.textPrimary }]}>
@@ -141,11 +141,11 @@ export function RatingModal({
 
               <View style={styles.buttons}>
                 <Pressable
-                  style={[styles.primaryButton, { backgroundColor: '#10B981' }]}
+                  style={[styles.primaryButton, { backgroundColor: colors.success }]}
                   onPress={onConfirmRated}
                 >
-                  <Ionicons name="checkmark" size={18} color="#fff" />
-                  <Text style={styles.primaryButtonText}>Yes, I rated it!</Text>
+                  <Ionicons name="checkmark" size={18} color={colors.white} />
+                  <Text style={[styles.primaryButtonText, { color: colors.white }]}>Yes, I rated it!</Text>
                 </Pressable>
 
                 <Pressable
@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
     padding: 24,
     alignItems: 'center',
     borderWidth: 1,
-    shadowColor: '#000',
+    shadowColor: 'transparent',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
@@ -216,7 +216,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   primaryButtonText: {
-    color: '#fff',
+    color: undefined,
     fontSize: 16,
     fontWeight: '700',
   },

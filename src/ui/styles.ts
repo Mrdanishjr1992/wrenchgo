@@ -1,26 +1,29 @@
 // src/ui/styles.ts
 import { Platform } from "react-native";
-import { radius, normalize } from "./theme";
-import { lightColors, darkColors } from "./theme";
+import { radius, normalize, lightColors, darkColors } from "./theme";
 
 type ThemeColors = typeof lightColors | typeof darkColors;
 
-export const createCard = (colors: ThemeColors) => ({
-  backgroundColor: colors.surface,
-  borderWidth: 1,
-  borderColor: colors.border,
-  borderRadius: radius.lg,
-  ...(Platform.OS === "ios"
-    ? {
-        shadowColor: "#000",
-        shadowOffset: { width: 0, height: normalize(6) },
-        shadowOpacity: colors.bg === "#0B1220" ? 0.35 : 0.08,
-        shadowRadius: normalize(14),
-      }
-    : {
-        elevation: colors.bg === "#0B1220" ? 6 : 4,
-      }),
-});
+export const createCard = (colors: ThemeColors) => {
+  const isDarkMode = colors === darkColors;
+
+  return {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    ...(Platform.OS === "ios"
+      ? {
+          shadowColor: colors.black,
+          shadowOffset: { width: 0, height: normalize(6) },
+          shadowOpacity: isDarkMode ? 0.35 : 0.08,
+          shadowRadius: normalize(14),
+        }
+      : {
+          elevation: isDarkMode ? 6 : 4,
+        }),
+  };
+};
 
 export const cardPressed = {
   transform: [{ scale: 0.99 }],

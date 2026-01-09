@@ -297,7 +297,7 @@ export function MessagesListView({ role }: MessagesListViewProps) {
             >
               <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
                 <Text style={styles.avatarText}>{initials}</Text>
-                {hasUnread && <View style={[styles.onlineDot, { borderColor: colors.bg }]} />}
+                {hasUnread && <View style={[styles.onlineDot, { borderColor: colors.bg, backgroundColor: colors.success }]} />}
               </View>
 
               <View style={styles.conversationContent}>

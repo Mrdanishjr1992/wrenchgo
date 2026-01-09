@@ -85,7 +85,7 @@ export default function MechanicJobEarnings({ jobId, mechanicId, jobStatus }: Pr
               <Row
                 label="Platform Commission"
                 value={`-${formatCents(financials.commission_cents)}`}
-                valueColor="#ef4444"
+                valueColor={colors.error}
               />
               <View
                 style={{
@@ -98,7 +98,7 @@ export default function MechanicJobEarnings({ jobId, mechanicId, jobStatus }: Pr
                 label="Net Payout"
                 value={formatCents(financials.net_payout_cents)}
                 bold
-                valueColor="#10b981"
+                valueColor={colors.success}
               />
               <View style={{ marginTop: spacing.sm }}>
                 <PayoutStatus status={financials.payout_status} />

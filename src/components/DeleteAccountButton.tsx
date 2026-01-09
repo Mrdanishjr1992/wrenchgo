@@ -48,12 +48,12 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
                 width: normalize(48),
                 height: normalize(48),
                 borderRadius: normalize(24),
-                backgroundColor: "#ef444422",
+                backgroundColor: colors.errorBg,
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="trash-outline" size={normalize(24)} color="#ef4444" />
+              <Ionicons name="trash-outline" size={normalize(24)} color={colors.error} />
             </View>
 
             <View style={{ flex: 1 }}>
@@ -61,7 +61,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
                 style={{
                   fontSize: normalize(16),
                   fontWeight: "800",
-                  color: "#ef4444",
+                  color: colors.error,
                   marginBottom: spacing.xs,
                 }}
               >
@@ -79,7 +79,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
             </View>
 
             {isDeleting ? (
-              <ActivityIndicator size="small" color="#ef4444" />
+              <ActivityIndicator size="small" color={colors.error} />
             ) : (
               <Ionicons name="chevron-forward" size={normalize(20)} color={colors.textMuted} />
             )}
@@ -187,7 +187,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
                       flex: 1,
                       paddingVertical: spacing.md,
                       borderRadius: normalize(12),
-                      backgroundColor: "#ef4444",
+                      backgroundColor: colors.error,
                       alignItems: "center",
                       opacity: pressed ? 0.7 : 1,
                     },
@@ -197,7 +197,7 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
                     style={{
                       fontSize: normalize(15),
                       fontWeight: "900",
-                      color: "#fff",
+                      color: colors.white,
                     }}
                   >
                     Continue
@@ -221,9 +221,9 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
           paddingVertical: spacing.md,
           paddingHorizontal: spacing.lg,
           borderRadius: normalize(12),
-          backgroundColor: "#ef444422",
+          backgroundColor: colors.errorBg,
           borderWidth: 1,
-          borderColor: "#ef444444",
+          borderColor: colors.error + '44',
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "center",
@@ -233,15 +233,15 @@ export const DeleteAccountButton: React.FC<DeleteAccountButtonProps> = ({ varian
       ]}
     >
       {isDeleting ? (
-        <ActivityIndicator size="small" color="#ef4444" />
+        <ActivityIndicator size="small" color={colors.error} />
       ) : (
         <>
-          <Ionicons name="trash-outline" size={normalize(18)} color="#ef4444" />
+          <Ionicons name="trash-outline" size={normalize(18)} color={colors.error} />
           <Text
             style={{
               fontSize: normalize(15),
               fontWeight: "900",
-              color: "#ef4444",
+              color: colors.error,
             }}
           >
             Delete Account

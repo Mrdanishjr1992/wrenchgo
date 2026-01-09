@@ -38,7 +38,7 @@ const v =
         backgroundColor: colors.primary,
         borderWidth: 0,
         borderColor: "transparent",
-        color: "#001312", // deep teal-black (great contrast on minty teal)
+        color: colors.buttonText,
       }
     : variant === "secondary"
     ? {

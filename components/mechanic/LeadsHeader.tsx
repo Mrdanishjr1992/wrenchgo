@@ -65,7 +65,7 @@ export function LeadsHeader({ summary, sortBy, onChangeSortBy }: LeadsHeaderProp
               <Ionicons
                 name={option.icon}
                 size={14}
-                color={sortBy === option.value ? colors.bg : colors.textMuted}
+                color={sortBy === option.value ? '#fff' : colors.textMuted}
               />
               <Text
                 style={[

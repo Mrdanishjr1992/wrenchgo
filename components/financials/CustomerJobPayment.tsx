@@ -149,9 +149,9 @@ function Row({
 }
 
 function PaymentStatus({ status }: { status: string }) {
-  const { spacing, radius } = useTheme();
+  const { colors, spacing, radius } = useTheme();
   const isPaid = status === "paid";
-  const color = isPaid ? "#10b981" : "#f59e0b";
+  const color = isPaid ? colors.success : colors.warning;
   const label = isPaid ? "Paid" : "Pending";
 
   return (

@@ -96,7 +96,7 @@ function MiniProfileCard({
   const trustScore = profile.trust_score?.overall_score ?? 50;
 
   const content = (
-    <View style={[styles.miniCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View style={[styles.miniCard, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
       <View style={styles.miniAvatarContainer}>
         <Image
           source={
@@ -306,7 +306,7 @@ function FullProfileCard({
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Badges</Text>
           <View style={styles.badgesGrid}>
             {profile.badges.map((badge) => (
-              <View key={badge.id} style={[styles.badgeItem, { borderColor: colors.border }]}>
+              <View key={badge.id} style={[styles.badgeItem, { backgroundColor: colors.bg, borderColor: colors.border }]}>
                 <Text style={styles.badgeItemIcon}>{badge.badge.icon}</Text>
                 <Text style={[styles.badgeItemTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                   {badge.badge.title}
@@ -334,13 +334,13 @@ function FullProfileCard({
                   },
                 ]}
               >
-                <Text style={[styles.skillLabel, { color: skill.is_verified ? '#10b981' : colors.textPrimary }]}>
+                <Text style={[styles.skillLabel, { color: skill.is_verified ? colors.success : colors.textPrimary }]}>
                   {skill.skill.label}
                 </Text>
                 {skill.is_verified && (
                   <View style={styles.verifiedBadge}>
-                    <Ionicons name="checkmark-circle" size={14} color="#10b981" />
-                    <Text style={styles.verifiedText}>{skill.verified_job_count}</Text>
+                    <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                    <Text style={[styles.verifiedText, { color: colors.success }]}>{skill.verified_job_count}</Text>
                   </View>
                 )}
               </View>
@@ -384,7 +384,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   miniAvatarContainer: { position: 'relative' },
-  miniAvatar: { width: 48, height: 48, borderRadius: 24 },
+  miniAvatar: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#E5E7EB' },
   trustBadge: {
     position: 'absolute',
     bottom: -2,
@@ -458,5 +458,5 @@ const styles = StyleSheet.create({
   skillItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1 },
   skillLabel: { fontSize: 13, fontWeight: '500' },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  verifiedText: { fontSize: 11, color: '#10b981', fontWeight: '600' },
+  verifiedText: { fontSize: 11, fontWeight: '600' },
 });

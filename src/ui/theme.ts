@@ -92,13 +92,21 @@ export const lightColors = {
   gray: "#E5E7EB",
 
   // Status
-  success: "#2DD4BF",
+  success: "#10b981",
+  successBg: "#10b98115",
   warning: "#F59E0B",
+  warningBg: "#F59E0B15",
   error: "#EF4444",
+  errorBg: "#EF444415",
+  info: "#3b82f6",
+  infoBg: "#3b82f615",
 
   // Misc
   overlay: "rgba(0, 0, 0, 0.45)",
   black: "#000000",
+  white: "#FFFFFF",
+  buttonText: "#001312", // deep teal-black for primary button text
+  highlight: "#FFD60A",
 };
 
 export const darkColors: Colors = {
@@ -133,13 +141,21 @@ export const darkColors: Colors = {
   gray: "#1F2937",
 
   // Status
-  success: "#5EEAD4",
+  success: "#10b981",
+  successBg: "#10b98120",
   warning: "#FBBF24",
+  warningBg: "#FBBF2420",
   error: "#F87171",
+  errorBg: "#F8717120",
+  info: "#60a5fa",
+  infoBg: "#60a5fa20",
 
   // Misc
   overlay: "rgba(0, 0, 0, 0.7)",
   black: "#000000",
+  white: "#FFFFFF",
+  buttonText: "#001312", // deep teal-black for primary button text
+  highlight: "#FFD60A",
 };
 
 export const spacing = {

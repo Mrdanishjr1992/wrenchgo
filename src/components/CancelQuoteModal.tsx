@@ -191,24 +191,24 @@ export function CancelQuoteModal({
 
   const warningBgColor =
     warning.severity === "error"
-      ? "#FEE2E2"
+      ? colors.errorBg
       : warning.severity === "warning"
-      ? "#FEF3C7"
-      : "#DBEAFE";
+      ? colors.warningBg
+      : colors.infoBg;
 
   const warningTextColor =
     warning.severity === "error"
-      ? "#991B1B"
+      ? colors.error
       : warning.severity === "warning"
-      ? "#92400E"
-      : "#1E40AF";
+      ? colors.warning
+      : colors.info;
 
   const warningBorderColor =
     warning.severity === "error"
-      ? "#FCA5A5"
+      ? colors.error + '60'
       : warning.severity === "warning"
-      ? "#FCD34D"
-      : "#93C5FD";
+      ? colors.warning + '60'
+      : colors.info + '60';
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>

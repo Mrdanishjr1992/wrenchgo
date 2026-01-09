@@ -86,8 +86,8 @@ export function JobProgressTracker({ progress, status, role }: JobProgressTracke
     return (
       <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.cancelledHeader}>
-          <Ionicons name="close-circle" size={24} color="#EF4444" />
-          <Text style={[styles.cancelledText, { color: '#EF4444' }]}>Job Cancelled</Text>
+          <Ionicons name="close-circle" size={24} color={colors.error} />
+          <Text style={[styles.cancelledText, { color: colors.error }]}>Job Cancelled</Text>
         </View>
       </View>
     );
@@ -97,8 +97,8 @@ export function JobProgressTracker({ progress, status, role }: JobProgressTracke
     return (
       <View style={[styles.container, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.cancelledHeader}>
-          <Ionicons name="warning" size={24} color="#F59E0B" />
-          <Text style={[styles.cancelledText, { color: '#F59E0B' }]}>Under Dispute</Text>
+          <Ionicons name="warning" size={24} color={colors.warning} />
+          <Text style={[styles.cancelledText, { color: colors.warning }]}>Under Dispute</Text>
         </View>
       </View>
     );

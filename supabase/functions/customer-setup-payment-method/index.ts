@@ -1,135 +1,79 @@
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
+import { corsHeadersFor, json, requireEnv } from "../_shared/helpers.ts";
 
-const STRIPE_SECRET_KEY = Deno.env.get("STRIPE_SECRET_KEY") || "";
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
+  apiVersion: "2023-10-16",
+  httpClient: Stripe.createFetchHttpClient(),
+});
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
-
-async function stripeRequest(endpoint: string, body: Record<string, string>) {
-  const res = await fetch(`https://api.stripe.com/v1/${endpoint}`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${STRIPE_SECRET_KEY}`,
-      "Content-Type": "application/x-www-form-urlencoded",
-    },
-    body: new URLSearchParams(body).toString(),
-  });
-  return res.json();
-}
+const supabaseUrl = requireEnv("SUPABASE_URL");
+const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  const headers = corsHeadersFor(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers });
 
   try {
     const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Missing authorization header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
+    if (!authHeader) return json(401, { error: "Missing authorization header" }, headers);
 
-    const token = authHeader.replace("Bearer ", "");
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = createClient(supabaseUrl, serviceKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
 
-    if (userError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    let { data: profile, error: profileError } = await supabase
+    // Load (or create) profile
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, email, stripe_customer_id")
       .eq("id", user.id)
-      .single();
+      .maybeSingle();
 
-    if (profileError || !profile) {
-      const { data: newProfile, error: createError } = await supabase
+    if (profileError) return json(500, { error: "Failed to load profile", details: profileError.message }, headers);
+
+    let prof = profile;
+    if (!prof) {
+      const { data: created, error: createErr } = await supabase
         .from("profiles")
-        .upsert({
-          id: user.id,
-          email: user.email,
-          full_name: user.user_metadata?.full_name || "",
-          role: "customer",
-        })
+        .upsert({ id: user.id, email: user.email, full_name: user.user_metadata?.full_name || "", role: "customer" })
         .select("id, full_name, email, stripe_customer_id")
         .single();
-
-      if (createError || !newProfile) {
-        return new Response(JSON.stringify({ error: "Profile not found", details: createError?.message }), {
-          status: 404,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      profile = newProfile;
+      if (createErr || !created) return json(500, { error: "Profile not found/created" }, headers);
+      prof = created;
     }
 
-    let stripeCustomerId = profile.stripe_customer_id;
-
+    // Ensure Stripe customer exists and is persisted
+    let stripeCustomerId = prof.stripe_customer_id as string | null;
     if (!stripeCustomerId) {
-      const { data: existingPaymentMethod } = await supabase
-        .from("customer_payment_methods")
-        .select("stripe_customer_id")
-        .eq("customer_id", profile.id)
-        .not("stripe_customer_id", "is", null)
-        .maybeSingle();
-
-      stripeCustomerId = existingPaymentMethod?.stripe_customer_id;
-    }
-
-    if (!stripeCustomerId) {
-      const customer = await stripeRequest("customers", {
-        email: profile.email || user.email || "",
-        name: profile.full_name || "",
-        "metadata[user_id]": user.id,
-        "metadata[profile_id]": profile.id,
+      const customer = await stripe.customers.create({
+        email: prof.email || user.email || undefined,
+        name: prof.full_name || undefined,
+        metadata: { user_id: user.id, profile_id: prof.id },
       });
       stripeCustomerId = customer.id;
 
-      await supabase
+      const { error: updErr } = await supabase
         .from("profiles")
-        .update({ 
-          stripe_customer_id: stripeCustomerId,
-          payment_method_status: "pending"
-        })
-        .eq("id", user.id);
-    } else {
-      await supabase
-        .from("profiles")
-        .update({ payment_method_status: "pending" })
-        .eq("id", user.id);
+        .update({ stripe_customer_id: stripeCustomerId, updated_at: new Date().toISOString() })
+        .eq("id", prof.id);
+
+      if (updErr) console.error("[SETUP_PM] Failed to persist stripe_customer_id:", updErr.message);
     }
 
-    const setupIntent = await stripeRequest("setup_intents", {
+    const setupIntent = await stripe.setupIntents.create({
       customer: stripeCustomerId,
-      "payment_method_types[]": "card",
+      payment_method_types: ["card"],
       usage: "off_session",
-      "metadata[user_id]": user.id,
-      "metadata[profile_id]": profile.id,
+      metadata: { user_id: user.id, profile_id: prof.id },
     });
 
-    return new Response(
-      JSON.stringify({
-        clientSecret: setupIntent.client_secret,
-        customerId: stripeCustomerId,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
-    );
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message || "Internal server error" }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 }
-    );
+    return json(200, { clientSecret: setupIntent.client_secret, customerId: stripeCustomerId }, headers);
+  } catch (e: any) {
+    console.error("[SETUP_PM] Error:", e?.message || e);
+    return json(500, { error: e?.message || "Internal server error" }, headers);
   }
 });

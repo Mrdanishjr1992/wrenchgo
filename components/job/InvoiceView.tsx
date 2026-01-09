@@ -116,7 +116,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
               </View>
             )}
             {isRejected && (
-              <Text style={[styles.rejectedText, { color: '#EF4444' }]}>Rejected</Text>
+              <Text style={[styles.rejectedText, { color: colors.error }]}>Rejected</Text>
             )}
           </View>
         </View>
@@ -137,14 +137,14 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                   style={[styles.rejectButton, { borderColor: colors.border }]}
                   onPress={() => handleReject(item)}
                 >
-                  <Ionicons name="close" size={16} color="#EF4444" />
-                  <Text style={[styles.rejectButtonText, { color: '#EF4444' }]}>Reject</Text>
+                  <Ionicons name="close" size={16} color={colors.error} />
+                  <Text style={[styles.rejectButtonText, { color: colors.error }]}>Reject</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.approveButton, { backgroundColor: colors.accent }]}
                   onPress={() => handleApprove(item)}
                 >
-                  <Ionicons name="checkmark" size={16} color="#fff" />
+                  <Ionicons name="checkmark" size={16} color={colors.white} />
                   <Text style={styles.approveButtonText}>Approve</Text>
                 </Pressable>
               </>
@@ -266,7 +266,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                   On labor only, parts excluded
                 </Text>
               </View>
-              <Text style={[styles.totalValue, { color: '#EF4444' }]}>
+              <Text style={[styles.totalValue, { color: colors.error }]}>
                 -{formatCents(contract.mechanic_commission_cents)}
               </Text>
             </View>
@@ -274,7 +274,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
               <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
                 Your Earnings
               </Text>
-              <Text style={[styles.grandTotalValue, { color: '#10B981' }]}>
+              <Text style={[styles.grandTotalValue, { color: colors.success }]}>
                 {formatCents(contract.mechanic_payout_cents)}
               </Text>
             </View>

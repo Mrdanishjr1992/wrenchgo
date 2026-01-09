@@ -896,14 +896,14 @@ export default function MechanicJobDetails() {
                   paddingVertical: 14,
                   backgroundColor: colors.surface,
                   borderWidth: 1,
-                  borderColor: "#EF4444",
+                  borderColor: colors.error,
                   borderRadius: 14,
                   alignItems: "center",
                 },
                 pressed && { opacity: 0.7 },
               ]}
             >
-              <Text style={{ fontWeight: "900", color: "#EF4444" }}>Withdraw from Job</Text>
+              <Text style={{ fontWeight: "900", color: colors.error }}>Withdraw from Job</Text>
             </Pressable>
           )}
         </SectionCard>

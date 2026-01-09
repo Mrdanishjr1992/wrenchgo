@@ -43,37 +43,42 @@ export function ProfileCardModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, margin: spacing.lg }]}>
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <View style={styles.headerLeft}>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              {title || 'Profile'}
-            </Text>
+      <View style={[styles.modalBackground, { backgroundColor: colors.background }]}>
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background, margin: spacing.lg }]}>
+          <View style={[styles.header, { borderBottomColor: colors.border }]}>
+            <View style={styles.headerLeft}>
+              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+                {title || 'Profile'}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Ionicons name="close" size={28} color={colors.textSecondary} />
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Ionicons name="close" size={28} color={colors.textSecondary} />
-          </TouchableOpacity>
-        </View>
 
-        <ScrollView
-          style={styles.content}
-          contentContainerStyle={styles.contentContainer}
-          showsVerticalScrollIndicator={false}
-        >
-          <UserProfileCard
-            userId={userId}
-            variant="full"
-            context="quote_detail"
-            showActions={showReviewsButton}
-            onPressReviews={handleViewReviews}
-          />
-        </ScrollView>
-      </SafeAreaView>
+          <ScrollView
+            style={styles.content}
+            contentContainerStyle={styles.contentContainer}
+            showsVerticalScrollIndicator={false}
+          >
+            <UserProfileCard
+              userId={userId}
+              variant="full"
+              context="quote_detail"
+              showActions={showReviewsButton}
+              onPressReviews={handleViewReviews}
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </View>
     </Modal>
   );
 }
 
 const styles = StyleSheet.create({
+  modalBackground: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },

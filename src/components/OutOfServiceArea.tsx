@@ -38,19 +38,19 @@ export function OutOfServiceArea({
   if (boundaryStatus === 'near_boundary') {
     return (
       <View style={{
-        backgroundColor: '#fef3c7',
+        backgroundColor: colors.warningBg,
         padding: spacing.md,
         borderRadius: radius.md,
         marginHorizontal: spacing.md,
         marginBottom: spacing.md,
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-          <Ionicons name="warning" size={20} color="#d97706" />
-          <Text style={{ color: '#92400e', fontWeight: '600', flex: 1 }}>
+          <Ionicons name="warning" size={20} color={colors.warning} />
+          <Text style={{ color: colors.warning, fontWeight: '600', flex: 1 }}>
             Near Service Area Boundary
           </Text>
         </View>
-        <Text style={{ color: '#92400e', marginTop: 4, fontSize: 13 }}>
+        <Text style={{ color: colors.warning, marginTop: 4, fontSize: 13 }}>
           You're close to the edge of our {nearestHub} area. Some services may have limited availability.
         </Text>
       </View>
@@ -117,9 +117,9 @@ export function OutOfServiceArea({
             }}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color={colors.buttonText} />
             ) : (
-              <Text style={{ color: '#000', fontWeight: '600', textAlign: 'center' }}>
+              <Text style={{ color: colors.buttonText, fontWeight: '600', textAlign: 'center' }}>
                 Notify Me
               </Text>
             )}
@@ -127,7 +127,7 @@ export function OutOfServiceArea({
         </View>
       ) : (
         <View style={{
-          backgroundColor: result.success ? colors.accent + '20' : '#fee2e2',
+          backgroundColor: result.success ? colors.successBg : colors.errorBg,
           padding: spacing.lg,
           borderRadius: radius.lg,
           marginTop: spacing.xl,
@@ -135,7 +135,7 @@ export function OutOfServiceArea({
           <Ionicons
             name={result.success ? 'checkmark-circle' : 'alert-circle'}
             size={32}
-            color={result.success ? colors.accent : '#dc2626'}
+            color={result.success ? colors.success : colors.error}
             style={{ alignSelf: 'center' }}
           />
           <Text style={[text.body, { textAlign: 'center', marginTop: spacing.sm }]}>

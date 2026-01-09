@@ -128,9 +128,9 @@ export function JobActions({
         {/* Confirm Completion */}
         {phase === 'awaiting_completion' && progress?.mechanic_completed_at && !progress?.customer_completed_at && (
           <View style={styles.actionCard}>
-            <View style={[styles.actionHeader, { backgroundColor: '#10B98115' }]}>
-              <Ionicons name="checkmark-done" size={24} color="#10B981" />
-              <Text style={[styles.actionTitle, { color: '#10B981' }]}>
+            <View style={[styles.actionHeader, { backgroundColor: colors.successBg }]}>
+              <Ionicons name="checkmark-done" size={24} color={colors.success} />
+              <Text style={[styles.actionTitle, { color: colors.success }]}>
                 Work Complete
               </Text>
             </View>
@@ -138,7 +138,7 @@ export function JobActions({
               The mechanic has marked the work as complete. Please review and confirm if you're satisfied.
             </Text>
             <Pressable
-              style={[styles.primaryButton, { backgroundColor: '#10B981' }]}
+              style={[styles.primaryButton, { backgroundColor: colors.success }]}
               onPress={() => {
                 Alert.alert(
                   'Confirm Completion?',
@@ -186,7 +186,7 @@ export function JobActions({
             onPress={handleCancel}
             disabled={loading}
           >
-            <Text style={[styles.cancelButtonText, { color: '#EF4444' }]}>Cancel Job</Text>
+            <Text style={[styles.cancelButtonText, { color: colors.error }]}>Cancel Job</Text>
           </Pressable>
         )}
       </View>
@@ -273,9 +273,9 @@ export function JobActions({
       {/* Start Work */}
       {phase === 'ready_to_start' && (
         <View style={styles.actionCard}>
-          <View style={[styles.actionHeader, { backgroundColor: '#10B98115' }]}>
-            <Ionicons name="construct" size={24} color="#10B981" />
-            <Text style={[styles.actionTitle, { color: '#10B981' }]}>
+          <View style={[styles.actionHeader, { backgroundColor: colors.successBg }]}>
+            <Ionicons name="construct" size={24} color={colors.success} />
+            <Text style={[styles.actionTitle, { color: colors.success }]}>
               Ready to Start?
             </Text>
           </View>
@@ -283,7 +283,7 @@ export function JobActions({
             Customer has confirmed your arrival. Start the work timer.
           </Text>
           <Pressable
-            style={[styles.primaryButton, { backgroundColor: '#10B981' }]}
+            style={[styles.primaryButton, { backgroundColor: colors.success }]}
             onPress={() => handleAction(
               () => mechanicStartWork(jobId),
               'Work started! You can now add line items.'
@@ -291,10 +291,10 @@ export function JobActions({
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.white} />
             ) : (
               <>
-                <Ionicons name="play" size={20} color="#fff" />
+                <Ionicons name="play" size={20} color={colors.white} />
                 <Text style={styles.primaryButtonText}>Start Work</Text>
               </>
             )}
@@ -305,14 +305,14 @@ export function JobActions({
       {/* Mark Complete */}
       {phase === 'work_in_progress' && (
         <View style={styles.actionCard}>
-          <View style={[styles.actionHeader, { backgroundColor: '#3B82F615' }]}>
-            <Ionicons name="checkmark-done" size={24} color="#3B82F6" />
-            <Text style={[styles.actionTitle, { color: '#3B82F6' }]}>
+          <View style={[styles.actionHeader, { backgroundColor: colors.infoBg }]}>
+            <Ionicons name="checkmark-done" size={24} color={colors.info} />
+            <Text style={[styles.actionTitle, { color: colors.info }]}>
               Finished?
             </Text>
           </View>
           {hasPendingItems ? (
-            <Text style={[styles.actionDescription, { color: '#EF4444' }]}>
+            <Text style={[styles.actionDescription, { color: colors.error }]}>
               There are pending line items awaiting customer approval. Please wait for approval before completing.
             </Text>
           ) : (
@@ -323,7 +323,7 @@ export function JobActions({
           <Pressable
             style={[
               styles.primaryButton,
-              { backgroundColor: hasPendingItems ? colors.textMuted : '#3B82F6' },
+              { backgroundColor: hasPendingItems ? colors.textMuted : colors.info },
             ]}
             onPress={() => handleAction(
               () => mechanicMarkComplete(jobId),
@@ -332,10 +332,10 @@ export function JobActions({
             disabled={loading || hasPendingItems}
           >
             {loading ? (
-              <ActivityIndicator color="#fff" />
+              <ActivityIndicator color={colors.white} />
             ) : (
               <>
-                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                <Ionicons name="checkmark-circle" size={20} color={colors.white} />
                 <Text style={styles.primaryButtonText}>Mark Complete</Text>
               </>
             )}

@@ -73,7 +73,7 @@ export default function FinancialSummary({ userId, role, compact = false }: Prop
           <StatBox
             label="Pending"
             value={formatCentsCompact(summary.pending_payouts_cents || 0)}
-            color="#f59e0b"
+            color={colors.warning}
           />
         )}
       </View>
@@ -113,25 +113,25 @@ export default function FinancialSummary({ userId, role, compact = false }: Prop
               icon="cash-outline"
               label="Total Earnings"
               value={formatCents(summary.total_earnings_cents || 0)}
-              color="#10b981"
+              color={colors.success}
             />
             <SummaryRow
               icon="trending-down-outline"
               label="Platform Fees"
               value={formatCents(summary.total_commission_cents || 0)}
-              color="#ef4444"
+              color={colors.error}
             />
             <SummaryRow
               icon="time-outline"
               label="Pending Payouts"
               value={formatCents(summary.pending_payouts_cents || 0)}
-              color="#f59e0b"
+              color={colors.warning}
             />
             <SummaryRow
               icon="checkmark-circle-outline"
               label="Completed Payouts"
               value={formatCents(summary.completed_payouts_cents || 0)}
-              color="#10b981"
+              color={colors.success}
             />
           </>
         ) : (

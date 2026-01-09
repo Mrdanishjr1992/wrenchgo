@@ -54,7 +54,7 @@ export function UserProfileCard({ profile, onPress, compact = false }: UserProfi
           )}
           {profile.role === 'mechanic' && profile.ratings && profile.ratings.avg_overall_rating >= 4.8 && (
             <View style={[styles.verifiedBadge, { backgroundColor: colors.surface }]}>
-              <Ionicons name="checkmark-circle" size={20} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             </View>
           )}
         </View>
@@ -130,7 +130,7 @@ export function UserProfileCard({ profile, onPress, compact = false }: UserProfi
                     {mechanicSkill.skill?.name}
                   </Text>
                   {mechanicSkill.is_verified && (
-                    <Ionicons name="checkmark-circle" size={12} color="#4CAF50" />
+                    <Ionicons name="checkmark-circle" size={12} color={colors.success} />
                   )}
                 </View>
               ))}

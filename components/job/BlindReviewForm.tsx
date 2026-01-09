@@ -170,7 +170,7 @@ export function BlindReviewForm({ jobId, contractId, role, otherPartyId, onSucce
             <Ionicons
               name={star <= value ? 'star' : 'star-outline'}
               size={28}
-              color={star <= value ? '#FBBF24' : colors.textMuted}
+              color={star <= value ? colors.warning : colors.textMuted}
             />
           </Pressable>
         ))}
@@ -191,7 +191,7 @@ export function BlindReviewForm({ jobId, contractId, role, otherPartyId, onSucce
     return (
       <View style={[styles.container, { backgroundColor: colors.surface }]}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <Ionicons name="checkmark-circle" size={24} color="#10B981" />
+          <Ionicons name="checkmark-circle" size={24} color={colors.success} />
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Reviews Revealed!</Text>
         </View>
 
@@ -204,7 +204,7 @@ export function BlindReviewForm({ jobId, contractId, role, otherPartyId, onSucce
                 key={s}
                 name={s <= (myReview?.overall_rating ?? 0) ? 'star' : 'star-outline'}
                 size={20}
-                color={s <= (myReview?.overall_rating ?? 0) ? '#FBBF24' : colors.textMuted}
+                color={s <= (myReview?.overall_rating ?? 0) ? colors.warning : colors.textMuted}
               />
             ))}
           </View>
@@ -224,7 +224,7 @@ export function BlindReviewForm({ jobId, contractId, role, otherPartyId, onSucce
                 key={s}
                 name={s <= (otherReview?.overall_rating ?? 0) ? 'star' : 'star-outline'}
                 size={20}
-                color={s <= (otherReview?.overall_rating ?? 0) ? '#FBBF24' : colors.textMuted}
+                color={s <= (otherReview?.overall_rating ?? 0) ? colors.warning : colors.textMuted}
               />
             ))}
           </View>
@@ -256,7 +256,7 @@ export function BlindReviewForm({ jobId, contractId, role, otherPartyId, onSucce
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <Ionicons name="star" size={24} color="#FBBF24" />
+        <Ionicons name="star" size={24} color={colors.warning} />
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
           Rate Your {role === 'customer' ? 'Mechanic' : 'Customer'}
         </Text>
