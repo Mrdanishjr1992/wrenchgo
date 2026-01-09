@@ -85,8 +85,8 @@ BEGIN
         'reason', 'contact_info_detected',
         'risk_score', v_risk_result->'risk_score',
         'patterns_detected', v_risk_result->'patterns_detected',
-        'message', CASE 
-          WHEN v_job_stage IN ('lead', 'quote_submitted') THEN
+        'message', CASE
+          WHEN v_job_stage IN ('searching', 'quoted') THEN
             'For your protection, please keep all communication in WrenchGo until the job is booked. This ensures payment protection, job history, and support if anything goes wrong.'
           ELSE
             'We detected contact information in your message. For warranty coverage and payment protection, keep future bookings through WrenchGo.'

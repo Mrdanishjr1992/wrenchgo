@@ -407,24 +407,24 @@ BEGIN
   END IF;
   
   -- Adjust based on job stage
-  IF p_job_stage IN ('lead', 'quote_submitted') THEN
+  IF p_job_stage IN ('searching', 'quoted') THEN
     -- Pre-booking: highest risk
     v_final_risk_score := v_final_risk_score + 20;
-  ELSIF p_job_stage IN ('booked', 'in_progress') THEN
+  ELSIF p_job_stage IN ('accepted', 'work_in_progress') THEN
     -- Active job: lower risk
     v_final_risk_score := v_final_risk_score - 20;
   ELSIF p_job_stage = 'completed' THEN
     -- Post-completion: medium risk
     v_final_risk_score := v_final_risk_score + 10;
   END IF;
-  
+
   -- Cap at 100
   v_final_risk_score := LEAST(v_final_risk_score, 100);
-  
+
   -- Determine action based on risk score and job stage
   IF v_final_risk_score >= 70 THEN
     -- High risk
-    IF p_job_stage IN ('lead', 'quote_submitted') THEN
+    IF p_job_stage IN ('searching', 'quoted') THEN
       v_action := 'blocked';
       v_restriction_level := 'high';
     ELSE
@@ -433,7 +433,7 @@ BEGIN
     END IF;
   ELSIF v_final_risk_score >= 40 THEN
     -- Medium risk
-    IF p_job_stage IN ('lead', 'quote_submitted') THEN
+    IF p_job_stage IN ('searching', 'quoted') THEN
       v_action := 'blocked';
       v_restriction_level := 'medium';
     ELSIF p_job_stage = 'completed' THEN
