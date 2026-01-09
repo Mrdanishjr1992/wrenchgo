@@ -36,7 +36,7 @@ export default function MechanicOnboardingScreen() {
       const refreshUrl = 'wrenchgo://onboarding-refresh'
 
       const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/create-stripe-connect-account-link`,
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/stripe-connect-create-account-link`,
         {
           method: 'POST',
           headers: {

@@ -243,8 +243,8 @@ export default function MechanicInviteScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[text.body, { fontWeight: "700" }]}>You earn credits</Text>
                 <Text style={text.muted}>
-                  Invite a customer: 1 free commission{"\n"}
-                  Invite a mechanic: 5 x $5 off credits
+                  Invite a customer: 1 job fee waived{"\n"}
+                  Invite a mechanic: 3 job fees waived
                 </Text>
               </View>
             </View>

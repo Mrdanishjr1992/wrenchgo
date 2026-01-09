@@ -42,7 +42,6 @@ type Job = {
 };
 
 const DRIVE_FEE = 50;
-const PLATFORM_FEE = 15;
 const DIAGNOSTIC_FEE = 80;
 
 const HOURLY_RATE_OPTIONS = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200];
@@ -175,7 +174,7 @@ export default function QuoteComposer() {
       laborSubtotal = hourlyRate * estimatedHours;
     }
 
-    let total = laborSubtotal + PLATFORM_FEE;
+    let total = laborSubtotal;
     if (includeDriveFee) total += DRIVE_FEE;
     if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
 
@@ -184,7 +183,7 @@ export default function QuoteComposer() {
 
   const calculateTotalLow = () => {
     if (!hourlyRate || !hoursLow) return 0;
-    let total = hourlyRate * hoursLow + PLATFORM_FEE;
+    let total = hourlyRate * hoursLow;
     if (includeDriveFee) total += DRIVE_FEE;
     if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
@@ -192,7 +191,7 @@ export default function QuoteComposer() {
 
   const calculateTotalHigh = () => {
     if (!hourlyRate || !hoursHigh) return 0;
-    let total = hourlyRate * hoursHigh + PLATFORM_FEE;
+    let total = hourlyRate * hoursHigh;
     if (includeDriveFee) total += DRIVE_FEE;
     if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
@@ -758,13 +757,6 @@ export default function QuoteComposer() {
                       </Text>
                     </View>
                   )}
-
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Platform fee (booking)</Text>
-                    <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                      ${PLATFORM_FEE}
-                    </Text>
-                  </View>
 
                   {includeDiagnosticFee && (
                     <View style={{ flexDirection: "row", justifyContent: "space-between" }}>

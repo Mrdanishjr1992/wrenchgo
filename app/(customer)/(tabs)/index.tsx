@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "../../../src/ui/theme-context";
 import { supabase } from "../../../src/lib/supabase";
 import { createCard } from "../../../src/ui/styles";
+import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 
 type Job = {
   id: string;
@@ -160,43 +161,45 @@ export default function CustomerHome() {
           </Text>
         </View>
 
-        <Pressable
-          onPress={() => router.push("/explore")}
-          style={({ pressed }) => [
-            card,
-            {
-              padding: spacing.lg,
-              backgroundColor: colors.accent,
-              borderColor: colors.accent,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "space-between",
-            },
-            pressed && { opacity: 0.9 },
-          ]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-            <View
-              style={{
-                width: 48,
-                height: 48,
-                borderRadius: 24,
-                backgroundColor: "rgba(255,255,255,0.2)",
+        <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_POST_JOB_CTA}>
+          <Pressable
+            onPress={() => router.push("/explore")}
+            style={({ pressed }) => [
+              card,
+              {
+                padding: spacing.lg,
+                backgroundColor: colors.accent,
+                borderColor: colors.accent,
+                flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="construct" size={24} color="#fff" />
+                justifyContent: "space-between",
+              },
+              pressed && { opacity: 0.9 },
+            ]}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: "rgba(255,255,255,0.2)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="construct" size={24} color="#fff" />
+              </View>
+              <View>
+                <Text style={{ fontWeight: "900", color: "#fff", fontSize: 18 }}>Request a Mechanic</Text>
+                <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 2 }}>
+                  Get help with your car today
+                </Text>
+              </View>
             </View>
-            <View>
-              <Text style={{ fontWeight: "900", color: "#fff", fontSize: 18 }}>Request a Mechanic</Text>
-              <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 2 }}>
-                Get help with your car today
-              </Text>
-            </View>
-          </View>
-          <Ionicons name="chevron-forward" size={24} color="#fff" />
-        </Pressable>
+            <Ionicons name="chevron-forward" size={24} color="#fff" />
+          </Pressable>
+        </WalkthroughTarget>
 
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <Pressable

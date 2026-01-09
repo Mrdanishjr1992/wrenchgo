@@ -41,6 +41,11 @@ export function usePushNotifications() {
       responseListener.current = addNotificationResponseReceivedListener((response) => {
         const data = response.notification.request.content.data;
 
+        if (data?.type === 'rating_reminder') {
+          router.push('/rate' as any);
+          return;
+        }
+
         if (data?.entityType && data?.entityId) {
           if (data.entityType === 'job') {
             supabase.auth.getUser().then(({ data: { user } }) => {

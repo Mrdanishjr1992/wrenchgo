@@ -80,17 +80,17 @@ COMMENT ON TABLE public.promo_credits IS 'Promo credit buckets for fee discounts
 -- TABLE: invitation_awards
 -- =====================================================
 -- Idempotency + audit for awards (unique on invited_id ensures one award per invited user)
-CREATE TABLE IF NOT EXISTS public.invitation_awards (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  inviter_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  invited_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-  award_type text NOT NULL CHECK (award_type IN ('FEELESS_1', 'FEEOFF5_X5')),
-  payment_id uuid REFERENCES public.payments(id) ON DELETE SET NULL,
-  stripe_event_id text,
-  created_at timestamptz DEFAULT now() NOT NULL,
-  
-  CONSTRAINT invitation_awards_invited_unique UNIQUE (invited_id)
-);
+ALTER TABLE public.invitation_awards
+DROP CONSTRAINT IF EXISTS invitation_awards_award_type_check;
+
+ALTER TABLE public.invitation_awards
+ADD CONSTRAINT invitation_awards_award_type_check
+CHECK (award_type IN ('FEELESS_1', 'FEELESS_3'));
+
+CREATE UNIQUE INDEX IF NOT EXISTS invitation_awards_stripe_event_id_unique
+ON public.invitation_awards (stripe_event_id)
+WHERE stripe_event_id IS NOT NULL;
+
 
 CREATE INDEX IF NOT EXISTS idx_invitation_awards_inviter ON public.invitation_awards(inviter_id);
 CREATE INDEX IF NOT EXISTS idx_invitation_awards_invited ON public.invitation_awards(invited_id);
@@ -382,7 +382,7 @@ AS $$
 DECLARE
   v_invitation record;
   v_award_type text;
-  v_credit_type public.promo_credit_type;
+  v_credit_type public.promo_credit_type := 'FEELESS';
   v_credit_uses int;
   v_credit_id uuid;
 BEGIN
@@ -390,38 +390,41 @@ BEGIN
   SELECT * INTO v_invitation
   FROM invitations
   WHERE invited_id = p_invited_id;
-  
+
   IF v_invitation IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'No invitation found for user');
   END IF;
-  
-  -- Determine award based on inviter_role + invited_role
-  -- Both scenarios (inviter customer or mechanic):
-  --   Invites CUSTOMER -> 1 FEELESS credit
-  --   Invites MECHANIC -> 5 FEEOFF5 credits
+
+  -- New rules:
+  -- Invite CUSTOMER -> 1 FEELESS use
+  -- Invite MECHANIC -> 3 FEELESS uses
   IF v_invitation.invited_role = 'customer' THEN
     v_award_type := 'FEELESS_1';
-    v_credit_type := 'FEELESS';
     v_credit_uses := 1;
-  ELSE -- mechanic
-    v_award_type := 'FEEOFF5_X5';
-    v_credit_type := 'FEEOFF5';
-    v_credit_uses := 5;
+  ELSIF v_invitation.invited_role = 'mechanic' THEN
+    v_award_type := 'FEELESS_3';
+    v_credit_uses := 3;
+  ELSE
+    RETURN jsonb_build_object(
+      'success', false,
+      'error', 'Invalid invited_role on invitation',
+      'invited_role', v_invitation.invited_role
+    );
   END IF;
-  
-  -- Try to insert award (unique constraint prevents duplicates)
+
+  -- Insert award (idempotent by UNIQUE(invited_id))
   BEGIN
     INSERT INTO invitation_awards (inviter_id, invited_id, award_type, payment_id, stripe_event_id)
     VALUES (v_invitation.inviter_id, p_invited_id, v_award_type, p_payment_id, p_stripe_event_id);
   EXCEPTION WHEN unique_violation THEN
     RETURN jsonb_build_object('success', false, 'error', 'Award already granted for this invited user');
   END;
-  
-  -- Create promo credit for inviter
+
+  -- Create promo credit bucket for inviter
   INSERT INTO promo_credits (user_id, credit_type, remaining_uses, source_invited_user_id, source_invitation_id)
   VALUES (v_invitation.inviter_id, v_credit_type, v_credit_uses, p_invited_id, v_invitation.id)
   RETURNING id INTO v_credit_id;
-  
+
   RETURN jsonb_build_object(
     'success', true,
     'inviter_id', v_invitation.inviter_id,
@@ -432,9 +435,9 @@ BEGIN
 END;
 $$;
 
--- Only service role should call this (from webhook)
 REVOKE EXECUTE ON FUNCTION public.award_invitation_credits(uuid, uuid, text) FROM PUBLIC;
 REVOKE EXECUTE ON FUNCTION public.award_invitation_credits(uuid, uuid, text) FROM authenticated;
+
 
 -- =====================================================
 -- FUNCTION: get_user_promo_credits

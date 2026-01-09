@@ -106,6 +106,7 @@ export default function JobDetail() {
   const [job, setJob] = useState<Job | null>(null);
   const [intake, setIntake] = useState<JobIntake | null>(null);
   const [showGuidance, setShowGuidance] = useState(true);
+  const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     loadJob();
@@ -139,6 +140,26 @@ export default function JobDetail() {
       try {
         const parsedIntake = data.description ? JSON.parse(data.description) : null;
         setIntake(parsedIntake);
+
+        // Fetch question texts for this job's symptom
+        if (parsedIntake?.symptom?.key && parsedIntake?.answers) {
+          const answerKeys = Object.keys(parsedIntake.answers);
+          if (answerKeys.length > 0) {
+            const { data: questions } = await supabase
+              .from("symptom_questions")
+              .select("question_key, question_text")
+              .eq("symptom_key", parsedIntake.symptom.key)
+              .in("question_key", answerKeys);
+
+            if (questions) {
+              const qMap: Record<string, string> = {};
+              questions.forEach((q: any) => {
+                qMap[q.question_key] = q.question_text;
+              });
+              setQuestionMap(qMap);
+            }
+          }
+        }
       } catch (e) {
         console.log("Failed to parse intake");
       }
@@ -263,7 +284,10 @@ export default function JobDetail() {
                       borderBottomColor: colors.border,
                     }}
                   >
-                    <Text style={{ ...text.body, fontSize: 14 }}>{value}</Text>
+                    <Text style={{ ...text.muted, fontSize: 12 }}>
+                      {questionMap[key] || key}
+                    </Text>
+                    <Text style={{ ...text.body, fontSize: 14, marginTop: 2 }}>{value}</Text>
                   </View>
                 ))}
               </View>

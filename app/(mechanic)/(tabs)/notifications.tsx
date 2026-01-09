@@ -44,6 +44,7 @@ const fmtShort = (iso: string) => {
 
 const chipFor = (n: Notif) => {
   const t = (n.type || "").toLowerCase();
+  if (t.includes("quote_accepted") || t.includes("payment_secured")) return { label: "PAYMENT SECURED", tone: "success" as const };
   if (t.includes("quote")) return { label: "QUOTE", tone: "accent" as const };
   if (t.includes("job")) return { label: "JOB", tone: "muted" as const };
   if (t.includes("payment") || t.includes("payout")) return { label: "PAYMENT", tone: "success" as const };

@@ -19,6 +19,7 @@ import { getPendingReviewPrompts, ReviewPrompt, hasReviewedJob } from "../../../
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 import { FinancialSummary } from "../../../components/financials";
 import { formatCents, PAYOUT_STATUS_LABELS, PAYOUT_STATUS_COLORS } from "../../../src/lib/financials";
+import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 
 type Job = {
   id: string;
@@ -598,36 +599,38 @@ export default function MechanicJobs() {
 
             {/* Financial Summary Toggle */}
             {mechanicId && completed.length > 0 && (
-              <View style={{ marginTop: spacing.md }}>
-                <Pressable
-                  onPress={() => setShowFinancials(!showFinancials)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    backgroundColor: colors.surface,
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <Ionicons name="stats-chart-outline" size={20} color={colors.accent} />
-                    <Text style={{ ...text.body, fontWeight: "600" }}>Earnings Summary</Text>
-                  </View>
-                  <Ionicons
-                    name={showFinancials ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color={colors.textMuted}
-                  />
-                </Pressable>
-                {showFinancials && (
-                  <View style={{ marginTop: spacing.sm }}>
-                    <FinancialSummary userId={mechanicId} role="mechanic" />
-                  </View>
-                )}
-              </View>
+              <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.MECHANIC_EARNINGS_TAB}>
+                <View style={{ marginTop: spacing.md }}>
+                  <Pressable
+                    onPress={() => setShowFinancials(!showFinancials)}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      backgroundColor: colors.surface,
+                      borderRadius: radius.md,
+                      padding: spacing.md,
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                      <Ionicons name="stats-chart-outline" size={20} color={colors.accent} />
+                      <Text style={{ ...text.body, fontWeight: "600" }}>Earnings Summary</Text>
+                    </View>
+                    <Ionicons
+                      name={showFinancials ? "chevron-up" : "chevron-down"}
+                      size={20}
+                      color={colors.textMuted}
+                    />
+                  </Pressable>
+                  {showFinancials && (
+                    <View style={{ marginTop: spacing.sm }}>
+                      <FinancialSummary userId={mechanicId} role="mechanic" />
+                    </View>
+                  )}
+                </View>
+              </WalkthroughTarget>
             )}
 
             {jobs.length === 0 && waitingJobs.length === 0 && (

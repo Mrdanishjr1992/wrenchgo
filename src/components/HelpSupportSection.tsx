@@ -4,6 +4,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, usePathname } from 'expo-router';
 import { useTheme } from '../ui/theme-context';
 import { SUPPORT_FAQ } from '../types/support';
+import { useOnboarding } from '../onboarding';
+import { useRatingPromptContext } from './RatingPromptProvider';
 
 interface HelpSupportSectionProps {
   variant?: 'card' | 'inline';
@@ -12,12 +14,19 @@ interface HelpSupportSectionProps {
 export function HelpSupportSection({ variant = 'card' }: HelpSupportSectionProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { colors, spacing, radius, text } = useTheme();
+  const { colors, spacing, radius } = useTheme();
+  const { startWalkthrough } = useOnboarding();
+  const { handleRateApp, promptState } = useRatingPromptContext();
   const [showFAQ, setShowFAQ] = useState(false);
   const [showSLA, setShowSLA] = useState(false);
 
   const isMechanic = pathname?.includes('mechanic');
   const supportRoute = isMechanic ? '/(mechanic)/contact-support' : '/(customer)/contact-support';
+
+  const handleReplayTour = () => {
+    const role = isMechanic ? 'mechanic' : 'customer';
+    startWalkthrough(role);
+  };
 
   const cardStyle = variant === 'card' ? {
     backgroundColor: colors.surface,
@@ -36,10 +45,40 @@ export function HelpSupportSection({ variant = 'card' }: HelpSupportSectionProps
           <View style={styles.headerText}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Help & Support</Text>
             <Text style={[styles.subtitle, { color: colors.textMuted }]}>
-              FAQs, response times, contact us
+              FAQs, app tour, contact us
             </Text>
           </View>
         </View>
+
+        <Pressable
+          onPress={handleReplayTour}
+          accessibilityRole="button"
+          accessibilityLabel="Replay app tour"
+          style={({ pressed }) => [
+            styles.menuItem,
+            { opacity: pressed ? 0.7 : 1 },
+          ]}
+        >
+          <Ionicons name="map-outline" size={20} color={colors.textSecondary} />
+          <Text style={[styles.menuText, { color: colors.textPrimary }]}>Replay App Tour</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+        </Pressable>
+
+        {!promptState?.reason?.includes('already_rated') && (
+          <Pressable
+            onPress={handleRateApp}
+            accessibilityRole="button"
+            accessibilityLabel="Rate WrenchGo"
+            style={({ pressed }) => [
+              styles.menuItem,
+              { opacity: pressed ? 0.7 : 1 },
+            ]}
+          >
+            <Ionicons name="star-outline" size={20} color={colors.textSecondary} />
+            <Text style={[styles.menuText, { color: colors.textPrimary }]}>Rate WrenchGo</Text>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
 
         <Pressable
           onPress={() => setShowFAQ(true)}

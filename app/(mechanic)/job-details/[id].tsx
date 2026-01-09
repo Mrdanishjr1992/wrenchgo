@@ -126,6 +126,7 @@ export default function MechanicJobDetails() {
   const [progress, setProgress] = useState<JobProgress | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [showAddLineItem, setShowAddLineItem] = useState(false);
+  const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
 
   const statusColor = (status: string) => {
     const s = (status || "").toLowerCase();
@@ -284,6 +285,27 @@ export default function MechanicJobDetails() {
         setContract(null);
         setProgress(null);
         setInvoice(null);
+      }
+
+      // Fetch question texts for this job's symptom
+      const intake = parseJobIntake(data?.description);
+      if (intake?.symptom?.key && intake?.answers) {
+        const answerKeys = Object.keys(intake.answers);
+        if (answerKeys.length > 0) {
+          const { data: questions } = await supabase
+            .from("symptom_questions")
+            .select("question_key, question_text")
+            .eq("symptom_key", intake.symptom.key)
+            .in("question_key", answerKeys);
+
+          if (questions) {
+            const qMap: Record<string, string> = {};
+            questions.forEach((q: any) => {
+              qMap[q.question_key] = q.question_text;
+            });
+            setQuestionMap(qMap);
+          }
+        }
       }
     } catch (e: any) {
       Alert.alert("Job error", e?.message ?? "Failed to load job.");
@@ -583,13 +605,7 @@ export default function MechanicJobDetails() {
 
                     <View style={{ gap: spacing.sm }}>
                       {Object.entries(answers).map(([key, value], idx) => {
-                        const questionLabels: Record<string, string> = {
-                          q1: "What's happening?",
-                          q2: "When did it start?",
-                          q3: "Any warning lights?",
-                          q4: "Additional details",
-                        };
-                        const label = questionLabels[key] || `Question ${idx + 1}`;
+                        const label = questionMap[key] || key;
                         return (
                           <View key={key}>
                             <Text style={{ ...text.muted, fontSize: 12 }}>{label}</Text>

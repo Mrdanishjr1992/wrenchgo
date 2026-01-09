@@ -12,8 +12,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
 import { UserProfileCard } from '@/components/profile/UserProfileCard';
 import { ReviewsList } from '@/components/reviews/ReviewsList';
-import { getPublicProfile, getUserReviews, reportReview } from '@/src/lib/reviews';
-import type { PublicProfile, Review } from '@/src/types/reviews';
+import { getPublicProfile, getUserReviews, reportReview, Review } from '@/src/lib/reviews';
+import type { PublicProfile } from '@/src/types/reviews';
 
 export default function ProfileScreen() {
   const { userId } = useLocalSearchParams<{ userId: string }>();

@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
-import type { Review } from '@/src/types/reviews';
+import type { Review } from '@/src/lib/reviews';
 
 interface ReviewsListProps {
   reviews: Review[];
@@ -71,7 +71,7 @@ interface ReviewCardProps {
 }
 
 function ReviewCard({ review, colors, onReport }: ReviewCardProps) {
-  const reviewerName = review.reviewer?.display_name || review.reviewer?.full_name || 'Anonymous';
+  const reviewerName = review.reviewer?.full_name || review.reviewer_name || 'Anonymous';
 
   const renderStars = (rating: number) => {
     const stars = [];
@@ -163,12 +163,13 @@ function ReviewCard({ review, colors, onReport }: ReviewCardProps) {
 interface CategoryRatingProps {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
-  value: number;
+  value: number | null;
   iconColor: string;
   textColor: string;
 }
 
 function CategoryRating({ icon, label, value, iconColor, textColor }: CategoryRatingProps) {
+  const displayValue = value ?? 0;
   return (
     <View style={styles.categoryRating}>
       <Ionicons name={icon} size={14} color={iconColor} />
@@ -177,7 +178,7 @@ function CategoryRating({ icon, label, value, iconColor, textColor }: CategoryRa
         {[...Array(5)].map((_, i) => (
           <Ionicons
             key={i}
-            name={i < value ? 'star' : 'star-outline'}
+            name={i < displayValue ? 'star' : 'star-outline'}
             size={10}
             color="#FFB800"
           />

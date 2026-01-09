@@ -56,11 +56,14 @@ export const responsiveSize = (
   return large;
 };
 
-export type Colors = typeof lightColors;
+export type Colors = {
+  [K in keyof typeof lightColors]: string;
+};
 
 export const lightColors = {
   // Backgrounds
   bg: "#F6FAFA", // very light teal-tinted white
+  background: "#F6FAFA", // alias for bg
   surface: "#FFFFFF",
   surface2: "#EEF6F6",
 
@@ -96,11 +99,12 @@ export const lightColors = {
   // Misc
   overlay: "rgba(0, 0, 0, 0.45)",
   black: "#000000",
-} as const;
+};
 
 export const darkColors: Colors = {
   // Backgrounds
   bg: "#0B1220", // deep blue-black
+  background: "#0B1220", // alias for bg
   surface: "#101826",
   surface2: "#162032",
 
@@ -135,7 +139,8 @@ export const darkColors: Colors = {
 
   // Misc
   overlay: "rgba(0, 0, 0, 0.7)",
-} as const;
+  black: "#000000",
+};
 
 export const spacing = {
   xs: normalize(6),
@@ -195,6 +200,21 @@ export const createText = (colors: Colors) => ({
   button: {
     fontSize: normalize(15),
     fontWeight: "900" as const,
+    color: colors.textPrimary,
+  },
+  xs: {
+    fontSize: normalize(11),
+    fontWeight: "500" as const,
+    color: colors.textMuted,
+  },
+  sm: {
+    fontSize: normalize(13),
+    fontWeight: "600" as const,
+    color: colors.textSecondary,
+  },
+  base: {
+    fontSize: normalize(14),
+    fontWeight: "600" as const,
     color: colors.textPrimary,
   },
 });

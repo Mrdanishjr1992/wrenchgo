@@ -18,6 +18,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 import { FinancialSummary } from "../../../components/financials";
+import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 
 type QuoteSummary = {
   quoteCount: number;
@@ -458,20 +459,21 @@ export default function CustomerJobs() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <FlatList
-        contentContainerStyle={{ paddingBottom: spacing.xl }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-        data={jobs.length === 0 ? [] : [{ key: "sections" } as any]}
-        keyExtractor={(i: any) => i.key}
-        ListHeaderComponent={
-          <View style={{ padding: spacing.md, paddingTop: spacing.xl }}>
-            <Text style={text.title}>My Jobs</Text>
-            <Text style={{ ...text.muted, marginTop: 4 }}>Jobs assigned to you</Text>
+      <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_OFFERS_LIST} style={{ flex: 1 }}>
+        <FlatList
+          contentContainerStyle={{ paddingBottom: spacing.xl }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+          data={jobs.length === 0 ? [] : [{ key: "sections" } as any]}
+          keyExtractor={(i: any) => i.key}
+          ListHeaderComponent={
+            <View style={{ padding: spacing.md, paddingTop: spacing.xl }}>
+              <Text style={text.title}>My Jobs</Text>
+              <Text style={{ ...text.muted, marginTop: 4 }}>Jobs assigned to you</Text>
 
-            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.accent + "40" }}>
-                <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
-                <Text style={{ ...text.title, fontSize: 22, color: colors.accent }}>{active.length}</Text>
+              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+                <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.accent + "40" }}>
+                  <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
+                  <Text style={{ ...text.title, fontSize: 22, color: colors.accent }}>{active.length}</Text>
               </View>
               <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#f59e0b40" }}>
                 <Text style={{ ...text.muted, fontSize: 11 }}>Waiting</Text>
@@ -585,6 +587,7 @@ export default function CustomerJobs() {
           </View>
         )}
       />
+      </WalkthroughTarget>
     </View>
   );
 }

@@ -1,6 +1,6 @@
 import React from "react";
 import { Pressable, Image, View } from "react-native";
-import { colors } from "../ui/theme";
+import { lightColors } from "../ui/theme";
 
 export function ProfileAvatar({
   uri,
@@ -18,7 +18,7 @@ export function ProfileAvatar({
           borderRadius: 20,
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: colors.surface,
+          backgroundColor: lightColors.surface,
         }}
       >
         <Image

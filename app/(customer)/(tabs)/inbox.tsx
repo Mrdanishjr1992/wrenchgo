@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { View, Pressable, Text } from "react-native";
 import { useTheme } from "../../../src/ui/theme-context";
+import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 
 import { MessagesListView } from "../../../components/inbox";
 import Notifications from "./notifications";
@@ -34,20 +35,22 @@ export default function Inbox() {
             padding: 4,
           }}
         >
-          <Pressable
-            onPress={() => setTab("messages")}
-            style={{
-              flex: 1,
-              paddingVertical: 10,
-              borderRadius: 10,
-              alignItems: "center",
-              backgroundColor: isMessagesTab ? colors.accent : "transparent",
-            }}
-          >
-            <Text style={{ fontWeight: "700", color: isMessagesTab ? "#000" : colors.textMuted }}>
-              Messages
-            </Text>
-          </Pressable>
+          <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_CHAT_BUTTON} style={{ flex: 1 }}>
+            <Pressable
+              onPress={() => setTab("messages")}
+              style={{
+                flex: 1,
+                paddingVertical: 10,
+                borderRadius: 10,
+                alignItems: "center",
+                backgroundColor: isMessagesTab ? colors.accent : "transparent",
+              }}
+            >
+              <Text style={{ fontWeight: "700", color: isMessagesTab ? "#000" : colors.textMuted }}>
+                Messages
+              </Text>
+            </Pressable>
+          </WalkthroughTarget>
 
           <Pressable
             onPress={() => setTab("alerts")}

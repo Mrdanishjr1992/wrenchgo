@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { useStripe } from "@stripe/stripe-react-native";
 import { supabase } from "../../src/lib/supabase";
@@ -18,8 +19,9 @@ export default function PaymentSetup() {
   const { colors } = useTheme();
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
   const params = useLocalSearchParams<{ returnTo?: string }>();
-  
+
   const [loading, setLoading] = useState(false);
+  const [checking, setChecking] = useState(true);
   const [hasPaymentMethod, setHasPaymentMethod] = useState<boolean | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<any>(null);
 
@@ -30,12 +32,9 @@ export default function PaymentSetup() {
     muted: { fontSize: 14, fontWeight: "500" as const, color: colors.textMuted },
   };
 
-  useEffect(() => {
-    checkPaymentStatus();
-  }, []);
-
-  const checkPaymentStatus = async () => {
+  const checkPaymentStatus = useCallback(async () => {
     try {
+      setChecking(true);
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         router.replace("/(auth)/sign-in");
@@ -48,9 +47,10 @@ export default function PaymentSetup() {
         .eq("id", session.user.id)
         .single();
 
-      setHasPaymentMethod(profile?.payment_method_status === 'active');
+      const isActive = profile?.payment_method_status === 'active';
+      setHasPaymentMethod(isActive);
 
-      if (profile?.payment_method_status === 'active') {
+      if (isActive) {
         const { data: pm } = await supabase
           .from("customer_payment_methods")
           .select("card_brand, card_last4, card_exp_month, card_exp_year")
@@ -61,8 +61,20 @@ export default function PaymentSetup() {
       }
     } catch (e) {
       console.error("Error checking payment status:", e);
+    } finally {
+      setChecking(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    checkPaymentStatus();
+  }, [checkPaymentStatus]);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkPaymentStatus();
+    }, [checkPaymentStatus])
+  );
 
   const setupPaymentMethod = useCallback(async () => {
     try {

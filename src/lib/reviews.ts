@@ -17,10 +17,16 @@ export type Review = {
   overall_rating: number;
   professionalism_rating: number | null;
   communication_rating: number | null;
+  performance_rating: number | null;
+  timing_rating: number | null;
+  cost_rating: number | null;
   comment: string | null;
   visibility: string;
   created_at: string;
   reviewer_name: string;
+  reviewer?: {
+    full_name: string;
+  };
   media: ReviewMedia[];
 };
 
@@ -105,8 +111,9 @@ export async function getReviewsForMechanic(
         reviewer_id,
         reviewee_id,
         overall_rating,
-        professionalism_rating,
-        communication_rating,
+        performance_rating,
+        timing_rating,
+        cost_rating,
         comment,
         visibility,
         created_at,
@@ -131,12 +138,16 @@ export async function getReviewsForMechanic(
       reviewer_id: review.reviewer_id,
       reviewee_id: review.reviewee_id,
       overall_rating: review.overall_rating,
-      professionalism_rating: review.professionalism_rating,
-      communication_rating: review.communication_rating,
+      professionalism_rating: review.performance_rating,
+      communication_rating: review.timing_rating,
+      performance_rating: review.performance_rating,
+      timing_rating: review.timing_rating,
+      cost_rating: review.cost_rating,
       comment: review.comment,
       visibility: review.visibility,
       created_at: review.created_at,
       reviewer_name: review.reviewer?.full_name || 'Customer',
+      reviewer: review.reviewer,
       media: review.media || [],
     }));
   } catch (err) {
@@ -344,10 +355,14 @@ export async function getUserReviews(
       overall_rating: review.overall_rating,
       professionalism_rating: review.performance_rating,
       communication_rating: review.timing_rating,
+      performance_rating: review.performance_rating,
+      timing_rating: review.timing_rating,
+      cost_rating: review.cost_rating,
       comment: review.comment,
       visibility: review.is_hidden ? 'hidden' : 'visible',
       created_at: review.created_at,
       reviewer_name: review.reviewer?.full_name || 'User',
+      reviewer: review.reviewer,
       media: [],
     }));
 

@@ -33,29 +33,7 @@ export async function acceptQuoteAndCreateContract(
     return { success: false, error: error.message };
   }
 
-  // Notify mechanic that their quote was accepted
-  try {
-    const { data: quoteData } = await supabase
-      .from('quotes')
-      .select('mechanic_id, job_id, jobs(title)')
-      .eq('id', quoteId)
-      .single();
-
-    if (quoteData?.mechanic_id) {
-      const { notifyUser } = await import('./notify');
-      const jobTitle = (quoteData as any).jobs?.title || 'Job';
-      await notifyUser({
-        userId: quoteData.mechanic_id,
-        title: 'Quote Accepted!',
-        body: `Your quote for "${jobTitle}" has been accepted. The customer is ready to proceed.`,
-        type: 'quote_accepted',
-        entityType: 'job',
-        entityId: quoteData.job_id,
-      });
-    }
-  } catch (e) {
-    console.error('Failed to send notification:', e);
-  }
+  // Note: Notification is sent from the payment screen after successful payment
 
   return data as AcceptQuoteResponse;
 }

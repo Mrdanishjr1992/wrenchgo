@@ -86,7 +86,7 @@ export default function LegalScreen() {
             key={doc.id}
             onPress={() => setSelectedDocument(doc)}
             style={({ pressed }) => [
-              card.container,
+              card,
               styles.documentCard,
               {
                 marginBottom: spacing.md,
@@ -114,7 +114,7 @@ export default function LegalScreen() {
           </Pressable>
         ))}
 
-        <View style={[styles.contactCard, card.container, { marginTop: spacing.lg }]}>
+        <View style={[styles.contactCard, card, { marginTop: spacing.lg }]}>
           <Ionicons name="mail" size={24} color={colors.accent} />
           <View style={{ marginLeft: spacing.md, flex: 1 }}>
             <Text style={[text.body, { color: colors.textSecondary, fontSize: 13 }]}>

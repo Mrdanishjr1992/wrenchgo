@@ -146,9 +146,9 @@ export default function JobPayment() {
 
       notifyUser({
         userId: quote.mechanic_id,
-        title: "Payment Complete!",
-        body: "The customer has completed payment. You can now start the job.",
-        type: "payment_complete",
+        title: "Payment Secured",
+        body: `Customer has committed payment for "${job.title}". You're cleared to depart.`,
+        type: "payment_secured",
         entityType: "job",
         entityId: jobId as any,
       }).catch(() => {});

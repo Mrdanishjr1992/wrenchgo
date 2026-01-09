@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../src/ui/theme-context';
 import { createCard } from '../../../src/ui/styles';
@@ -17,6 +18,7 @@ import {
   createStripeConnectAccountLink,
   isStripeAccountReady,
   getStripeAccountStatusMessage,
+  refreshStripeAccountStatus,
   type MechanicStripeAccount,
 } from '../../../src/lib/stripe';
 import { supabase } from '../../../src/lib/supabase';
@@ -29,12 +31,9 @@ export default function StripeOnboardingScreen() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [account, setAccount] = useState<MechanicStripeAccount | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadAccount();
-  }, []);
-
-  const loadAccount = async () => {
+  const loadAccount = useCallback(async () => {
     try {
       setLoading(true);
 
@@ -44,6 +43,14 @@ export default function StripeOnboardingScreen() {
         return;
       }
 
+      setUserId(user.id);
+
+      try {
+        await refreshStripeAccountStatus(user.id);
+      } catch (e) {
+        // Ignore refresh errors, fall back to cached data
+      }
+
       const accountData = await getMechanicStripeAccount(user.id);
       setAccount(accountData);
     } catch (error) {
@@ -51,7 +58,19 @@ export default function StripeOnboardingScreen() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
+
+  useEffect(() => {
+    loadAccount();
+  }, [loadAccount]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (userId) {
+        loadAccount();
+      }
+    }, [userId, loadAccount])
+  );
 
   const handleStartOnboarding = async () => {
     try {
@@ -65,10 +84,6 @@ export default function StripeOnboardingScreen() {
       } else {
         Alert.alert('Error', 'Unable to open onboarding link');
       }
-
-      setTimeout(() => {
-        loadAccount();
-      }, 2000);
     } catch (error: any) {
       console.error('Error starting onboarding:', error);
       Alert.alert('Error', error.message || 'Failed to start onboarding');

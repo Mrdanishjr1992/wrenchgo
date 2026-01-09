@@ -266,7 +266,7 @@ export default function EarningsScreen() {
 
   const card = useMemo(
     () => ({
-      backgroundColor: colors.card,
+      backgroundColor: colors.surface,
       borderWidth: 1,
       borderColor: colors.border,
     }),

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,11 +8,13 @@ import {
   Alert,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { createCard } from "../../src/ui/styles";
 import { getDisplayTitle } from "../../src/lib/format-symptom";
+import { usePayoutStatus } from "../../src/lib/payment-gate";
 import React from "react";
 
 type QuoteType = "diagnostic_only" | "range" | "fixed";
@@ -28,7 +30,6 @@ type Job = {
 };
 
 const DRIVE_FEE = 50;
-const PLATFORM_FEE = 15;
 const DIAGNOSTIC_FEE = 80;
 
 export default function QuoteReview() {
@@ -49,6 +50,7 @@ export default function QuoteReview() {
   }>();
   const { colors, text, spacing, radius } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
+  const payoutStatus = usePayoutStatus();
 
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +105,7 @@ export default function QuoteReview() {
     const includeDiagnostic = params.includeDiagnosticFee === "true";
     const includeDrive = params.includeDriveFee !== "false"; // default true
 
-    const baseFees = PLATFORM_FEE + (includeDrive ? DRIVE_FEE : 0) + (includeDiagnostic ? DIAGNOSTIC_FEE : 0);
+    const baseFees = (includeDrive ? DRIVE_FEE : 0) + (includeDiagnostic ? DIAGNOSTIC_FEE : 0);
 
     if (params.quoteType === "range") {
       const hoursLow = parseFloat(params.hoursLow || "0");
@@ -143,7 +145,7 @@ export default function QuoteReview() {
 
   const getExpectationText = () => {
     if (params.quoteType === "diagnostic_only") {
-      return `$${DIAGNOSTIC_FEE} diagnostic + platform fees, repair quoted separately`;
+      return `$${DIAGNOSTIC_FEE} diagnostic fee, repair quoted separately`;
     }
     if (params.quoteType === "range") {
       return "Final total will fall within the stated range";
@@ -168,6 +170,21 @@ export default function QuoteReview() {
   };
 
   const handleSendQuote = async () => {
+    if (!payoutStatus.isReady) {
+      Alert.alert(
+        "Payout Setup Required",
+        "Please set up your payout account before sending quotes.",
+        [
+          { text: "Cancel", style: "cancel" },
+          {
+            text: "Set Up Payout",
+            onPress: () => router.push("/(mechanic)/stripe-onboarding")
+          },
+        ]
+      );
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -176,38 +193,6 @@ export default function QuoteReview() {
         Alert.alert("Error", "Not signed in");
         return;
       }
-
-      // Check if mechanic has payout setup - check both tables
-      const { data: mechProfile } = await supabase
-        .from("mechanic_profiles")
-        .select("stripe_account_id, stripe_onboarding_complete")
-        .eq("id", userData.user.id)
-        .maybeSingle();
-
-      const { data: stripeAccount } = await supabase
-        .from("mechanic_stripe_accounts")
-        .select("id, stripe_account_id, onboarding_complete")
-        .eq("mechanic_id", userData.user.id)
-        .maybeSingle();
-
-      const hasPayoutSetup =
-        (stripeAccount?.stripe_account_id) ||
-        (mechProfile?.stripe_account_id);
-
-      if (!hasPayoutSetup) {
-        Alert.alert(
-          "Payout Setup Required",
-          "Please set up your payout account before sending quotes.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Set Up Payout", onPress: () => router.push("/(mechanic)/stripe-onboarding") },
-          ]
-        );
-        setSubmitting(false);
-        return;
-      }
-
-
 
       const arrivalTimeStr =
         params.arrivalDate && params.arrivalTime
@@ -369,13 +354,6 @@ export default function QuoteReview() {
             </View>
           )}
 
-          <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-            <Text style={{ ...text.body, fontSize: 14 }}>Platform fee</Text>
-            <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-              ${PLATFORM_FEE}
-            </Text>
-          </View>
-
           {includeDiagnostic && (
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={{ ...text.body, fontSize: 14 }}>Diagnostic fee</Text>
@@ -435,6 +413,46 @@ export default function QuoteReview() {
           ),
         }}
       />
+
+      {!payoutStatus.isLoading && !payoutStatus.isReady && (
+        <Pressable
+          onPress={() => router.push("/(mechanic)/stripe-onboarding")}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#FEF3C7",
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            gap: spacing.sm,
+          }}
+        >
+          <Ionicons name="warning" size={20} color="#D97706" />
+          <Text style={{ flex: 1, fontSize: 14, color: "#92400E", fontWeight: "600" }}>
+            Set up your payout account to send quotes
+          </Text>
+          <Text style={{ fontSize: 13, color: "#D97706", fontWeight: "700" }}>
+            Set Up →
+          </Text>
+        </Pressable>
+      )}
+
+      {payoutStatus.isLoading && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: colors.surface,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            gap: spacing.sm,
+          }}
+        >
+          <ActivityIndicator size="small" color={colors.accent} />
+          <Text style={{ fontSize: 14, color: colors.textMuted }}>
+            Checking payout status...
+          </Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={{ padding: spacing.md, gap: spacing.md }}>
         <View style={[
@@ -641,7 +659,7 @@ export default function QuoteReview() {
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
           <Pressable
             onPress={handleSendQuote}
-            disabled={submitting}
+            disabled={submitting || !payoutStatus.isReady}
             style={({ pressed }) => ({
               backgroundColor: colors.accent,
               paddingVertical: 18,
@@ -661,7 +679,7 @@ export default function QuoteReview() {
 
           <Pressable
             onPress={() => router.back()}
-            disabled={submitting}
+            disabled={submitting || !payoutStatus.isReady}
             style={({ pressed }) => ({
               backgroundColor: colors.surface,
               paddingVertical: 14,

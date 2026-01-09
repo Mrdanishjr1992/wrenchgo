@@ -1,6 +1,8 @@
 import { StripeProvider } from "@stripe/stripe-react-native";
 import { Slot } from "expo-router";
 import { ThemeProvider } from "../src/ui/theme-context";
+import { OnboardingProvider } from "../src/onboarding";
+import { RatingPromptProvider } from "../src/components/RatingPromptProvider";
 import React from "react";
 
 export default function RootLayout() {
@@ -13,7 +15,11 @@ export default function RootLayout() {
       urlScheme="wrenchgo"
     >
       <ThemeProvider>
-        <Slot />
+        <OnboardingProvider>
+          <RatingPromptProvider>
+            <Slot />
+          </RatingPromptProvider>
+        </OnboardingProvider>
       </ThemeProvider>
     </StripeProvider>
   );

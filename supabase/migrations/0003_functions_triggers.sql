@@ -253,8 +253,8 @@ RETURNS TABLE (
   created_at timestamptz,
   preferred_time text,
   location_address text,
-  latitude double precision,
-  longitude double precision,
+  latitude numeric,
+  longitude numeric,
   distance_miles numeric,
   customer_id uuid,
   customer_name text,
@@ -295,8 +295,8 @@ BEGIN
     j.created_at,
     j.preferred_time,
     j.location_address,
-    j.location_lat AS latitude,
-    j.location_lng AS longitude,
+    j.location_lat::numeric AS latitude,
+    j.location_lng::numeric AS longitude,
     CASE
       WHEN p_mechanic_lat IS NOT NULL AND p_mechanic_lng IS NOT NULL AND j.location_lat IS NOT NULL AND j.location_lng IS NOT NULL
       THEN (

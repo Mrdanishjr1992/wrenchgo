@@ -7,18 +7,19 @@ import {
   ActivityIndicator,
   Alert,
   ScrollView,
-  Platform,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
+import { useOnboarding } from "../../src/onboarding";
 
 type Role = "customer" | "mechanic";
 
 export default function ChooseRole() {
   const router = useRouter();
   const { colors, text, spacing } = useTheme();
+  const { setUserRole, startWalkthrough, hasSeenCustomerGuide, hasSeenMechanicGuide } = useOnboarding();
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -83,12 +84,24 @@ export default function ChooseRole() {
       const { error } = await supabase.rpc("set_user_role", { new_role: role });
       if (error) throw error;
 
+      // Save role to onboarding storage
+      await setUserRole(role);
+
       // Small delay helps if downstream screens fetch mechanic_profiles immediately
       await sleep(150);
 
+      // Navigate to the appropriate tab group
       router.replace("/");
-    } catch (e: any) {
 
+      // Start walkthrough if user hasn't seen it yet
+      const hasSeenGuide = role === 'customer' ? hasSeenCustomerGuide : hasSeenMechanicGuide;
+      if (!hasSeenGuide) {
+        // Small delay to let the screen mount first
+        setTimeout(() => {
+          startWalkthrough(role);
+        }, 800);
+      }
+    } catch (e: any) {
       // Make "already set" friendlier if your RPC throws that message
       const msg = String(e?.message || "");
       if (msg.toLowerCase().includes("role already set")) {
@@ -97,7 +110,7 @@ export default function ChooseRole() {
         return;
       }
 
-      Alert.alert("Couldn’t save role", e?.message ?? "Try again.");
+      Alert.alert("Couldn't save role", e?.message ?? "Try again.");
     } finally {
       setSaving(false);
     }
@@ -119,46 +132,52 @@ export default function ChooseRole() {
       <Pressable
         onPress={() => setRole(r)}
         disabled={saving || loading}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: active }}
+        accessibilityLabel={`${title}. ${subtitle}`}
         style={({ pressed }) => ({
           flex: 1,
           padding: spacing.lg,
           borderRadius: 20,
-          borderWidth: 1,
+          borderWidth: 2,
           borderColor: active ? colors.accent : colors.border,
           backgroundColor: active ? `${colors.accent}22` : colors.surface,
           opacity: pressed ? 0.92 : 1,
-          transform: [{ scale: pressed ? 0.99 : 1 }],
+          transform: [{ scale: pressed ? 0.98 : 1 }],
           gap: 8,
         })}
       >
-        <Text style={{ fontSize: 28 }}>{emoji}</Text>
-        <Text style={{ ...text.section, fontSize: 16 }}>{title}</Text>
-        <Text style={{ ...text.muted, lineHeight: 18 }}>{subtitle}</Text>
+        <Text style={{ fontSize: 32 }}>{emoji}</Text>
+        <Text style={{ ...text.section, fontSize: 17, fontWeight: '700' }}>{title}</Text>
+        <Text style={{ ...text.muted, lineHeight: 20, fontSize: 14 }}>{subtitle}</Text>
 
-        <View style={{ marginTop: 10, flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <View style={{ marginTop: 12, flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View
             style={{
-              width: 18,
-              height: 18,
-              borderRadius: 999,
+              width: 22,
+              height: 22,
+              borderRadius: 11,
               borderWidth: 2,
               borderColor: active ? colors.accent : colors.border,
               alignItems: "center",
               justifyContent: "center",
+              backgroundColor: active ? colors.accent : 'transparent',
             }}
           >
-            {active ? (
+            {active && (
               <View
                 style={{
-                  width: 10,
-                  height: 10,
-                  borderRadius: 999,
-                  backgroundColor: colors.accent,
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: '#fff',
                 }}
               />
-            ) : null}
+            )}
           </View>
-          <Text style={{ ...text.muted, fontSize: 12 }}>{active ? "Selected" : "Tap to select"}</Text>
+          <Text style={{ ...text.muted, fontSize: 13 }}>
+            {active ? "Selected" : "Tap to select"}
+          </Text>
         </View>
       </Pressable>
     );
@@ -167,8 +186,8 @@ export default function ChooseRole() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator />
-        <Text style={{ ...text.muted, marginTop: 10 }}>Loading…</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={{ ...text.muted, marginTop: 12 }}>Loading…</Text>
       </View>
     );
   }
@@ -185,47 +204,61 @@ export default function ChooseRole() {
         <LinearGradient
           colors={[`${colors.accent}22`, `${colors.accent}00`]}
           style={{
-            paddingTop: spacing.xl,
+            paddingTop: spacing.xl + 20,
             paddingBottom: spacing.lg,
             paddingHorizontal: spacing.lg,
           }}
         >
-          <Text style={{ ...text.title, fontSize: 28 }}>Choose your role</Text>
-          <Text style={{ ...text.muted, marginTop: 8 }}>This helps us customize your experience.</Text>
+          <Text style={{ ...text.title, fontSize: 30, fontWeight: '800' }}>
+            How will you use WrenchGo?
+          </Text>
+          <Text style={{ ...text.muted, marginTop: 10, fontSize: 16, lineHeight: 22 }}>
+            Choose your role to get started. This helps us customize your experience.
+          </Text>
         </LinearGradient>
 
         <View style={{ paddingHorizontal: spacing.lg, gap: spacing.md, marginTop: spacing.md }}>
-          <View style={{ flexDirection: "row", gap: 12 }}>
+          <View style={{ flexDirection: "row", gap: 14 }}>
             <RoleCard
               r="customer"
-              title="Customer"
+              title="I'm a Customer"
               subtitle="Request a mechanic, track jobs, and pay securely."
-              emoji="🧑‍🔧"
+              emoji="🚗"
             />
             <RoleCard
               r="mechanic"
-              title="Mechanic"
-              subtitle="Receive jobs, manage requests, and grow your business."
-              emoji="🛠️"
+              title="I'm a Mechanic"
+              subtitle="Find jobs, send offers, and grow your business."
+              emoji="🔧"
             />
           </View>
 
           <Pressable
             onPress={saveRole}
             disabled={!canContinue}
+            accessibilityRole="button"
+            accessibilityLabel="Continue"
+            accessibilityState={{ disabled: !canContinue }}
             style={({ pressed }) => ({
               marginTop: spacing.lg,
               backgroundColor: colors.accent,
-              paddingVertical: 16,
-              borderRadius: 999,
+              paddingVertical: 18,
+              borderRadius: 16,
               alignItems: "center",
-              opacity: !canContinue ? 0.55 : pressed ? 0.9 : 1,
+              opacity: !canContinue ? 0.5 : pressed ? 0.9 : 1,
+              shadowColor: colors.accent,
+              shadowOffset: { width: 0, height: 4 },
+              shadowOpacity: canContinue ? 0.3 : 0,
+              shadowRadius: 8,
+              elevation: canContinue ? 4 : 0,
             })}
           >
             {saving ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={{ fontWeight: "900", color: "#fff", letterSpacing: 0.6 }}>CONTINUE</Text>
+              <Text style={{ fontWeight: "800", color: "#fff", fontSize: 16, letterSpacing: 0.5 }}>
+                Continue
+              </Text>
             )}
           </Pressable>
 
@@ -235,9 +268,11 @@ export default function ChooseRole() {
               router.replace("/(auth)/sign-in");
             }}
             disabled={saving}
-            style={{ alignSelf: "center", marginTop: 14 }}
+            style={{ alignSelf: "center", marginTop: 16, paddingVertical: 8 }}
           >
-            <Text style={{ ...text.muted, textDecorationLine: "underline" }}>Sign out</Text>
+            <Text style={{ ...text.muted, textDecorationLine: "underline", fontSize: 14 }}>
+              Sign out instead
+            </Text>
           </Pressable>
         </View>
       </ScrollView>

@@ -20,6 +20,7 @@ import { LeadCard } from '@/components/mechanic/LeadCard';
 import { LeadsEmptyState, LeadCardSkeleton } from '@/components/mechanic/LeadsEmptyState';
 import { LeadsHeader } from '@/components/mechanic/LeadsHeader';
 import type { LeadFilterType } from '@/src/types/mechanic-leads';
+import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from '@/src/onboarding';
 
 export default function MechanicLeadsPage() {
   const router = useRouter();
@@ -29,9 +30,8 @@ export default function MechanicLeadsPage() {
   const [mechanicId, setMechanicId] = useState<string | null>(null);
   const [filter, setFilter] = useState<LeadFilterType>('all');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [locationPermission, setLocationPermission] = useState<boolean>(false);
 
-  const { leads, summary, loading, error, hasMore, sortBy, refetch, loadMore, changeSortBy } =
+  const { leads, summary, loading, error, hasMore, sortBy, profileStatus, refetch, loadMore, changeSortBy } =
     useMechanicLeads(
       mechanicId,
       filter,
@@ -40,7 +40,6 @@ export default function MechanicLeadsPage() {
       25
     );
 
-  // Prevent FlatList from calling onEndReached repeatedly
   const endReachedLockRef = useRef(false);
 
   useEffect(() => {
@@ -56,7 +55,6 @@ export default function MechanicLeadsPage() {
   useEffect(() => {
     const requestLocationPermission = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      setLocationPermission(status === 'granted');
 
       if (status === 'granted') {
         try {
@@ -74,7 +72,6 @@ export default function MechanicLeadsPage() {
     requestLocationPermission();
   }, []);
 
-  // Unlock endReached when inputs change (so pagination works after refetch/filter/sort changes)
   useEffect(() => {
     endReachedLockRef.current = false;
   }, [filter, sortBy, mechanicId, location?.latitude, location?.longitude]);
@@ -90,7 +87,6 @@ export default function MechanicLeadsPage() {
   const handleEnableLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status === 'granted') {
-      setLocationPermission(true);
       try {
         const currentLocation = await Location.getCurrentPositionAsync({});
         setLocation({
@@ -109,6 +105,35 @@ export default function MechanicLeadsPage() {
     }
   };
 
+  const handleSetHomeLocation = async () => {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Location Permission Required', 'Please enable location services to set your service location.');
+      return;
+    }
+
+    try {
+      const currentLocation = await Location.getCurrentPositionAsync({});
+      const { latitude, longitude } = currentLocation.coords;
+
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ home_lat: latitude, home_lng: longitude })
+        .eq('id', mechanicId);
+
+      if (updateError) {
+        Alert.alert('Error', 'Failed to save location. Please try again.');
+        return;
+      }
+
+      setLocation({ latitude, longitude });
+      Alert.alert('Success', 'Your service location has been set!');
+      refetch();
+    } catch (err) {
+      Alert.alert('Error', 'Failed to get your location. Please try again.');
+    }
+  };
+
   const renderLeadCard = ({ item }: { item: any }) => (
     <LeadCard lead={item} onPressView={handleViewJob} onPressQuote={handleQuoteJob} />
   );
@@ -123,6 +148,41 @@ export default function MechanicLeadsPage() {
 
   const renderEmptyState = () => {
     if (loading) return null;
+    
+    if (profileStatus && !profileStatus.hasLocation) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.iconCircle, { backgroundColor: colors.surface2 }]}>
+            <Ionicons name="location-outline" size={48} color={colors.warning || '#D97706'} />
+          </View>
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Set your service location</Text>
+          <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
+            Use your current location to see available leads in your area.
+          </Text>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: colors.accent }]}
+            onPress={handleSetHomeLocation}
+          >
+            <Text style={styles.actionButtonText}>Use Current Location</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    
+    if (profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea) {
+      return (
+        <View style={styles.emptyContainer}>
+          <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+            <Ionicons name="map-outline" size={48} color="#D97706" />
+          </View>
+          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Service coming soon</Text>
+          <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
+            WrenchGo isn't available in your area yet, but we're expanding! We'll notify you when service opens near you.
+          </Text>
+        </View>
+      );
+    }
+    
     return <LeadsEmptyState filter={filter} onEnableLocation={handleEnableLocation} />;
   };
 
@@ -146,6 +206,9 @@ export default function MechanicLeadsPage() {
     }
   }, [hasMore, loading, loadMore]);
 
+  const showLocationBanner = profileStatus && !profileStatus.hasLocation;
+  const showServiceAreaBanner = profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea;
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       <LinearGradient
@@ -156,10 +219,9 @@ export default function MechanicLeadsPage() {
       >
         <View style={styles.headerContent}>
           <View style={styles.headerTitleRow}>
-            <Ionicons name="briefcase" size={32} color="#fff" />
+            <Ionicons name="briefcase" size={24} color="#fff" />
             <Text style={styles.headerTitle}>Leads</Text>
           </View>
-          <Text style={styles.headerSubtitle}>Find your next job opportunity</Text>
         </View>
       </LinearGradient>
 
@@ -233,6 +295,28 @@ export default function MechanicLeadsPage() {
 
       <LeadsHeader summary={summary} sortBy={sortBy} onChangeSortBy={changeSortBy} />
 
+      {showLocationBanner && (
+        <TouchableOpacity
+          style={[styles.setLocationBanner, { backgroundColor: '#FEF3C7' }]}
+          onPress={handleSetHomeLocation}
+        >
+          <Ionicons name="location-outline" size={20} color="#D97706" />
+          <Text style={[styles.setLocationText, { color: '#D97706' }]}>
+            Tap to set your service location
+          </Text>
+          <Ionicons name="chevron-forward" size={20} color="#D97706" />
+        </TouchableOpacity>
+      )}
+
+      {showServiceAreaBanner && (
+        <View style={[styles.setLocationBanner, { backgroundColor: '#DBEAFE' }]}>
+          <Ionicons name="information-circle-outline" size={20} color="#2563EB" />
+          <Text style={[styles.setLocationText, { color: '#2563EB' }]}>
+            WrenchGo service is expanding to your area soon
+          </Text>
+        </View>
+      )}
+
       {error && (
         <View style={[styles.errorBanner, { backgroundColor: '#FEE2E2' }]}>
           <Text style={styles.errorText}>{error}</Text>
@@ -242,33 +326,35 @@ export default function MechanicLeadsPage() {
       {loading && leads.length === 0 ? (
         <View style={styles.content}>{renderSkeletons()}</View>
       ) : (
-        <FlatList
-          data={leads}
-          renderItem={renderLeadCard}
-          keyExtractor={(item) => item.job_id}
-          contentContainerStyle={[
-            styles.listContent,
-            leads.length === 0 && styles.emptyListContent,
-          ]}
-          ListEmptyComponent={renderEmptyState}
-          ListFooterComponent={renderFooter}
-          refreshControl={
-            <RefreshControl
-              refreshing={loading && leads.length > 0}
-              onRefresh={() => {
-                endReachedLockRef.current = false;
-                refetch();
-              }}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
-            />
-          }
-          onEndReached={handleEndReached}
-          onMomentumScrollBegin={() => {
-            endReachedLockRef.current = false;
-          }}
-          onEndReachedThreshold={0.5}
-        />
+        <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.MECHANIC_LEADS_LIST} style={{ flex: 1 }}>
+          <FlatList
+            data={leads}
+            renderItem={renderLeadCard}
+            keyExtractor={(item) => item.job_id}
+            contentContainerStyle={[
+              styles.listContent,
+              leads.length === 0 && styles.emptyListContent,
+            ]}
+            ListEmptyComponent={renderEmptyState}
+            ListFooterComponent={renderFooter}
+            refreshControl={
+              <RefreshControl
+                refreshing={loading && leads.length > 0}
+                onRefresh={() => {
+                  endReachedLockRef.current = false;
+                  refetch();
+                }}
+                tintColor={colors.accent}
+                colors={[colors.accent]}
+              />
+            }
+            onEndReached={handleEndReached}
+            onMomentumScrollBegin={() => {
+              endReachedLockRef.current = false;
+            }}
+            onEndReachedThreshold={0.5}
+          />
+        </WalkthroughTarget>
       )}
     </View>
   );
@@ -280,7 +366,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 16,
-    paddingBottom: 20,
+    paddingBottom: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -288,80 +374,120 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   headerContent: {
-    gap: 4,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
+    paddingTop: 8,
   },
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
   },
   headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 24,
+    fontWeight: '800',
     color: '#fff',
   },
   headerSubtitle: {
-    fontSize: 14,
-    color: '#fff',
-    opacity: 0.9,
-    marginLeft: 44,
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+    marginLeft: 34,
   },
   filterTabs: {
     flexDirection: 'row',
     borderBottomWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
   },
   filterTab: {
     flex: 1,
-    paddingVertical: 14,
-    alignItems: 'center',
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 10,
     gap: 6,
   },
   filterTabText: {
-    fontSize: 15,
-    fontWeight: '500',
+    fontSize: 14,
   },
-  content: {
-    padding: 16,
+  setLocationBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 10,
+    gap: 10,
   },
-  listContent: {
-    padding: 16,
-  },
-  emptyListContent: {
-    flexGrow: 1,
+  setLocationText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
   },
   errorBanner: {
     padding: 12,
     marginHorizontal: 16,
     marginTop: 12,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   errorText: {
-    color: '#991B1B',
+    color: '#DC2626',
     fontSize: 14,
-    textAlign: 'center',
+  },
+  content: {
+    flex: 1,
+    padding: 12,
+  },
+  listContent: {
+    padding: 12,
+    paddingBottom: 100,
+  },
+  emptyListContent: {
+    flexGrow: 1,
   },
   loadMoreButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 8,
+    padding: 14,
+    borderRadius: 10,
     alignItems: 'center',
     marginTop: 8,
     marginBottom: 16,
   },
   loadMoreText: {
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+    paddingVertical: 64,
+  },
+  iconCircle: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
+  },
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  emptyMessage: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  actionButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  actionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
