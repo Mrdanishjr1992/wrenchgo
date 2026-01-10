@@ -19,12 +19,18 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json(401, { error: "Missing authorization header" }, headers);
 
-    const supabase = createClient(supabaseUrl, serviceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Extract the JWT token
+    const token = authHeader.replace("Bearer ", "");
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
+    // Create client with service key for DB operations
+    const supabase = createClient(supabaseUrl, serviceKey);
+
+    // Verify the user's JWT token
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    if (userError || !user) {
+      console.error("[SAVE_PM] Auth error:", userError?.message);
+      return json(401, { error: "Unauthorized", details: userError?.message }, headers);
+    }
 
     const body = await req.json().catch(() => null);
     const setupIntentId = body?.setupIntentId;

@@ -26,9 +26,10 @@ export function usePaymentStatus() {
   });
   const [userId, setUserId] = useState<string | null>(null);
   const isMounted = useRef(true);
+  const lastCheckedRef = useRef<number | null>(null);
 
   const checkStatus = useCallback(async (force = false) => {
-    if (!force && state.lastChecked && Date.now() - state.lastChecked < CACHE_TTL_MS) {
+    if (!force && lastCheckedRef.current && Date.now() - lastCheckedRef.current < CACHE_TTL_MS) {
       return;
     }
 
@@ -38,6 +39,7 @@ export function usePaymentStatus() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
         if (isMounted.current) {
+          lastCheckedRef.current = Date.now();
           setState({
             status: 'none',
             isReady: false,
@@ -62,6 +64,7 @@ export function usePaymentStatus() {
       const status = (profile?.payment_method_status as PaymentStatus) || 'none';
 
       if (isMounted.current) {
+        lastCheckedRef.current = Date.now();
         setState({
           status,
           isReady: status === 'active',
@@ -79,13 +82,13 @@ export function usePaymentStatus() {
         }));
       }
     }
-  }, [state.lastChecked]);
+  }, []);
 
   useEffect(() => {
     isMounted.current = true;
     checkStatus(true);
     return () => { isMounted.current = false; };
-  }, []);
+  }, [checkStatus]);
 
   useFocusEffect(
     useCallback(() => {
@@ -128,9 +131,10 @@ export function usePayoutStatus() {
   });
   const [userId, setUserId] = useState<string | null>(null);
   const isMounted = useRef(true);
+  const lastCheckedRef = useRef<number | null>(null);
 
   const checkStatus = useCallback(async (force = false) => {
-    if (!force && state.lastChecked && Date.now() - state.lastChecked < CACHE_TTL_MS) {
+    if (!force && lastCheckedRef.current && Date.now() - lastCheckedRef.current < CACHE_TTL_MS) {
       return;
     }
 
@@ -140,6 +144,7 @@ export function usePayoutStatus() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         if (isMounted.current) {
+          lastCheckedRef.current = Date.now();
           setState({
             status: 'not_started',
             isReady: false,
@@ -171,6 +176,7 @@ export function usePayoutStatus() {
       const isReady = chargesEnabled && payoutsEnabled && detailsSubmitted;
 
       if (isMounted.current) {
+        lastCheckedRef.current = Date.now();
         setState({
           status,
           isReady,
@@ -191,13 +197,13 @@ export function usePayoutStatus() {
         }));
       }
     }
-  }, [state.lastChecked]);
+  }, []);
 
   useEffect(() => {
     isMounted.current = true;
     checkStatus(true);
     return () => { isMounted.current = false; };
-  }, []);
+  }, [checkStatus]);
 
   useFocusEffect(
     useCallback(() => {

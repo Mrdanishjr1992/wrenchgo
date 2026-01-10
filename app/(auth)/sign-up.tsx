@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -15,6 +15,8 @@ import { useRouter } from "expo-router";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { LinearGradient } from "expo-linear-gradient";
+import { configureGoogleSignIn, signInWithGoogle } from "../../src/lib/googleAuth";
+import { Ionicons } from "@expo/vector-icons";
 
 function isEmail(v: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
@@ -26,9 +28,21 @@ export default function SignUp() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [isGoogleAvailable, setIsGoogleAvailable] = useState(false);
+
+  useEffect(() => {
+    try {
+      configureGoogleSignIn();
+      setIsGoogleAvailable(true);
+    } catch {
+      setIsGoogleAvailable(false);
+    }
+  }, []);
 
   const emailClean = useMemo(() => email.trim(), [email]);
   const nameClean = useMemo(() => fullName.trim(), [fullName]);
@@ -37,9 +51,10 @@ export default function SignUp() {
       !loading &&
       nameClean.length >= 2 &&
       isEmail(emailClean) &&
-      password.length >= 6
+      password.length >= 6 &&
+      password === confirmPassword
     );
-  }, [loading, nameClean, emailClean, password]);
+  }, [loading, nameClean, emailClean, password, confirmPassword]);
 
   const inputStyle = useMemo(
     () => ({
@@ -67,6 +82,10 @@ export default function SignUp() {
       }
       if (password.length < 6) {
         setErr("Password must be at least 6 characters.");
+        return;
+      }
+      if (password !== confirmPassword) {
+        setErr("Passwords do not match.");
         return;
       }
 
@@ -110,6 +129,52 @@ export default function SignUp() {
       setErr(e?.message ?? "Failed to create account");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGoogleSignUp = async () => {
+    setErr(null);
+    setGoogleLoading(true);
+
+    try {
+      const res = await signInWithGoogle();
+      const idToken = res?.idToken ?? null;
+
+      if (res?.error) {
+        setErr(res.error);
+        return;
+      }
+
+      if (!idToken) {
+        setErr("Failed to get ID token from Google");
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: "google",
+        token: idToken,
+      });
+
+      if (error) {
+        setErr(error.message);
+        return;
+      }
+
+      const session = data?.session;
+      const user = data?.user;
+
+      if (!session || !user) {
+        setErr("Google sign-up did not create a session.");
+        return;
+      }
+
+      router.replace("/(auth)/choose-role");
+    } catch (e: any) {
+      console.error("Google Sign-Up error:", e);
+      Alert.alert("Google sign up failed", e?.message ?? "Try again.");
+      setErr(e?.message ?? "Failed to sign up with Google");
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -217,6 +282,16 @@ export default function SignUp() {
               secureTextEntry
               value={password}
               onChangeText={setPassword}
+              returnKeyType="next"
+              style={inputStyle}
+            />
+
+            <TextInput
+              placeholder="Confirm password"
+              placeholderTextColor={colors.textMuted}
+              secureTextEntry
+              value={confirmPassword}
+              onChangeText={setConfirmPassword}
               returnKeyType="done"
               style={inputStyle}
             />
@@ -242,6 +317,42 @@ export default function SignUp() {
               <Text style={{ fontWeight: "900", color: "#000" }}>CREATE ACCOUNT</Text>
             )}
           </Pressable>
+
+          {isGoogleAvailable && (
+            <>
+              <View style={{ flexDirection: "row", alignItems: "center", marginVertical: 8 }}>
+                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+                <Text style={{ ...text.muted, marginHorizontal: 12 }}>or</Text>
+                <View style={{ flex: 1, height: 1, backgroundColor: colors.border }} />
+              </View>
+
+              <Pressable
+                onPress={handleGoogleSignUp}
+                disabled={googleLoading}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  paddingVertical: 14,
+                  borderRadius: 999,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  backgroundColor: colors.surface,
+                  opacity: googleLoading ? 0.6 : pressed ? 0.9 : 1,
+                })}
+              >
+                {googleLoading ? (
+                  <ActivityIndicator color={colors.textPrimary} />
+                ) : (
+                  <>
+                    <Ionicons name="logo-google" size={20} color={colors.textPrimary} />
+                    <Text style={{ fontWeight: "900", color: colors.textPrimary }}>Sign up with Google</Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          )}
 
           {/* Footer link */}
           <View style={{ alignItems: "center", marginTop: 6 }}>

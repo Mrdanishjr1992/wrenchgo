@@ -10,10 +10,16 @@ import {
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
+  Image,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import * as ImagePicker from "expo-image-picker";
+import * as FileSystem from "expo-file-system/legacy";
+import { decode } from "base64-arraybuffer";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { scanMessageBeforeSend, getChatStatus, logMessageAudit } from "../../src/lib/chat-moderation";
@@ -22,6 +28,8 @@ import { ChatStatusBanner } from "./ChatStatusBanner";
 import { ChatPolicyModal } from "./ChatPolicyModal";
 import type { ScanMessageResponse, ChatStatusResponse } from "../../src/types/chat-moderation";
 
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
 type Msg = {
   id: string;
   job_id: string;
@@ -29,6 +37,8 @@ type Msg = {
   recipient_id: string;
   body: string;
   created_at: string;
+  attachment_url?: string | null;
+  attachment_type?: "image" | "file" | null;
 };
 
 type MessageGroup = {
@@ -86,6 +96,10 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
 
   const [input, setInput] = useState("");
   const [focused, setFocused] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [showAttachmentOptions, setShowAttachmentOptions] = useState(false);
 
   const [moderationWarning, setModerationWarning] = useState<ScanMessageResponse | null>(null);
   const [chatStatus, setChatStatus] = useState<ChatStatusResponse | null>(null);
@@ -93,8 +107,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
 
   const listRef = useRef<FlatList<MessageGroup>>(null);
   const canSend = useMemo(
-    () => input.trim().length > 0 && !sending && !!me && !!jobId && !!recipientId && chatStatus?.can_send !== false,
-    [input, sending, me, jobId, recipientId, chatStatus]
+    () => (input.trim().length > 0 || selectedImage) && !sending && !!me && !!jobId && !!recipientId && chatStatus?.can_send !== false,
+    [input, sending, me, jobId, recipientId, chatStatus, selectedImage]
   );
 
   const load = useCallback(async () => {
@@ -136,7 +150,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
 
       const { data, error } = await supabase
         .from("messages")
-        .select("id,job_id,sender_id,recipient_id,body,created_at")
+        .select("id,job_id,sender_id,recipient_id,body,created_at,attachment_url,attachment_type")
         .eq("job_id", jobId)
         .order("created_at", { ascending: true });
 
@@ -178,43 +192,118 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
   }, [items.length]);
 
+  const pickImage = useCallback(async (source: "camera" | "library") => {
+    setShowAttachmentOptions(false);
+
+    const permissionResult = source === "camera"
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permissionResult.granted) {
+      Alert.alert("Permission Required", `Please allow access to your ${source === "camera" ? "camera" : "photo library"}.`);
+      return;
+    }
+
+    const result = source === "camera"
+      ? await ImagePicker.launchCameraAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          quality: 0.8,
+        })
+      : await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ["images"],
+          allowsEditing: true,
+          quality: 0.8,
+        });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
+    }
+  }, []);
+
+  const uploadImage = async (uri: string): Promise<string | null> => {
+    if (!me) return null;
+
+    try {
+      const fileExt = uri.split(".").pop()?.toLowerCase() || "jpg";
+      const fileName = `${me}/${Date.now()}.${fileExt}`;
+      const mimeType = `image/${fileExt === "jpg" ? "jpeg" : fileExt}`;
+
+      const base64 = await FileSystem.readAsStringAsync(uri, {
+        encoding: "base64",
+      });
+
+      const { data, error } = await supabase.storage
+        .from("chat-attachments")
+        .upload(fileName, decode(base64), {
+          contentType: mimeType,
+          upsert: false,
+        });
+
+      if (error) throw error;
+
+      const { data: urlData } = supabase.storage
+        .from("chat-attachments")
+        .getPublicUrl(data.path);
+
+      return urlData.publicUrl;
+    } catch (e: any) {
+      console.error("Upload error:", e);
+      return null;
+    }
+  };
+
   const send = useCallback(async () => {
     if (!jobId || !me || !recipientId) return;
 
     const content = input.trim();
-    if (!content) return;
+    const hasImage = !!selectedImage;
 
-    const conversationId = `${jobId}-${me}-${recipientId}`;
+    if (!content && !hasImage) return;
 
-    const scanResult = await scanMessageBeforeSend(content, recipientId, jobId);
+    let attachmentUrl: string | null = null;
 
-    if (scanResult.action === 'blocked') {
-      setModerationWarning(scanResult);
-      Alert.alert(
-        'Message Blocked',
-        scanResult.message || 'This message contains contact information and cannot be sent.',
-        [
-          { text: 'Learn More', onPress: () => setShowPolicyModal(true) },
-          { text: 'OK', style: 'cancel' },
-        ]
-      );
-      return;
+    if (hasImage) {
+      setUploadingImage(true);
+      attachmentUrl = await uploadImage(selectedImage!);
+      setUploadingImage(false);
+
+      if (!attachmentUrl) {
+        Alert.alert("Upload Failed", "Failed to upload image. Please try again.");
+        return;
+      }
     }
 
-    if (scanResult.action === 'warned') {
-      setModerationWarning(scanResult);
+    if (content) {
+      const scanResult = await scanMessageBeforeSend(content, recipientId, jobId);
+
+      if (scanResult.action === 'blocked') {
+        setModerationWarning(scanResult);
+        Alert.alert(
+          'Message Blocked',
+          scanResult.message || 'This message contains contact information and cannot be sent.',
+          [
+            { text: 'Learn More', onPress: () => setShowPolicyModal(true) },
+            { text: 'OK', style: 'cancel' },
+          ]
+        );
+        return;
+      }
+
+      if (scanResult.action === 'warned') {
+        setModerationWarning(scanResult);
+      }
+
+      if (scanResult.action === 'masked') {
+        setModerationWarning(scanResult);
+      }
     }
 
     setSending(true);
     setInput("");
+    setSelectedImage(null);
 
-    const finalContent = scanResult.action === 'masked' && scanResult.masked_content
-      ? scanResult.masked_content
-      : content;
-
-    if (scanResult.action === 'masked') {
-      setModerationWarning(scanResult);
-    }
+    const finalContent = content || (hasImage ? "📷 Image" : "");
 
     const tempId = `temp-${Date.now()}`;
     const temp: Msg = {
@@ -224,6 +313,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       recipient_id: recipientId,
       body: finalContent,
       created_at: new Date().toISOString(),
+      attachment_url: attachmentUrl,
+      attachment_type: hasImage ? "image" : null,
     };
     setItems((prev) => [...prev, temp]);
 
@@ -232,31 +323,21 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       sender_id: me,
       recipient_id: recipientId,
       body: finalContent,
+      attachment_url: attachmentUrl,
+      attachment_type: hasImage ? "image" : null,
     }).select('id').single();
 
     if (error) {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
       setInput(content);
+      if (hasImage) setSelectedImage(selectedImage);
       Alert.alert("Send failed", error.message ?? "Failed to send message.");
     } else {
       setItems((prev) => prev.filter((m) => m.id !== tempId));
-
-      if (insertedMessage?.id && scanResult.action !== 'allowed') {
-        await logMessageAudit(
-          insertedMessage.id,
-          jobId,
-          recipientId,
-          content,
-          finalContent,
-          scanResult.action,
-          scanResult,
-          jobId
-        );
-      }
     }
 
     setSending(false);
-  }, [jobId, me, recipientId, input]);
+  }, [jobId, me, recipientId, input, selectedImage]);
 
   const handleBack = () => {
     if (router.canGoBack()) {
@@ -343,6 +424,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
               const mine = msg.sender_id === me;
               const isFirst = idx === 0 || group.messages[idx - 1].sender_id !== msg.sender_id;
               const isLast = idx === group.messages.length - 1 || group.messages[idx + 1].sender_id !== msg.sender_id;
+              const hasImage = msg.attachment_type === "image" && msg.attachment_url;
+              const hasTextContent = msg.body && msg.body !== "📷 Image";
 
               return (
                 <View
@@ -363,9 +446,19 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
                         styles.bubbleMine,
                         isFirst && styles.bubbleFirstMine,
                         isLast && styles.bubbleLastMine,
+                        hasImage && styles.bubbleWithImage,
                       ]}
                     >
-                      <Text style={styles.bubbleTextMine}>{msg.body}</Text>
+                      {hasImage && (
+                        <Pressable onPress={() => setPreviewImage(msg.attachment_url!)}>
+                          <Image
+                            source={{ uri: msg.attachment_url! }}
+                            style={styles.messageImage}
+                            resizeMode="cover"
+                          />
+                        </Pressable>
+                      )}
+                      {hasTextContent && <Text style={styles.bubbleTextMine}>{msg.body}</Text>}
                       {isLast && (
                         <View style={styles.bubbleMeta}>
                           <Text style={styles.bubbleTimeMine}>{fmtTime(msg.created_at)}</Text>
@@ -381,9 +474,19 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
                         { backgroundColor: colors.surface, borderColor: colors.border },
                         isFirst && styles.bubbleFirstTheirs,
                         isLast && styles.bubbleLastTheirs,
+                        hasImage && styles.bubbleWithImage,
                       ]}
                     >
-                      <Text style={[styles.bubbleText, { color: colors.textPrimary }]}>{msg.body}</Text>
+                      {hasImage && (
+                        <Pressable onPress={() => setPreviewImage(msg.attachment_url!)}>
+                          <Image
+                            source={{ uri: msg.attachment_url! }}
+                            style={styles.messageImage}
+                            resizeMode="cover"
+                          />
+                        </Pressable>
+                      )}
+                      {hasTextContent && <Text style={[styles.bubbleText, { color: colors.textPrimary }]}>{msg.body}</Text>}
                       {isLast && (
                         <Text style={[styles.bubbleTime, { color: colors.textMuted }]}>
                           {fmtTime(msg.created_at)}
@@ -433,8 +536,32 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
         />
       )}
 
+      {/* Selected Image Preview */}
+      {selectedImage && (
+        <View style={[styles.selectedImageContainer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+          <Image source={{ uri: selectedImage }} style={styles.selectedImagePreview} resizeMode="cover" />
+          <Pressable
+            onPress={() => setSelectedImage(null)}
+            style={[styles.removeImageButton, { backgroundColor: colors.bg }]}
+          >
+            <Ionicons name="close" size={16} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+      )}
+
       {/* Composer */}
       <View style={[styles.composer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+        <Pressable
+          onPress={() => setShowAttachmentOptions(true)}
+          disabled={chatStatus?.can_send === false}
+          style={({ pressed }) => [
+            styles.attachButton,
+            { opacity: chatStatus?.can_send === false ? 0.4 : pressed ? 0.6 : 1 },
+          ]}
+        >
+          <Ionicons name="add-circle-outline" size={28} color={colors.accent} />
+        </Pressable>
+
         <View
           style={[
             styles.inputWrapper,
@@ -462,13 +589,85 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
             { backgroundColor: colors.accent, opacity: !canSend ? 0.4 : pressed ? 0.8 : 1 },
           ]}
         >
-          {sending ? (
+          {sending || uploadingImage ? (
             <ActivityIndicator color="#000" size="small" />
           ) : (
             <Ionicons name="arrow-up" size={22} color="#000" />
           )}
         </Pressable>
       </View>
+
+      {/* Attachment Options Modal */}
+      <Modal
+        visible={showAttachmentOptions}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowAttachmentOptions(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setShowAttachmentOptions(false)}>
+          <View style={[styles.attachmentSheet, { backgroundColor: colors.surface }]}>
+            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
+            <Text style={[text.section, { marginBottom: 16 }]}>Add Attachment</Text>
+
+            <Pressable
+              onPress={() => pickImage("camera")}
+              style={({ pressed }) => [styles.attachmentOption, pressed && { opacity: 0.7 }]}
+            >
+              <View style={[styles.attachmentIconContainer, { backgroundColor: colors.accent + "20" }]}>
+                <Ionicons name="camera" size={24} color={colors.accent} />
+              </View>
+              <View style={styles.attachmentOptionText}>
+                <Text style={[text.body, { fontWeight: "600" }]}>Take Photo</Text>
+                <Text style={text.muted}>Use your camera</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              onPress={() => pickImage("library")}
+              style={({ pressed }) => [styles.attachmentOption, pressed && { opacity: 0.7 }]}
+            >
+              <View style={[styles.attachmentIconContainer, { backgroundColor: "#8B5CF620" }]}>
+                <Ionicons name="images" size={24} color="#8B5CF6" />
+              </View>
+              <View style={styles.attachmentOptionText}>
+                <Text style={[text.body, { fontWeight: "600" }]}>Photo Library</Text>
+                <Text style={text.muted}>Choose from gallery</Text>
+              </View>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setShowAttachmentOptions(false)}
+              style={({ pressed }) => [
+                styles.cancelButton,
+                { backgroundColor: colors.bg, opacity: pressed ? 0.7 : 1 },
+              ]}
+            >
+              <Text style={[text.body, { fontWeight: "600" }]}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
+
+      {/* Image Preview Modal */}
+      <Modal
+        visible={!!previewImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}
+      >
+        <View style={styles.previewOverlay}>
+          <Pressable style={styles.previewCloseButton} onPress={() => setPreviewImage(null)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+          {previewImage && (
+            <Image
+              source={{ uri: previewImage }}
+              style={styles.previewImage}
+              resizeMode="contain"
+            />
+          )}
+        </View>
+      </Modal>
 
       <ChatPolicyModal visible={showPolicyModal} onClose={() => setShowPolicyModal(false)} />
     </KeyboardAvoidingView>
@@ -615,7 +814,11 @@ const styles = StyleSheet.create({
     padding: 12,
     paddingBottom: 24,
     borderTopWidth: 1,
-    gap: 10,
+    gap: 8,
+  },
+  attachButton: {
+    padding: 4,
+    marginBottom: 8,
   },
   inputWrapper: {
     flex: 1,
@@ -637,5 +840,97 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     alignItems: "center",
     justifyContent: "center",
+  },
+  bubbleWithImage: {
+    padding: 4,
+    overflow: "hidden",
+  },
+  messageImage: {
+    width: 200,
+    height: 150,
+    borderRadius: 16,
+    marginBottom: 4,
+  },
+  selectedImageContainer: {
+    padding: 12,
+    borderTopWidth: 1,
+    position: "relative",
+  },
+  selectedImagePreview: {
+    width: 80,
+    height: 80,
+    borderRadius: 12,
+  },
+  removeImageButton: {
+    position: "absolute",
+    top: 8,
+    left: 76,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  attachmentSheet: {
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  sheetHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    alignSelf: "center",
+    marginBottom: 16,
+  },
+  attachmentOption: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    gap: 16,
+  },
+  attachmentIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentOptionText: {
+    flex: 1,
+  },
+  cancelButton: {
+    marginTop: 16,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: "center",
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.95)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  previewCloseButton: {
+    position: "absolute",
+    top: 60,
+    right: 20,
+    zIndex: 10,
+    padding: 8,
+  },
+  previewImage: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_WIDTH,
   },
 });

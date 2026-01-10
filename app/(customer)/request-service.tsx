@@ -11,6 +11,7 @@ import {
   Platform,
 } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { supabase } from "../../src/lib/supabase";
@@ -181,6 +182,18 @@ export default function RequestService() {
     [colors]
   );
 
+  const checkPaymentStatus = useCallback(async () => {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user?.id) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("payment_method_status")
+        .eq("id", data.session.user.id)
+        .single();
+      setHasPaymentMethod(profile?.payment_method_status === 'active');
+    }
+  }, []);
+
   useEffect(() => {
     const getUser = async () => {
       const { data, error } = await supabase.auth.getSession();
@@ -189,19 +202,19 @@ export default function RequestService() {
       }
       if (data.session?.user?.id) {
         setUserId(data.session.user.id);
-        // Check payment_method_status from profiles (server-authoritative)
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select("payment_method_status")
-          .eq("id", data.session.user.id)
-          .single();
-        setHasPaymentMethod(profile?.payment_method_status === 'active');
+        await checkPaymentStatus();
       } else {
         router.replace("/(auth)/sign-in");
       }
     };
     getUser();
-  }, []);
+  }, [checkPaymentStatus]);
+
+  useFocusEffect(
+    useCallback(() => {
+      checkPaymentStatus();
+    }, [checkPaymentStatus])
+  );
 
   const fetchQuestionsFromDB = useCallback(async (symptom: string) => {
     setLoadingQuestions(true);
@@ -440,13 +453,23 @@ export default function RequestService() {
       Alert.alert("Error", "You must be logged in to request service.");
       return;
     }
-    if (!hasPaymentMethod) {
+
+    // Fresh check of payment status before submitting
+    const { data: session } = await supabase.auth.getSession();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("payment_method_status")
+      .eq("id", session?.session?.user?.id)
+      .single();
+    const paymentActive = profile?.payment_method_status === 'active';
+
+    if (!paymentActive) {
       Alert.alert(
         "Payment Required",
         "Please add a payment method before requesting service.",
         [
           { text: "Cancel", style: "cancel" },
-          { text: "Add Payment", onPress: () => router.push("/(customer)/payment-setup") },
+          { text: "Add Payment", onPress: () => router.push("/(customer)/payment-setup?returnTo=/(customer)/request-service") },
         ]
       );
       return;

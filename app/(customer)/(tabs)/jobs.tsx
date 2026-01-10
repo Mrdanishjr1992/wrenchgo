@@ -2,14 +2,17 @@ import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
+  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { LinearGradient } from "expo-linear-gradient";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard, cardPressed } from "../../../src/ui/styles";
@@ -19,6 +22,9 @@ import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews"
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 import { FinancialSummary } from "../../../components/financials";
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const CARD_WIDTH = SCREEN_WIDTH * 0.75;
 
 type QuoteSummary = {
   quoteCount: number;
@@ -56,6 +62,7 @@ export default function CustomerJobs() {
   const router = useRouter();
   const { colors, text, spacing, radius } = useTheme();
   const card = useMemo(() => createCard(colors), [colors]);
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -69,9 +76,9 @@ export default function CustomerJobs() {
     (status: string) => {
       const s = (status || "").toLowerCase();
       if (s === "accepted" || s === "work_in_progress") return colors.accent;
-      if (s === "completed") return "#10b981";
-      if (s === "quoted") return "#f59e0b";
-      if (s === "canceled") return "#EF4444";
+      if (s === "completed") return colors.success;
+      if (s === "quoted") return colors.warning;
+      if (s === "canceled") return colors.error;
       return colors.textMuted;
     },
     [colors]
@@ -124,20 +131,23 @@ export default function CustomerJobs() {
     );
   };
 
-  const SectionHeader = ({ title, count }: { title: string; count: number }) => (
-    <View style={{ marginTop: spacing.lg, flexDirection: "row", alignItems: "center", gap: 10 }}>
-      <Text style={text.section}>{title}</Text>
+  const SectionHeader = ({ title, count, icon, color }: { title: string; count: number; icon: keyof typeof Ionicons.glyphMap; color: string }) => (
+    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.md }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: color + "15", alignItems: "center", justifyContent: "center" }}>
+          <Ionicons name={icon} size={16} color={color} />
+        </View>
+        <Text style={{ ...text.section, fontSize: 18 }}>{title}</Text>
+      </View>
       <View
         style={{
-          paddingHorizontal: 10,
-          paddingVertical: 4,
+          paddingHorizontal: 12,
+          paddingVertical: 6,
           borderRadius: 999,
-          backgroundColor: colors.surface,
-          borderWidth: 1,
-          borderColor: colors.border,
+          backgroundColor: color + "15",
         }}
       >
-        <Text style={{ ...text.muted, fontWeight: "900", fontSize: 12 }}>{count}</Text>
+        <Text style={{ fontWeight: "900", fontSize: 13, color }}>{count}</Text>
       </View>
     </View>
   );
@@ -327,7 +337,7 @@ export default function CustomerJobs() {
     [jobs]
   );
 
-  const JobCard = ({ item }: { item: JobWithQuoteSummary }) => {
+  const JobCard = ({ item, accentColor }: { item: JobWithQuoteSummary; accentColor: string }) => {
     const qs = item.quoteSummary;
     const s = (item.status || "").toLowerCase();
     const isQuoted = s === "quoted" || s === "searching" && qs.hasQuotes;
@@ -340,113 +350,92 @@ export default function CustomerJobs() {
           card,
           pressed && cardPressed,
           {
+            width: CARD_WIDTH,
             padding: spacing.md,
             borderRadius: radius.lg,
             gap: spacing.sm,
             borderWidth: 1,
-            borderColor: pressed ? (isQuoted ? "#f59e0b" : colors.accent) : colors.border,
+            borderColor: pressed ? accentColor : colors.border,
             backgroundColor: colors.surface,
+            marginRight: spacing.sm,
           },
         ]}
       >
-        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
-          <View style={{ flex: 1 }}>
-            <Text style={text.section} numberOfLines={1}>{getDisplayTitle(item.title) || "Job"}</Text>
-            <Text style={{ ...text.muted, marginTop: 4 }} numberOfLines={1}>{statusHint(item.status || "searching")}</Text>
-          </View>
-          <View style={{ alignItems: "flex-end", gap: 8 }}>
-            <Text style={text.muted}>{fmtShort(item.created_at)}</Text>
-            {isQuoted ? (
-              <View
-                style={{
-                  paddingHorizontal: 10,
-                  paddingVertical: 5,
-                  borderRadius: 999,
-                  backgroundColor: "#f59e0b22",
-                  borderWidth: 1,
-                  borderColor: "#f59e0b55",
-                }}
-              >
-                <Text style={{ fontSize: 11, fontWeight: "900", color: "#f59e0b" }}>QUOTE SENT</Text>
-              </View>
-            ) : (
-              <StatusPill status={item.status || "searching"} />
-            )}
-          </View>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accentColor }} />
+          <Text style={{ fontSize: 11, fontWeight: "700", color: accentColor }}>{statusLabel(item.status || "searching")}</Text>
+          <View style={{ flex: 1 }} />
+          <Text style={{ ...text.muted, fontSize: 12 }}>{fmtShort(item.created_at)}</Text>
         </View>
 
+        <Text style={{ ...text.section, fontSize: 16 }} numberOfLines={2}>{getDisplayTitle(item.title) || "Job"}</Text>
+        <Text style={{ ...text.muted, fontSize: 13 }} numberOfLines={1}>{statusHint(item.status || "searching")}</Text>
+
         {item.vehicle && (
-          <View style={{ backgroundColor: `${colors.textMuted}10`, borderWidth: 1, borderColor: `${colors.textMuted}30`, borderRadius: 8, padding: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.textMuted }}>
-              🚗 {Array.isArray(item.vehicle) ? (item.vehicle[0] ? `${item.vehicle[0].year} ${item.vehicle[0].make} ${item.vehicle[0].model}` : '') : `${item.vehicle.year} ${item.vehicle.make} ${item.vehicle.model}`}
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.bg, borderRadius: 8, padding: 8 }}>
+            <Ionicons name="car" size={14} color={colors.textMuted} />
+            <Text style={{ fontSize: 12, color: colors.textMuted }} numberOfLines={1}>
+              {Array.isArray(item.vehicle) ? (item.vehicle[0] ? `${item.vehicle[0].year} ${item.vehicle[0].make} ${item.vehicle[0].model}` : '') : `${item.vehicle.year} ${item.vehicle.make} ${item.vehicle.model}`}
             </Text>
           </View>
         )}
 
-        {isQuoted && qs.acceptedMechanicName && (
-          <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            <View style={{ flex: 1, backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
-              <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
-                👤 {qs.acceptedMechanicName}
-              </Text>
-            </View>
-            {qs.minQuote !== null && (
-              <View style={{ backgroundColor: "#f59e0b15", borderWidth: 1, borderColor: "#f59e0b40", borderRadius: 8, padding: 10 }}>
-                <Text style={{ fontSize: 12, fontWeight: "700", color: "#f59e0b" }}>
-                  💰 {formatPrice(qs.minQuote)}
-                </Text>
-              </View>
-            )}
+        {qs.acceptedMechanicName && (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.accent + "10", borderRadius: 8, padding: 8 }}>
+            <Ionicons name="person" size={14} color={colors.accent} />
+            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }} numberOfLines={1}>{qs.acceptedMechanicName}</Text>
           </View>
         )}
 
-        {!isQuoted && (s === "accepted" || s === "work_in_progress") && qs.acceptedMechanicName && (
-          <View style={{ backgroundColor: `${colors.accent}15`, borderWidth: 1, borderColor: `${colors.accent}40`, borderRadius: 8, padding: 10 }}>
-            <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
-              ✓ {qs.acceptedMechanicName}
-            </Text>
+        {isQuoted && qs.minQuote !== null && (
+          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.warningBg, borderRadius: 8, padding: 10 }}>
+            <Text style={{ fontSize: 12, color: colors.warning }}>Quote</Text>
+            <Text style={{ fontSize: 16, fontWeight: "800", color: colors.warning }}>{formatPrice(qs.minQuote)}</Text>
           </View>
         )}
 
-        <View style={{ height: 1, backgroundColor: colors.border, opacity: 0.5 }} />
-
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <Text style={text.body}>
-            {item.preferred_time ? `Preferred: ${item.preferred_time}` : "No time preference"}
+        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+          <Text style={{ fontSize: 12, color: colors.textMuted }}>
+            {item.preferred_time ? item.preferred_time : "Flexible"}
           </Text>
-          <Text style={{ color: isQuoted ? "#f59e0b" : colors.accent, fontWeight: "900" }}>
-            {isQuoted ? "View Quote →" : "Open →"}
-          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+            <Text style={{ fontSize: 13, fontWeight: "700", color: accentColor }}>View</Text>
+            <Ionicons name="chevron-forward" size={14} color={accentColor} />
+          </View>
         </View>
 
         {isSearching && (
-          <>
-            <View style={{ height: 1, backgroundColor: colors.border, opacity: 0.5 }} />
-            <Pressable
-              onPress={(e) => {
-                e.stopPropagation();
-                handleCancelJob(item.id);
-              }}
-              disabled={canceling === item.id}
-              style={({ pressed }) => [
-                {
-                  padding: spacing.sm,
-                  borderRadius: radius.md,
-                  backgroundColor: pressed ? colors.error + "20" : "transparent",
-                  alignItems: "center",
-                  opacity: canceling === item.id ? 0.5 : 1,
-                },
-              ]}
-            >
-              <Text style={{ color: colors.error, fontWeight: "700", fontSize: 13 }}>
-                {canceling === item.id ? "Canceling..." : "Cancel Request"}
-              </Text>
-            </Pressable>
-          </>
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              handleCancelJob(item.id);
+            }}
+            disabled={canceling === item.id}
+            style={({ pressed }) => ({
+              marginTop: 4,
+              paddingVertical: 8,
+              borderRadius: radius.sm,
+              backgroundColor: pressed ? colors.error + "15" : "transparent",
+              alignItems: "center",
+              borderWidth: 1,
+              borderColor: colors.error + "30",
+              opacity: canceling === item.id ? 0.5 : 1,
+            })}
+          >
+            <Text style={{ color: colors.error, fontWeight: "600", fontSize: 12 }}>
+              {canceling === item.id ? "Canceling..." : "Cancel Request"}
+            </Text>
+          </Pressable>
         )}
       </Pressable>
     );
   };
+
+  const EmptySection = ({ message }: { message: string }) => (
+    <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.lg }}>
+      <Text style={{ ...text.muted, fontStyle: "italic" }}>{message}</Text>
+    </View>
+  );
 
   if (loading) {
     return (
@@ -460,136 +449,154 @@ export default function CustomerJobs() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_OFFERS_LIST} style={{ flex: 1 }}>
-        <FlatList
-          contentContainerStyle={{ paddingBottom: spacing.xl }}
+        <ScrollView
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-          data={jobs.length === 0 ? [] : [{ key: "sections" } as any]}
-          keyExtractor={(i: any) => i.key}
-          ListHeaderComponent={
-            <View style={{ padding: spacing.md, paddingTop: spacing.xl }}>
-              <Text style={text.title}>My Jobs</Text>
-              <Text style={{ ...text.muted, marginTop: 4 }}>Jobs assigned to you</Text>
+          showsVerticalScrollIndicator={false}
+        >
+          <LinearGradient
+            colors={[colors.accent, colors.accent + "CC"]}
+            style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl, paddingHorizontal: spacing.md }}
+          >
+            <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText }}>My Jobs</Text>
+            <Text style={{ fontSize: 14, color: colors.buttonText, opacity: 0.7, marginTop: 4 }}>Track your service requests</Text>
 
-              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-                <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: colors.accent + "40" }}>
-                  <Text style={{ ...text.muted, fontSize: 11 }}>Active</Text>
-                  <Text style={{ ...text.title, fontSize: 22, color: colors.accent }}>{active.length}</Text>
+            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
+              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="flash" size={14} color={colors.buttonText} />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Active</Text>
+                </View>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{active.length}</Text>
               </View>
-              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#f59e0b40" }}>
-                <Text style={{ ...text.muted, fontSize: 11 }}>Waiting</Text>
-                <Text style={{ ...text.title, fontSize: 22, color: "#f59e0b" }}>{waitingForQuote.length}</Text>
+              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="time" size={14} color={colors.buttonText} />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Waiting</Text>
+                </View>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{waitingForQuote.length}</Text>
               </View>
-              <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 14, padding: spacing.sm, borderWidth: 1, borderColor: "#10b98140" }}>
-                <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
-                <Text style={{ ...text.title, fontSize: 22, color: "#10b981" }}>{completed.length}</Text>
+              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.buttonText} />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Done</Text>
+                </View>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{completed.length}</Text>
               </View>
             </View>
+          </LinearGradient>
 
-            {/* Financial Summary Toggle */}
-            {customerId && completed.length > 0 && (
-              <View style={{ marginTop: spacing.md }}>
-                <Pressable
-                  onPress={() => setShowFinancials(!showFinancials)}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    backgroundColor: colors.surface,
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <Ionicons name="card-outline" size={20} color={colors.accent} />
-                    <Text style={{ ...text.body, fontWeight: "600" }}>Spending Summary</Text>
-                  </View>
-                  <Ionicons
-                    name={showFinancials ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color={colors.textMuted}
+          {customerId && completed.length > 0 && (
+            <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md }}>
+              <Pressable
+                onPress={() => setShowFinancials(!showFinancials)}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <Ionicons name="card-outline" size={20} color={colors.accent} />
+                  <Text style={{ ...text.body, fontWeight: "600" }}>Spending Summary</Text>
+                </View>
+                <Ionicons
+                  name={showFinancials ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </Pressable>
+              {showFinancials && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <FinancialSummary userId={customerId} role="customer" />
+                </View>
+              )}
+            </View>
+          )}
+
+          {jobs.length === 0 && (
+            <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md }}>
+              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
+                <Ionicons name="car-outline" size={36} color={colors.textMuted} />
+              </View>
+              <Text style={{ ...text.section, marginTop: spacing.sm }}>No jobs yet</Text>
+              <Text style={{ ...text.muted, textAlign: "center" }}>Request a mechanic from the Home tab to get started</Text>
+              <Pressable
+                onPress={() => router.push("/explore")}
+                style={{ marginTop: spacing.md, backgroundColor: colors.accent, paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16 }}
+              >
+                <Text style={{ fontWeight: "900", fontSize: 15, color: colors.buttonText }}>REQUEST A MECHANIC</Text>
+              </Pressable>
+            </View>
+          )}
+
+          {reviewPrompts.length > 0 && (
+            <>
+              <SectionHeader title="Pending Reviews" count={reviewPrompts.length} icon="star" color={colors.warning} />
+              <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
+                {reviewPrompts.map((prompt) => (
+                  <ReviewPromptBanner
+                    key={prompt.id}
+                    jobId={prompt.job_id}
+                    targetName={prompt.target_name}
+                    expiresAt={prompt.expires_at}
+                    userRole="customer"
                   />
-                </Pressable>
-                {showFinancials && (
-                  <View style={{ marginTop: spacing.sm }}>
-                    <FinancialSummary userId={customerId} role="customer" />
-                  </View>
-                )}
+                ))}
               </View>
-            )}
+            </>
+          )}
 
-            {jobs.length === 0 && (
-              <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm }}>
-                <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
-                  <Ionicons name="car-outline" size={28} color={colors.textMuted} />
-                </View>
-                <Text style={text.section}>No jobs yet</Text>
-                <Text style={{ ...text.muted, textAlign: "center" }}>Request a mechanic from the Home tab to get started</Text>
-                <Pressable
-                  onPress={() => router.push("/explore")}
-                  style={{ marginTop: spacing.sm, backgroundColor: colors.accent, paddingVertical: 14, paddingHorizontal: 24, borderRadius: 14 }}
+          {jobs.length > 0 && (
+            <>
+              <SectionHeader title="Active" count={active.length} icon="flash" color={colors.accent} />
+              {active.length === 0 ? (
+                <EmptySection message="No active jobs right now" />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
                 >
-                  <Text style={{ fontWeight: "900", color: "#000" }}>REQUEST A MECHANIC</Text>
-                </Pressable>
-              </View>
-            )}
-          </View>
-        }
-        renderItem={() => (
-          <View style={{ paddingHorizontal: spacing.md }}>
-            {reviewPrompts.length > 0 && (
-              <>
-                <SectionHeader title="Pending Reviews" count={reviewPrompts.length} />
-                <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-                  {reviewPrompts.map((prompt) => (
-                    <ReviewPromptBanner
-                      key={prompt.id}
-                      jobId={prompt.job_id}
-                      targetName={prompt.target_name}
-                      expiresAt={prompt.expires_at}
-                      userRole="customer"
-                    />
-                  ))}
-                </View>
-              </>
-            )}
+                  {active.map((item) => <JobCard key={item.id} item={item} accentColor={colors.accent} />)}
+                </ScrollView>
+              )}
 
-            {/* Waiting Section */}
-            <SectionHeader title="Waiting" count={waitingForQuote.length} />
-            {waitingForQuote.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>No pending quotes.</Text>
-            ) : (
-              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {waitingForQuote.map((item) => <JobCard key={item.id} item={item} />)}
-              </View>
-            )}
+              <SectionHeader title="Waiting for Quotes" count={waitingForQuote.length} icon="time" color={colors.warning} />
+              {waitingForQuote.length === 0 ? (
+                <EmptySection message="No pending quotes" />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
+                >
+                  {waitingForQuote.map((item) => <JobCard key={item.id} item={item} accentColor={colors.warning} />)}
+                </ScrollView>
+              )}
 
-            <SectionHeader title="Active" count={active.length} />
-            {active.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>No active jobs right now.</Text>
-            ) : (
-              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {active.map((item) => <JobCard key={item.id} item={item} />)}
-              </View>
-            )}
+              <SectionHeader title="Completed" count={completed.length} icon="checkmark-circle" color={colors.success} />
+              {completed.length === 0 ? (
+                <EmptySection message="No completed jobs yet" />
+              ) : (
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
+                >
+                  {completed.map((item) => <JobCard key={item.id} item={item} accentColor={colors.success} />)}
+                </ScrollView>
+              )}
+            </>
+          )}
 
-            <SectionHeader title="Completed" count={completed.length} />
-            {completed.length === 0 ? (
-              <Text style={{ marginTop: 6, ...text.muted }}>No completed jobs yet.</Text>
-            ) : (
-              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
-                {completed.map((item) => <JobCard key={item.id} item={item} />)}
-              </View>
-            )}
-
-            <View style={{ height: spacing.lg }} />
-          </View>
-        )}
-      />
+          <View style={{ height: spacing.xl * 2 }} />
+        </ScrollView>
       </WalkthroughTarget>
     </View>
   );
 }
-
-

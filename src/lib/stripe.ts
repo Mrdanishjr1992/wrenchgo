@@ -4,10 +4,9 @@ export interface MechanicStripeAccount {
   id: string;
   mechanic_id: string;
   stripe_account_id: string;
-  status: 'not_started' | 'pending' | 'active' | 'restricted' | 'rejected';
+  onboarding_complete: boolean;
   charges_enabled: boolean;
   payouts_enabled: boolean;
-  details_submitted: boolean;
   onboarding_url: string | null;
   onboarding_expires_at: string | null;
   created_at: string;
@@ -60,10 +59,9 @@ export async function refreshStripeAccountStatus(mechanicId: string): Promise<vo
 export function isStripeAccountReady(account: MechanicStripeAccount | null): boolean {
   return (
     account !== null &&
-    account.status === 'active' &&
+    account.onboarding_complete &&
     account.charges_enabled &&
-    account.payouts_enabled &&
-    account.details_submitted
+    account.payouts_enabled
   );
 }
 
@@ -72,23 +70,15 @@ export function getStripeAccountStatusMessage(account: MechanicStripeAccount | n
     return 'Set up your payout account to start accepting paid jobs';
   }
 
-  if (account.status === 'active' && account.charges_enabled && account.payouts_enabled) {
+  if (account.onboarding_complete && account.charges_enabled && account.payouts_enabled) {
     return 'Your payout account is active';
   }
 
-  if (account.status === 'pending') {
-    return 'Complete your payout account setup to accept payments';
+  if (account.onboarding_complete && (!account.charges_enabled || !account.payouts_enabled)) {
+    return 'Your account is being verified by Stripe. This usually takes a few minutes.';
   }
 
-  if (account.status === 'restricted') {
-    return 'Your payout account is restricted. Please contact support';
-  }
-
-  if (account.status === 'rejected') {
-    return 'Your payout account application was rejected';
-  }
-
-  return 'Set up your payout account';
+  return 'Complete your payout account setup to accept payments';
 }
 
 export function shouldShowStripeOnboarding(account: MechanicStripeAccount | null): boolean {
@@ -96,5 +86,5 @@ export function shouldShowStripeOnboarding(account: MechanicStripeAccount | null
     return true;
   }
 
-  return !account.charges_enabled || !account.payouts_enabled || !account.details_submitted;
+  return !account.charges_enabled || !account.payouts_enabled || !account.onboarding_complete;
 }

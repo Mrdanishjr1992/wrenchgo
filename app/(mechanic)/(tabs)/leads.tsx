@@ -7,6 +7,7 @@ import {
   RefreshControl,
   TouchableOpacity,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,6 +31,7 @@ export default function MechanicLeadsPage() {
   const [mechanicId, setMechanicId] = useState<string | null>(null);
   const [filter, setFilter] = useState<LeadFilterType>('all');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [settingLocation, setSettingLocation] = useState(false);
 
   const { leads, summary, loading, error, hasMore, sortBy, profileStatus, refetch, loadMore, changeSortBy } =
     useMechanicLeads(
@@ -112,9 +114,14 @@ export default function MechanicLeadsPage() {
       return;
     }
 
+    setSettingLocation(true);
     try {
-      const currentLocation = await Location.getCurrentPositionAsync({});
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
       const { latitude, longitude } = currentLocation.coords;
+
+      setLocation({ latitude, longitude });
 
       const { error: updateError } = await supabase
         .from('profiles')
@@ -126,11 +133,12 @@ export default function MechanicLeadsPage() {
         return;
       }
 
-      setLocation({ latitude, longitude });
       Alert.alert('Success', 'Your service location has been set!');
       refetch();
     } catch (err) {
       Alert.alert('Error', 'Failed to get your location. Please try again.');
+    } finally {
+      setSettingLocation(false);
     }
   };
 
@@ -299,12 +307,24 @@ export default function MechanicLeadsPage() {
         <TouchableOpacity
           style={[styles.setLocationBanner, { backgroundColor: colors.warningBg || colors.surface2 }]}
           onPress={handleSetHomeLocation}
+          disabled={settingLocation}
         >
-          <Ionicons name="location-outline" size={20} color={colors.warning || colors.textMuted} />
-          <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
-            Tap to set your service location
-          </Text>
-          <Ionicons name="chevron-forward" size={20} color={colors.warning || colors.textMuted} />
+          {settingLocation ? (
+            <>
+              <ActivityIndicator size="small" color={colors.warning || colors.textMuted} />
+              <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
+                Setting your location...
+              </Text>
+            </>
+          ) : (
+            <>
+              <Ionicons name="location-outline" size={20} color={colors.warning || colors.textMuted} />
+              <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
+                Tap to set your service location
+              </Text>
+              <Ionicons name="chevron-forward" size={20} color={colors.warning || colors.textMuted} />
+            </>
+          )}
         </TouchableOpacity>
       )}
 

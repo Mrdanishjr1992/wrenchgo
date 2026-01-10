@@ -103,7 +103,8 @@ export default function CustomerAccount() {
           city,
           state,
           theme_preference,
-          created_at
+          created_at,
+          payment_method_status
         `)
         .eq("id", userId)
         .single();
@@ -122,6 +123,10 @@ export default function CustomerAccount() {
         .from("customer_payment_methods")
         .select("stripe_customer_id, stripe_payment_method_id, card_brand, card_last4, card_exp_month, card_exp_year")
         .eq("customer_id", data.id)
+        .is("deleted_at", null)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
 
       setPaymentMethod(paymentData);

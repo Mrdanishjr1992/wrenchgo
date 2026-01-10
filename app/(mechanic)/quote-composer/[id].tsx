@@ -10,9 +10,11 @@ import {
   KeyboardAvoidingView,
   Platform,
   Modal,
+  StyleSheet,
 } from "react-native";
 import { Stack, useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { LinearGradient } from "expo-linear-gradient";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
@@ -22,6 +24,7 @@ import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
 import { getDisplayTitle, formatAddressWithoutStreet } from "../../../src/lib/format-symptom";
 import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 
 type QuoteType = "diagnostic_only" | "range" | "fixed";
 
@@ -58,7 +61,7 @@ export default function QuoteComposer() {
   const [job, setJob] = useState<Job | null>(null);
   const [quoteType, setQuoteType] = useState<QuoteType | null>(null);
   const [showGuidance, setShowGuidance] = useState(true);
-  const [showJobSummary, setShowJobSummary] = useState(false);
+  const [jobExpanded, setJobExpanded] = useState(false);
   const [showCustomerProfile, setShowCustomerProfile] = useState(false);
 
   const [hourlyRate, setHourlyRate] = useState<number | null>(null);
@@ -79,9 +82,20 @@ export default function QuoteComposer() {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
+  const expandRotation = useSharedValue(0);
+  const expandHeight = useSharedValue(0);
+
+  const chevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${expandRotation.value}deg` }],
+  }));
+
   useEffect(() => {
     loadJob();
   }, [params.id]);
+
+  useEffect(() => {
+    expandRotation.value = withTiming(jobExpanded ? 180 : 0, { duration: 200 });
+  }, [jobExpanded]);
 
   const loadJob = async () => {
     try {
@@ -105,7 +119,6 @@ export default function QuoteComposer() {
 
       let vehicleData = Array.isArray(data.vehicle) ? data.vehicle[0] : data.vehicle;
 
-      // If no vehicle from relation, try to parse from description JSON
       if (!vehicleData && data.description?.startsWith("{")) {
         try {
           const parsed = JSON.parse(data.description);
@@ -137,27 +150,27 @@ export default function QuoteComposer() {
 
   const quoteTypes: {
     type: QuoteType;
-    icon: string;
+    icon: keyof typeof Ionicons.glyphMap;
     title: string;
     description: string;
   }[] = [
     {
       type: "diagnostic_only",
-      icon: "🔍",
+      icon: "search",
       title: "Diagnostic Only",
-      description: "Charge for diagnostic inspection, then quote repair separately",
+      description: "Charge for inspection, quote repair separately",
     },
     {
       type: "range",
-      icon: "📊",
+      icon: "analytics",
       title: "Range Quote",
-      description: "Price range based on possible causes (e.g. $200-$400)",
+      description: "Price range based on possible causes",
     },
     {
       type: "fixed",
-      icon: "✓",
+      icon: "checkmark-circle",
       title: "Fixed Price",
-      description: "Confident diagnosis with exact price quote",
+      description: "Confident diagnosis with exact price",
     },
   ];
 
@@ -296,40 +309,25 @@ export default function QuoteComposer() {
       onRequestClose={onClose}
     >
       <Pressable
-        style={{
-          flex: 1,
-          backgroundColor: "rgba(0,0,0,0.5)",
-          justifyContent: "flex-end",
-        }}
+        style={styles.modalOverlay}
         onPress={onClose}
       >
         <Pressable
           style={[
-            card,
+            styles.modalContent,
             {
               backgroundColor: colors.surface,
               borderTopLeftRadius: radius.lg,
               borderTopRightRadius: radius.lg,
-              borderBottomLeftRadius: 0,
-              borderBottomRightRadius: 0,
-              padding: spacing.lg,
-              maxHeight: "60%",
             },
           ]}
           onPress={(e) => e.stopPropagation()}
         >
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              marginBottom: spacing.md,
-            }}
-          >
-            <Text style={{ ...text.body, fontWeight: "700", fontSize: 18 }}>
+          <View style={styles.modalHeader}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
               {title}
             </Text>
-            <Pressable onPress={onClose}>
+            <Pressable onPress={onClose} hitSlop={8}>
               <Ionicons name="close" size={24} color={colors.textMuted} />
             </Pressable>
           </View>
@@ -342,14 +340,15 @@ export default function QuoteComposer() {
                   onSelect(option);
                   onClose();
                 }}
-                style={({ pressed }) => ({
-                  padding: spacing.md,
-                  borderRadius: radius.md,
-                  backgroundColor: pressed ? colors.accent + "20" : "transparent",
-                  marginBottom: spacing.xs,
-                })}
+                style={({ pressed }) => [
+                  styles.pickerOption,
+                  {
+                    backgroundColor: pressed ? colors.accent + "20" : "transparent",
+                    borderRadius: radius.md,
+                  },
+                ]}
               >
-                <Text style={{ ...text.body, fontSize: 16 }}>
+                <Text style={[styles.pickerOptionText, { color: colors.textPrimary }]}>
                   {formatValue(option)}
                 </Text>
               </Pressable>
@@ -362,7 +361,7 @@ export default function QuoteComposer() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+      <View style={[styles.centered, { backgroundColor: colors.bg }]}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
@@ -370,102 +369,116 @@ export default function QuoteComposer() {
 
   if (!job) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <Text style={text.body}>Job not found</Text>
+      <View style={[styles.centered, { backgroundColor: colors.bg }]}>
+        <Text style={[text.body, { color: colors.textMuted }]}>Job not found</Text>
       </View>
     );
   }
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1, backgroundColor: colors.bg }}
+      style={[styles.container, { backgroundColor: colors.bg }]}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      <Stack.Screen
-        options={{
-          title: "Compose Quote",
-          headerStyle: { backgroundColor: colors.surface },
-          headerTintColor: colors.textPrimary,
-          headerShadowVisible: false,
-          headerBackVisible: true,
-          headerRight: () => (
-            <Pressable
-              onPress={() => router.push("/(mechanic)/(tabs)/leads" as any)}
-              style={{ marginRight: 4 }}
-            >
-              <Text style={{ ...text.body, fontSize: 15, color: colors.textPrimary }}>
-                Close
-              </Text>
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      <ScrollView contentContainerStyle={{ paddingTop: spacing.md, paddingHorizontal: spacing.md, paddingBottom: Math.max(insets.bottom, spacing.md), gap: spacing.md }}>
+      <LinearGradient
+        colors={[colors.accent, colors.accent + "28"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={[styles.header, { paddingTop: insets.top }]}
+      >
+        <View style={styles.headerContent}>
+          <Pressable onPress={() => router.back()} hitSlop={8} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </Pressable>
+          <View style={styles.headerTitleContainer}>
+            <Ionicons name="document-text" size={22} color={colors.textPrimary} />
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Compose Quote</Text>
+          </View>
+          <Pressable onPress={() => router.push("/(mechanic)/(tabs)/leads" as any)} hitSlop={8}>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
+          </Pressable>
+        </View>
+      </LinearGradient>
+
+      <ScrollView 
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, spacing.lg) + 80 }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
         <Pressable
-          onPress={() => setShowJobSummary(true)}
+          onPress={() => setJobExpanded(!jobExpanded)}
           style={[
-            card,
+            styles.jobCard,
             {
-              padding: spacing.md,
-              margin: spacing.sm,
-              backgroundColor: colors.accent,
-              borderColor: colors.black
+              backgroundColor: colors.surface,
+              borderColor: colors.border,
             },
           ]}
         >
-          <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
-            <Text style={{ fontSize: 24 }}>🚗</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={{ ...text.section, fontSize: 15, color: colors.surface, fontWeight: "700" }}>
+          <View style={styles.jobCardHeader}>
+            <View style={[styles.jobIconContainer, { backgroundColor: colors.accent + "20" }]}>
+              <Ionicons name="car-sport" size={24} color={colors.accent} />
+            </View>
+            <View style={styles.jobCardInfo}>
+              <Text style={[styles.jobVehicle, { color: colors.textPrimary }]}>
                 {job.vehicle
                   ? `${job.vehicle.year} ${job.vehicle.make} ${job.vehicle.model}`
                   : "No vehicle info"}
               </Text>
+              <Text style={[styles.jobTitle, { color: colors.textMuted }]}>
+                {getDisplayTitle(job.title)}
+              </Text>
+            </View>
+            <Animated.View style={chevronStyle}>
+              <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+            </Animated.View>
+          </View>
+
+          {jobExpanded && (
+            <View style={[styles.jobCardExpanded, { borderTopColor: colors.border }]}>
               {job.vehicle?.color && (
-                <Text style={{ ...text.muted, fontSize: 12, color: colors.surface + "CC" }}>
-                  {job.vehicle.color}{job.vehicle.license_plate ? ` • ${job.vehicle.license_plate}` : ""}
-                </Text>
+                <View style={styles.jobDetailRow}>
+                  <Ionicons name="color-palette-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.jobDetailText, { color: colors.textSecondary }]}>
+                    {job.vehicle.color}{job.vehicle.license_plate ? ` • ${job.vehicle.license_plate}` : ""}
+                  </Text>
+                </View>
               )}
-              <View style={{ marginTop: spacing.xs, flexDirection: "row", alignItems: "center", gap: 4 }}>
-                <Text style={{ fontSize: 14 }}>🔧</Text>
-                <Text style={{ ...text.body, fontSize: 13, color: colors.surface }}>
-                  {getDisplayTitle(job.title)}
-                </Text>
-              </View>
               {job.description && !job.description.startsWith("{") && (
-                <Text numberOfLines={2} style={{ ...text.muted, fontSize: 12, color: colors.surface + "BB", marginTop: 4 }}>
-                  {job.description}
-                </Text>
+                <View style={styles.jobDetailRow}>
+                  <Ionicons name="document-text-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.jobDetailText, { color: colors.textSecondary }]}>
+                    {job.description}
+                  </Text>
+                </View>
               )}
-              {(job.location_address || job.preferred_time) && (
-                <View style={{ marginTop: spacing.xs, gap: 2 }}>
-                  {job.location_address && (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Ionicons name="location-outline" size={12} color={colors.surface + "AA"} />
-                      <Text numberOfLines={1} style={{ ...text.muted, fontSize: 11, color: colors.surface + "AA" }}>
-                        {formatAddressWithoutStreet(job.location_address)}
-                      </Text>
-                    </View>
-                  )}
-                  {job.preferred_time && (
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                      <Ionicons name="time-outline" size={12} color={colors.surface + "AA"} />
-                      <Text style={{ ...text.muted, fontSize: 11, color: colors.surface + "AA" }}>
-                        Preferred: {job.preferred_time}
-                      </Text>
-                    </View>
-                  )}
+              {job.location_address && (
+                <View style={styles.jobDetailRow}>
+                  <Ionicons name="location-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.jobDetailText, { color: colors.textSecondary }]}>
+                    {formatAddressWithoutStreet(job.location_address)}
+                  </Text>
+                </View>
+              )}
+              {job.preferred_time && (
+                <View style={styles.jobDetailRow}>
+                  <Ionicons name="time-outline" size={16} color={colors.textMuted} />
+                  <Text style={[styles.jobDetailText, { color: colors.textSecondary }]}>
+                    Preferred: {job.preferred_time}
+                  </Text>
                 </View>
               )}
             </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.surface + "80"} />
-          </View>
+          )}
         </Pressable>
 
         {job.customer_id && (
-          <View style={{ gap: spacing.sm }}>
-            <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Customer</Text>
+          <View style={styles.section}>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Customer</Text>
             <UserProfileCard
               userId={job.customer_id}
               variant="mini"
@@ -475,67 +488,78 @@ export default function QuoteComposer() {
           </View>
         )}
 
-        <View style={{ gap: spacing.sm }}>
-          <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Quote Type</Text>
-          <Text style={{ ...text.muted, fontSize: 13 }}>Select the approach that fits this job</Text>
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Quote Type</Text>
+          <Text style={[styles.sectionSubtitle, { color: colors.textMuted }]}>
+            Select the approach that fits this job
+          </Text>
 
-          {quoteTypes.map((qt) => (
-            <Pressable
-              key={qt.type}
-              onPress={() => setQuoteType(qt.type)}
-              style={[
-                card,
-                {
-                  padding: spacing.md,
-                  borderWidth: 2,
-                  borderColor: quoteType === qt.type ? colors.black : "transparent",
-                  backgroundColor: quoteType === qt.type ? colors.accent : colors.surface,
-                },
-              ]}
-            >
-              <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.sm }}>
-                <Text style={{ ...text.section, fontSize: 28 }}>{qt.icon}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.body, fontWeight: "700", fontSize: 15, marginBottom: 4 }}>
+          <View style={styles.quoteTypeGrid}>
+            {quoteTypes.map((qt) => {
+              const isSelected = quoteType === qt.type;
+              return (
+                <Pressable
+                  key={qt.type}
+                  onPress={() => setQuoteType(qt.type)}
+                  style={[
+                    styles.quoteTypeCard,
+                    {
+                      backgroundColor: isSelected ? colors.accent : colors.surface,
+                      borderColor: isSelected ? colors.accent : colors.border,
+                    },
+                  ]}
+                >
+                  <View style={[
+                    styles.quoteTypeIcon,
+                    { backgroundColor: isSelected ? "rgba(0,0,0,0.15)" : colors.accent + "15" }
+                  ]}>
+                    <Ionicons 
+                      name={qt.icon} 
+                      size={22} 
+                      color={isSelected ? "#000" : colors.accent} 
+                    />
+                  </View>
+                  <Text style={[
+                    styles.quoteTypeTitle,
+                    { color: isSelected ? "#000" : colors.textPrimary }
+                  ]}>
                     {qt.title}
                   </Text>
-                  <Text style={{ ...text.section, fontSize: 13 }}>{qt.description}</Text>
-                </View>
-                {quoteType === qt.type && (
-                  <Ionicons name="checkmark-circle" size={24} color={colors.surface} />
-                )}
-              </View>
-            </Pressable>
-          ))}
+                  <Text style={[
+                    styles.quoteTypeDesc,
+                    { color: isSelected ? "rgba(0,0,0,0.7)" : colors.textMuted }
+                  ]}>
+                    {qt.description}
+                  </Text>
+                  {isSelected && (
+                    <View style={styles.selectedBadge}>
+                      <Ionicons name="checkmark" size={14} color="#000" />
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {quoteType && (
           <>
-            <View style={{ gap: spacing.sm }}>
-              <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Hourly Pricing</Text>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Pricing</Text>
 
-              <View>
-                <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Hourly rate</Text>
+              <View style={styles.inputGroup}>
+                <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Hourly rate</Text>
                 <Pressable
                   onPress={() => setShowRatePicker(true)}
-                  style={{
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: radius.md,
-                    padding: spacing.md,
-                    backgroundColor: colors.surface,
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
+                  style={[
+                    styles.selectButton,
+                    { backgroundColor: colors.surface, borderColor: colors.border }
+                  ]}
                 >
-                  <Text
-                    style={{
-                      fontSize: 18,
-                      fontWeight: "700",
-                      color: hourlyRate ? colors.textPrimary : colors.textMuted,
-                    }}
-                  >
+                  <Text style={[
+                    styles.selectButtonText,
+                    { color: hourlyRate ? colors.textPrimary : colors.textMuted }
+                  ]}>
                     {hourlyRate ? `$${hourlyRate}/hr` : "Select rate"}
                   </Text>
                   <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
@@ -543,56 +567,38 @@ export default function QuoteComposer() {
               </View>
 
               {quoteType === "range" ? (
-                <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Hours (low)</Text>
+                <View style={styles.rowInputs}>
+                  <View style={styles.halfInput}>
+                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Hours (low)</Text>
                     <Pressable
                       onPress={() => setShowHoursLowPicker(true)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: radius.md,
-                        padding: spacing.md,
-                        backgroundColor: colors.surface,
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
+                      style={[
+                        styles.selectButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border }
+                      ]}
                     >
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: hoursLow ? colors.textPrimary : colors.textMuted,
-                        }}
-                      >
+                      <Text style={[
+                        styles.selectButtonText,
+                        { color: hoursLow ? colors.textPrimary : colors.textMuted }
+                      ]}>
                         {hoursLow ? `${hoursLow} hrs` : "Select"}
                       </Text>
                       <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
                     </Pressable>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Hours (high)</Text>
+                  <View style={styles.halfInput}>
+                    <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Hours (high)</Text>
                     <Pressable
                       onPress={() => setShowHoursHighPicker(true)}
-                      style={{
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: radius.md,
-                        padding: spacing.md,
-                        backgroundColor: colors.surface,
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                      }}
+                      style={[
+                        styles.selectButton,
+                        { backgroundColor: colors.surface, borderColor: colors.border }
+                      ]}
                     >
-                      <Text
-                        style={{
-                          fontSize: 16,
-                          fontWeight: "700",
-                          color: hoursHigh ? colors.textPrimary : colors.textMuted,
-                        }}
-                      >
+                      <Text style={[
+                        styles.selectButtonText,
+                        { color: hoursHigh ? colors.textPrimary : colors.textMuted }
+                      ]}>
                         {hoursHigh ? `${hoursHigh} hrs` : "Select"}
                       </Text>
                       <Ionicons name="chevron-down" size={18} color={colors.textMuted} />
@@ -600,28 +606,19 @@ export default function QuoteComposer() {
                   </View>
                 </View>
               ) : (
-                <View>
-                  <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Estimated hours</Text>
+                <View style={styles.inputGroup}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Estimated hours</Text>
                   <Pressable
                     onPress={() => setShowHoursPicker(true)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: radius.md,
-                      padding: spacing.md,
-                      backgroundColor: colors.surface,
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                    }}
+                    style={[
+                      styles.selectButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border }
+                    ]}
                   >
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        fontWeight: "700",
-                        color: estimatedHours ? colors.textPrimary : colors.textMuted,
-                      }}
-                    >
+                    <Text style={[
+                      styles.selectButtonText,
+                      { color: estimatedHours ? colors.textPrimary : colors.textMuted }
+                    ]}>
                       {estimatedHours ? `${estimatedHours} hrs` : "Select hours"}
                     </Text>
                     <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
@@ -631,78 +628,52 @@ export default function QuoteComposer() {
 
               <Pressable
                 onPress={() => setIncludeDiagnosticFee(!includeDiagnosticFee)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                  padding: spacing.md,
-                  borderRadius: radius.md,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
+                style={[
+                  styles.checkboxRow,
+                  { backgroundColor: colors.surface, borderColor: colors.border }
+                ]}
               >
-                <View
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    borderWidth: 2,
+                <View style={[
+                  styles.checkbox,
+                  {
                     borderColor: includeDiagnosticFee ? colors.accent : colors.border,
                     backgroundColor: includeDiagnosticFee ? colors.accent : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {includeDiagnosticFee && (
-                    <Ionicons name="checkmark" size={16} color="#fff" />
-                  )}
+                  }
+                ]}>
+                  {includeDiagnosticFee && <Ionicons name="checkmark" size={16} color="#fff" />}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
+                <View style={styles.checkboxContent}>
+                  <Text style={[styles.checkboxTitle, { color: colors.textPrimary }]}>
                     Include diagnostic fee
                   </Text>
-                  <Text style={{ ...text.muted, fontSize: 12 }}>
-                    Add ${DIAGNOSTIC_FEE} diagnostic fee to quote
+                  <Text style={[styles.checkboxSubtitle, { color: colors.textMuted }]}>
+                    Add ${DIAGNOSTIC_FEE} diagnostic fee
                   </Text>
                 </View>
               </Pressable>
 
               <Pressable
                 onPress={() => setIncludeDriveFee(!includeDriveFee)}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                  padding: spacing.md,
-                  borderRadius: radius.md,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
+                style={[
+                  styles.checkboxRow,
+                  { backgroundColor: colors.surface, borderColor: colors.border }
+                ]}
               >
-                <View
-                  style={{
-                    width: 24,
-                    height: 24,
-                    borderRadius: 6,
-                    borderWidth: 2,
+                <View style={[
+                  styles.checkbox,
+                  {
                     borderColor: includeDriveFee ? colors.accent : colors.border,
                     backgroundColor: includeDriveFee ? colors.accent : "transparent",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  {includeDriveFee && (
-                    <Ionicons name="checkmark" size={16} color="#fff" />
-                  )}
+                  }
+                ]}>
+                  {includeDriveFee && <Ionicons name="checkmark" size={16} color="#fff" />}
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
+                <View style={styles.checkboxContent}>
+                  <Text style={[styles.checkboxTitle, { color: colors.textPrimary }]}>
                     Include drive fee
                   </Text>
-                  <Text style={{ ...text.muted, fontSize: 12 }}>
-                    Add ${DRIVE_FEE} drive fee (travel to customer location)
+                  <Text style={[styles.checkboxSubtitle, { color: colors.textMuted }]}>
+                    Add ${DRIVE_FEE} travel fee
                   </Text>
                 </View>
               </Pressable>
@@ -712,126 +683,90 @@ export default function QuoteComposer() {
               ((quoteType === "diagnostic_only" || quoteType === "fixed") &&
                 hourlyRate &&
                 estimatedHours)) && (
-              <View style={[card, { padding: spacing.lg, gap: spacing.sm, backgroundColor: colors.surface }]}>
-                <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Pricing Breakdown</Text>
+              <View style={[styles.breakdownCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 12 }]}>
+                  Pricing Breakdown
+                </Text>
 
-                <View style={{ gap: spacing.xs }}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Hourly rate</Text>
-                    <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                      ${hourlyRate}/hr
-                    </Text>
+                <View style={styles.breakdownRow}>
+                  <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Hourly rate</Text>
+                  <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>${hourlyRate}/hr</Text>
+                </View>
+
+                <View style={styles.breakdownRow}>
+                  <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Estimated hours</Text>
+                  <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>
+                    {quoteType === "range" ? `${hoursLow} - ${hoursHigh} hrs` : `${estimatedHours} hrs`}
+                  </Text>
+                </View>
+
+                <View style={styles.breakdownRow}>
+                  <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Labor subtotal</Text>
+                  <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>
+                    {quoteType === "range"
+                      ? `$${(hourlyRate! * (hoursLow ?? 0)).toFixed(0)} - $${(hourlyRate! * (hoursHigh ?? 0)).toFixed(0)}`
+                      : `$${(hourlyRate! * (estimatedHours ?? 0)).toFixed(0)}`}
+                  </Text>
+                </View>
+
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+                {includeDriveFee && (
+                  <View style={styles.breakdownRow}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Drive fee</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>${DRIVE_FEE}</Text>
                   </View>
+                )}
 
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Estimated hours</Text>
-                    <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                      {quoteType === "range"
-                        ? `${hoursLow} - ${hoursHigh} hrs`
-                        : `${estimatedHours} hrs`}
-                    </Text>
+                {includeDiagnosticFee && (
+                  <View style={styles.breakdownRow}>
+                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Diagnostic fee</Text>
+                    <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>${DIAGNOSTIC_FEE}</Text>
                   </View>
+                )}
 
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 14 }}>Labor subtotal</Text>
-                    <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                      {quoteType === "range"
-                        ? `$${(hourlyRate! * (hoursLow ?? 0)).toFixed(0)} - $${(hourlyRate! * (hoursHigh ?? 0)).toFixed(0)}`
-                        : `$${(hourlyRate! * (estimatedHours ?? 0)).toFixed(0)}`}
-                    </Text>
-                  </View>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: colors.border,
-                      marginVertical: spacing.xs,
-                    }}
-                  />
-
-                  {includeDriveFee && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.body, fontSize: 14 }}>Drive fee (travel to you)</Text>
-                      <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                        ${DRIVE_FEE}
-                      </Text>
-                    </View>
-                  )}
-
-                  {includeDiagnosticFee && (
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.body, fontSize: 14 }}>Diagnostic fee</Text>
-                      <Text style={{ ...text.body, fontSize: 14, fontWeight: "600" }}>
-                        ${DIAGNOSTIC_FEE}
-                      </Text>
-                    </View>
-                  )}
-
-                  <View
-                    style={{
-                      height: 1,
-                      backgroundColor: colors.border,
-                      marginVertical: spacing.xs,
-                    }}
-                  />
-
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={{ ...text.body, fontSize: 16, fontWeight: "700" }}>Total</Text>
-                    <Text style={{ ...text.body, fontSize: 20, fontWeight: "900", color: colors.accent }}>
-                      {quoteType === "range"
-                        ? `$${calculateTotalLow().toFixed(0)} - $${calculateTotalHigh().toFixed(0)}`
-                        : `$${calculateTotal().toFixed(0)}`}
-                    </Text>
-                  </View>
+                <View style={styles.breakdownRow}>
+                  <Text style={[styles.totalLabel, { color: colors.textPrimary }]}>Total</Text>
+                  <Text style={[styles.totalValue, { color: colors.accent }]}>
+                    {quoteType === "range"
+                      ? `$${calculateTotalLow().toFixed(0)} - $${calculateTotalHigh().toFixed(0)}`
+                      : `$${calculateTotal().toFixed(0)}`}
+                  </Text>
                 </View>
               </View>
             )}
-          </>
-        )}
 
-        {quoteType && (
-          <>
-            <View style={{ gap: spacing.sm }}>
-              <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>Time Estimate</Text>
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Availability</Text>
 
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Arrival date</Text>
+              <View style={styles.rowInputs}>
+                <View style={styles.halfInput}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Arrival date</Text>
                   <Pressable
                     onPress={() => setShowDatePicker(true)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: radius.md,
-                      padding: spacing.md,
-                      backgroundColor: colors.surface,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
+                    style={[
+                      styles.selectButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border }
+                    ]}
                   >
-                    <Text style={{ fontSize: 15, color: colors.textPrimary }}>
+                    <Text style={[styles.selectButtonText, { color: colors.textPrimary }]}>
                       {arrivalDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
                     </Text>
                     <Ionicons name="calendar-outline" size={18} color={colors.textMuted} />
                   </Pressable>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.muted, fontSize: 13, marginBottom: 6 }}>Arrival time</Text>
+                <View style={styles.halfInput}>
+                  <Text style={[styles.inputLabel, { color: colors.textMuted }]}>Arrival time</Text>
                   <Pressable
                     onPress={() => setShowTimePicker(true)}
-                    style={{
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: radius.md,
-                      padding: spacing.md,
-                      backgroundColor: colors.surface,
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                    }}
+                    style={[
+                      styles.selectButton,
+                      { backgroundColor: colors.surface, borderColor: colors.border }
+                    ]}
                   >
-                    <Text style={{ fontSize: 15, color: colors.textPrimary }}>
+                    <Text style={[styles.selectButtonText, { color: colors.textPrimary }]}>
                       {arrivalTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
                     </Text>
                     <Ionicons name="time-outline" size={18} color={colors.textMuted} />
@@ -866,12 +801,9 @@ export default function QuoteComposer() {
               )}
             </View>
 
-            <View style={{ gap: spacing.sm }}>
-              <Text style={{ ...text.body, fontWeight: "700", fontSize: 16 }}>
-                Message to Customer (optional)
-              </Text>
-              <Text style={{ ...text.muted, fontSize: 13 }}>
-                Brief note about your approach or what to expect
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+                Message (optional)
               </Text>
               <TextInput
                 placeholder="Brief note about your approach..."
@@ -881,64 +813,48 @@ export default function QuoteComposer() {
                 maxLength={300}
                 value={message}
                 onChangeText={setMessage}
-                style={{
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: radius.md,
-                  padding: spacing.md,
-                  fontSize: 15,
-                  color: colors.textPrimary,
-                  backgroundColor: colors.surface,
-                  minHeight: 100,
-                  textAlignVertical: "top",
-                }}
+                style={[
+                  styles.textArea,
+                  {
+                    borderColor: colors.border,
+                    color: colors.textPrimary,
+                    backgroundColor: colors.surface,
+                  }
+                ]}
               />
-              <Text style={{ ...text.muted, fontSize: 12, textAlign: "right" }}>
+              <Text style={[styles.charCount, { color: colors.textMuted }]}>
                 {message.length}/300
               </Text>
             </View>
 
             {showGuidance && getGuidanceForQuoteType() && (
-              <View
-                style={[
-                  card,
-                  {
-                    padding: spacing.md,
-                    backgroundColor: colors.accent + "10",
-                    borderLeftWidth: 4,
-                    borderLeftColor: colors.accent,
-                  },
-                ]}
-              >
+              <View style={[styles.guidanceCard, { backgroundColor: colors.accent + "12", borderLeftColor: colors.accent }]}>
                 <Pressable
                   onPress={() => setShowGuidance(false)}
-                  style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
+                  style={styles.guidanceHeader}
                 >
-                  <Text style={{ ...text.body, fontWeight: "700", fontSize: 14, color: colors.accent }}>
-                    💡 Quote Strategy Tips
-                  </Text>
+                  <View style={styles.guidanceTitleRow}>
+                    <Ionicons name="bulb" size={18} color={colors.accent} />
+                    <Text style={[styles.guidanceTitle, { color: colors.accent }]}>
+                      Quote Strategy Tips
+                    </Text>
+                  </View>
                   <Ionicons name="close" size={20} color={colors.accent} />
                 </Pressable>
 
-                <View style={{ marginTop: spacing.sm, gap: spacing.xs }}>
+                <View style={styles.guidanceContent}>
                   {getGuidanceForQuoteType()!.tips.map((tip, i) => (
-                    <Text key={i} style={{ ...text.body, fontSize: 13, lineHeight: 18 }}>
+                    <Text key={i} style={[styles.guidanceTip, { color: colors.textSecondary }]}>
                       • {tip}
                     </Text>
                   ))}
                   {getGuidanceForQuoteType()!.risks.length > 0 && (
-                    <View style={{ marginTop: spacing.xs }}>
-                      <Text
-                        style={{ ...text.body, fontWeight: "700", fontSize: 13, marginBottom: 4 }}
-                      >
-                        ⚠️ Consider:
+                    <View style={styles.guidanceRisks}>
+                      <Text style={[styles.guidanceRiskTitle, { color: colors.textPrimary }]}>
+                        Consider:
                       </Text>
                       {getGuidanceForQuoteType()!.risks.map((risk, i) => (
-                        <Text key={i} style={{ ...text.muted, fontSize: 13, lineHeight: 18 }}>
+                        <Text key={i} style={[styles.guidanceTip, { color: colors.textMuted }]}>
                           • {risk}
                         </Text>
                       ))}
@@ -949,24 +865,31 @@ export default function QuoteComposer() {
             )}
           </>
         )}
+      </ScrollView>
 
+      <View style={[
+        styles.bottomBar,
+        { 
+          backgroundColor: colors.bg,
+          paddingBottom: Math.max(insets.bottom, 16),
+          borderTopColor: colors.border,
+        }
+      ]}>
         <Pressable
           onPress={handleContinue}
           disabled={!canContinue()}
-          style={({ pressed }) => ({
-            backgroundColor: colors.accent,
-            paddingVertical: 16,
-            borderRadius: radius.lg,
-            alignItems: "center",
-            opacity: !canContinue() ? 0.4 : pressed ? 0.85 : 1,
-            marginTop: spacing.md,
-          })}
+          style={({ pressed }) => [
+            styles.continueButton,
+            {
+              backgroundColor: colors.accent,
+              opacity: !canContinue() ? 0.4 : pressed ? 0.85 : 1,
+            }
+          ]}
         >
-          <Text style={{ fontWeight: "900", fontSize: 16, color: "#000", letterSpacing: 0.5 }}>
-            Review Quote
-          </Text>
+          <Text style={styles.continueButtonText}>Review Quote</Text>
+          <Ionicons name="arrow-forward" size={20} color="#000" />
         </Pressable>
-      </ScrollView>
+      </View>
 
       {renderPickerModal(
         showRatePicker,
@@ -1016,3 +939,312 @@ export default function QuoteComposer() {
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  centered: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  header: {
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+  },
+  headerContent: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
+  },
+  backButton: {
+    padding: 4,
+  },
+  headerTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  scrollContent: {
+    padding: 16,
+    gap: 20,
+  },
+  jobCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    overflow: "hidden",
+  },
+  jobCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 16,
+    gap: 12,
+  },
+  jobIconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  jobCardInfo: {
+    flex: 1,
+  },
+  jobVehicle: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  jobTitle: {
+    fontSize: 14,
+    marginTop: 2,
+  },
+  jobCardExpanded: {
+    padding: 16,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    gap: 10,
+  },
+  jobDetailRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 10,
+  },
+  jobDetailText: {
+    flex: 1,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  section: {
+    gap: 12,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+  },
+  sectionSubtitle: {
+    fontSize: 14,
+    marginTop: -4,
+  },
+  quoteTypeGrid: {
+    gap: 12,
+  },
+  quoteTypeCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    position: "relative",
+  },
+  quoteTypeIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  quoteTypeTitle: {
+    fontSize: 16,
+    fontWeight: "700",
+    marginBottom: 4,
+  },
+  quoteTypeDesc: {
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  selectedBadge: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.3)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  inputGroup: {
+    gap: 6,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+  },
+  selectButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  selectButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  rowInputs: {
+    flexDirection: "row",
+    gap: 12,
+  },
+  halfInput: {
+    flex: 1,
+    gap: 6,
+  },
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    gap: 12,
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  checkboxContent: {
+    flex: 1,
+  },
+  checkboxTitle: {
+    fontSize: 15,
+    fontWeight: "600",
+  },
+  checkboxSubtitle: {
+    fontSize: 13,
+    marginTop: 2,
+  },
+  breakdownCard: {
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+  },
+  breakdownRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 6,
+  },
+  breakdownLabel: {
+    fontSize: 14,
+  },
+  breakdownValue: {
+    fontSize: 14,
+    fontWeight: "600",
+  },
+  divider: {
+    height: 1,
+    marginVertical: 8,
+  },
+  totalLabel: {
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  totalValue: {
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  textArea: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 15,
+    minHeight: 100,
+    textAlignVertical: "top",
+  },
+  charCount: {
+    fontSize: 12,
+    textAlign: "right",
+    marginTop: 4,
+  },
+  guidanceCard: {
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    padding: 14,
+  },
+  guidanceHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  guidanceTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  guidanceTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+  },
+  guidanceContent: {
+    marginTop: 10,
+    gap: 4,
+  },
+  guidanceTip: {
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  guidanceRisks: {
+    marginTop: 8,
+  },
+  guidanceRiskTitle: {
+    fontSize: 13,
+    fontWeight: "600",
+    marginBottom: 4,
+  },
+  bottomBar: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    borderTopWidth: 1,
+  },
+  continueButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 16,
+    borderRadius: 14,
+    gap: 8,
+  },
+  continueButtonText: {
+    fontSize: 16,
+    fontWeight: "800",
+    color: "#000",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "flex-end",
+  },
+  modalContent: {
+    padding: 20,
+    maxHeight: "60%",
+  },
+  modalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+  },
+  pickerOption: {
+    padding: 14,
+    marginBottom: 4,
+  },
+  pickerOptionText: {
+    fontSize: 16,
+  },
+});

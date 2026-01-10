@@ -80,30 +80,40 @@ export default function PaymentSetup() {
     try {
       setLoading(true);
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        Alert.alert("Error", "Please sign in to add a payment method");
+      const { data: { session }, error: sessionError } = await supabase.auth.refreshSession();
+      if (sessionError || !session) {
+        console.error("[PaymentSetup] Session error:", sessionError);
+        Alert.alert("Error", "Please sign in again to add a payment method");
         return;
       }
 
-      const response = await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/customer-setup-payment-method`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
-          },
+      console.log("[PaymentSetup] Calling edge function via supabase.functions.invoke...");
+
+      const { data, error: fnError } = await supabase.functions.invoke("customer-setup-payment-method", {
+        method: "POST",
+      });
+
+      console.log("[PaymentSetup] Response data:", JSON.stringify(data));
+
+      if (fnError) {
+        // Try to get more details from the error
+        const errorContext = (fnError as any).context;
+        let errorBody = null;
+        if (errorContext?.json) {
+          try {
+            errorBody = await errorContext.json();
+          } catch {}
         }
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || "Failed to setup payment method");
+        console.error("[PaymentSetup] Function error:", fnError.message, "Body:", JSON.stringify(errorBody));
+        throw new Error(errorBody?.error || fnError.message || "Failed to setup payment method");
       }
 
+      if (!data?.clientSecret) {
+        console.error("[PaymentSetup] Missing clientSecret in response");
+        throw new Error("Failed to setup payment method");
+      }
+
+      console.log("[PaymentSetup] Initializing payment sheet...");
       const { error: initError } = await initPaymentSheet({
         setupIntentClientSecret: data.clientSecret,
         merchantDisplayName: "WrenchGo",
@@ -112,6 +122,7 @@ export default function PaymentSetup() {
       });
 
       if (initError) {
+        console.error("[PaymentSetup] initPaymentSheet error:", initError);
         throw new Error(initError.message);
       }
 
@@ -125,18 +136,19 @@ export default function PaymentSetup() {
       }
 
       const setupIntentId = data.clientSecret.split('_secret_')[0];
-      await fetch(
-        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/customer-save-payment-method`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-            "Content-Type": "application/json",
-            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "",
-          },
-          body: JSON.stringify({ setupIntentId }),
-        }
-      );
+
+      console.log("[PaymentSetup] Saving payment method with setupIntentId:", setupIntentId);
+      const { data: saveData, error: saveError } = await supabase.functions.invoke("customer-save-payment-method", {
+        method: "POST",
+        body: { setupIntentId },
+      });
+
+      console.log("[PaymentSetup] Save response:", JSON.stringify(saveData), "Error:", saveError?.message);
+
+      if (saveError) {
+        console.error("[PaymentSetup] Save error:", saveError);
+        throw new Error("Failed to save payment method");
+      }
 
       await checkPaymentStatus();
 

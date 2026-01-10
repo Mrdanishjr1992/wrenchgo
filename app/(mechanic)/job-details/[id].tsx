@@ -7,10 +7,13 @@ import {
   Pressable,
   ScrollView,
   RefreshControl,
+  LayoutAnimation,
   Platform,
   UIManager,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { LinearGradient } from "expo-linear-gradient";
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { createCard } from "../../../src/ui/styles";
 import { useTheme } from "../../../src/ui/theme-context";
@@ -24,6 +27,10 @@ import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract 
 import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 type JobIntake = {
   symptom?: { key: string; label: string };
@@ -64,6 +71,9 @@ type QuoteRequest = {
   id: string;
   job_id: string;
   status: string;
+  price_cents: number | null;
+  estimated_hours: number | null;
+  notes: string | null;
   canceled_at: string | null;
   canceled_by: string | null;
   cancel_reason: string | null;
@@ -87,6 +97,8 @@ const fmtDT = (iso: string) => {
     return iso;
   }
 };
+
+const money = (cents: number | null) => (cents == null ? "—" : `$${(cents / 100).toFixed(0)}`);
 
 const normalizeCanMove = (raw?: string) => {
   const s = (raw || "").trim();
@@ -128,85 +140,29 @@ export default function MechanicJobDetails() {
   const [showAddLineItem, setShowAddLineItem] = useState(false);
   const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
 
-  const statusColor = (status: string) => {
+  const [detailsExpanded, setDetailsExpanded] = useState(false);
+  const [invoiceExpanded, setInvoiceExpanded] = useState(false);
+
+  const detailsChevronRotation = useSharedValue(0);
+
+  useEffect(() => {
+    detailsChevronRotation.value = withTiming(detailsExpanded ? 180 : 0, { duration: 200 });
+  }, [detailsExpanded]);
+
+  const detailsChevronStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${detailsChevronRotation.value}deg` }],
+  }));
+
+  const statusConfig = (status: string) => {
     const s = (status || "").toLowerCase();
-    if (s === "accepted") return colors.accent;
-    if (s === "work_in_progress") return colors.accent;
-    if (s === "completed") return "#10b981";
-    if (s === "searching") return colors.textMuted;
-    if (s === "quoted") return "#f59e0b";
-    if (s === "canceled" || s.includes("canceled")) return "#EF4444";
-    return colors.textMuted;
+    if (s === "searching") return { color: colors.textMuted, icon: "search" as const, label: "Searching" };
+    if (s === "quoted") return { color: "#f59e0b", icon: "pricetags" as const, label: "Quoted" };
+    if (s === "accepted") return { color: colors.accent, icon: "checkmark-circle" as const, label: "Accepted" };
+    if (s === "work_in_progress") return { color: colors.accent, icon: "construct" as const, label: "In Progress" };
+    if (s === "completed") return { color: "#10B981", icon: "checkmark-done-circle" as const, label: "Completed" };
+    if (s === "canceled" || s.includes("canceled")) return { color: "#EF4444", icon: "close-circle" as const, label: "Canceled" };
+    return { color: colors.textMuted, icon: "ellipse" as const, label: status };
   };
-
-  const statusEmoji = (status: string) => {
-    const s = (status || "").toLowerCase();
-    if (s === "searching") return "🔎";
-    if (s === "accepted") return "✅";
-    if (s === "work_in_progress") return "🛠️";
-    if (s === "completed") return "🏁";
-    if (s === "quoted") return "💬";
-    if (s === "canceled" || s.includes("canceled")) return "❌";
-    return "•";
-  };
-
-  const StatusPill = ({ status }: { status: string }) => {
-    const c = statusColor(status);
-    return (
-      <View
-        style={{
-          alignSelf: "flex-start",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: c + "1F",
-          borderWidth: 1,
-          borderColor: c + "55",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 6,
-        }}
-      >
-        <Text style={{ fontSize: 12 }}>{statusEmoji(status)}</Text>
-        <Text style={{ fontSize: 12, fontWeight: "900", color: c }}>
-          {(status || "unknown").toUpperCase()}
-        </Text>
-      </View>
-    );
-  };
-
-  const SectionCard = ({
-    title,
-    icon,
-    children,
-  }: {
-    title: string;
-    icon?: any;
-    children: any;
-  }) => (
-    <View style={[card, { padding: spacing.md, gap: spacing.sm }]}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        {icon ? (
-          <View
-            style={{
-              width: 34,
-              height: 34,
-              borderRadius: 12,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: colors.bg,
-              borderWidth: 1,
-              borderColor: colors.border,
-            }}
-          >
-            <Ionicons name={icon} size={18} color={colors.textPrimary} />
-          </View>
-        ) : null}
-        <Text style={text.section}>{title}</Text>
-      </View>
-      {children}
-    </View>
-  );
 
   const load = useCallback(async () => {
     try {
@@ -222,7 +178,6 @@ export default function MechanicJobDetails() {
 
       setMechanicId(currentMechanicId);
 
-      // First try to get job where mechanic is accepted
       let { data, error } = await supabase
         .from("jobs")
         .select(
@@ -236,7 +191,6 @@ export default function MechanicJobDetails() {
         .eq("accepted_mechanic_id", currentMechanicId)
         .single();
 
-      // If not found, try to get job without mechanic filter (for notifications about new jobs)
       if (error?.code === "PGRST116") {
         const result = await supabase
           .from("jobs")
@@ -287,7 +241,6 @@ export default function MechanicJobDetails() {
         setInvoice(null);
       }
 
-      // Fetch question texts for this job's symptom
       const intake = parseJobIntake(data?.description);
       if (intake?.symptom?.key && intake?.answers) {
         const answerKeys = Object.keys(intake.answers);
@@ -355,21 +308,23 @@ export default function MechanicJobDetails() {
   }, [id, load]);
 
   useEffect(() => {
-    if (!job?.accepted_mechanic_id || !id || !contract) return;
+    if (!job?.accepted_mechanic_id || !id) return;
 
-    const progressSub = subscribeToJobProgress(id, (p) => setProgress(p));
-    const contractSub = subscribeToJobContract(id, (c) => setContract(c));
-    const lineItemsSub = contract?.id
-      ? subscribeToLineItems(contract.id, async () => {
-          const invoiceData = await getInvoiceByJobId(id);
-          setInvoice(invoiceData);
-        })
-      : null;
+    const progressChannel = subscribeToJobProgress(id, (p) => setProgress(p));
+    const contractChannel = subscribeToJobContract(id, (c) => setContract(c));
+
+    let lineItemsChannel: ReturnType<typeof subscribeToLineItems> | null = null;
+    if (contract?.id) {
+      lineItemsChannel = subscribeToLineItems(contract.id, async () => {
+        const invoiceData = await getInvoiceByJobId(id);
+        setInvoice(invoiceData);
+      });
+    }
 
     return () => {
-      progressSub?.unsubscribe();
-      contractSub?.unsubscribe();
-      lineItemsSub?.unsubscribe();
+      supabase.removeChannel(progressChannel);
+      supabase.removeChannel(contractChannel);
+      if (lineItemsChannel) supabase.removeChannel(lineItemsChannel);
     };
   }, [id, job?.accepted_mechanic_id, contract?.id]);
 
@@ -383,540 +338,398 @@ export default function MechanicJobDetails() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Loading job…</Text>
+        <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   if (!job) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.md }}>
-        <Text style={text.title}>Job</Text>
-        <Text style={{ marginTop: 10, ...text.body }}>No job found.</Text>
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
+        <Ionicons name="alert-circle-outline" size={48} color={colors.textMuted} />
+        <Text style={{ ...text.section, marginTop: spacing.md }}>Job not found</Text>
+        <Pressable onPress={() => router.back()} style={{ marginTop: spacing.lg }}>
+          <Text style={{ color: colors.accent, fontWeight: "700" }}>Go Back</Text>
+        </Pressable>
       </View>
     );
   }
 
-  const headerHint =
-    job.status === "completed"
-      ? "🏁 Job completed — great work!"
-      : job.status === "work_in_progress"
-      ? "🛠️ In progress — update status when done."
-      : job.status === "accepted"
-      ? "✅ Ready to start — begin when you arrive."
-      : job.status === "canceled"
-      ? "❌ This job was canceled."
-      : "📋 Job assigned to you.";
+  const intake = parseJobIntake(job.description);
+  const statusInfo = statusConfig(job.status);
+  const context = intake?.context;
+  const canMoveText = normalizeCanMove(context?.can_move);
+  const locationText = normalizeLocation(context?.location_type || context?.location);
+  const timeText = context?.time_preference || job.preferred_time || "Flexible";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-        contentContainerStyle={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md + insets.bottom,
-          gap: spacing.md,
-        }}
+        contentContainerStyle={{ paddingBottom: spacing.xl }}
+        showsVerticalScrollIndicator={false}
       >
-        <View
-          style={{
-            paddingTop: insets.top,
-            paddingBottom: 8,
-            backgroundColor: colors.bg,
-          }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+        <LinearGradient colors={[colors.accent, colors.accent + "CC"]} style={{ paddingTop: insets.top, paddingBottom: spacing.xl }}>
+          <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
             <Pressable
               onPress={() => (router.canGoBack() ? router.back() : router.replace("/(mechanic)/(tabs)/jobs" as any))}
               hitSlop={12}
-              style={({ pressed }) => [{ paddingVertical: 8, paddingRight: 10 }, pressed && { opacity: 0.6 }]}
+              style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: spacing.md }}
             >
-              <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 18 }}>
-                Back
-              </Text>
+              <Ionicons name="chevron-back" size={20} color="#000" />
+              <Text style={{ color: "#000", fontWeight: "700" }}>Back</Text>
             </Pressable>
-          </View>
-        </View>
 
-        <View style={[card, { padding: spacing.lg, gap: 10 }]}>
-          <Text style={text.title}>{getDisplayTitle(job.title)}</Text>
-
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <StatusPill status={job.status} />
-            <Text style={text.muted}>Created {fmtDT(job.created_at)}</Text>
-          </View>
-
-          <View
-            style={{
-              marginTop: 6,
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-              borderRadius: 14,
-              padding: spacing.md,
-            }}
-          >
-            <Text style={{ ...text.body, color: colors.textPrimary, fontWeight: "800" }}>{headerHint}</Text>
-          </View>
-        </View>
-
-        {chatUnlocked && (
-          <Pressable
-            onPress={openChat}
-            style={({ pressed }) => [
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-                backgroundColor: colors.accent,
-                borderColor: colors.accent,
-              },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View
-                style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 22,
-                  backgroundColor: "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="chatbubbles" size={22} color="#fff" />
-              </View>
-              <View>
-                <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>Chat with Customer</Text>
-                <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 12, marginTop: 2 }}>
-                  Message your customer
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </Pressable>
-        )}
-
-        <SectionCard title="Job Details" icon="document-text-outline">
-          {(() => {
-            const intake = parseJobIntake(job.description);
-
-            if (!intake) {
-              return (
-                <View>
-                  {job.vehicle ? (
-                    <View style={{ marginBottom: spacing.sm }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Vehicle</Text>
-                      <Text style={{ ...text.body, fontWeight: "900", marginTop: 2 }}>
-                        {job.vehicle.year} {job.vehicle.make} {job.vehicle.model}
-                      </Text>
-                    </View>
-                  ) : null}
-
-                  {job.preferred_time ? (
-                    <View style={{ marginBottom: spacing.sm }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Preferred Time</Text>
-                      <Text style={{ ...text.body, fontWeight: "900", marginTop: 2 }}>{job.preferred_time}</Text>
-                    </View>
-                  ) : null}
-
-                  {job.description ? (
-                    <View>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Description</Text>
-                      <Text style={{ ...text.body, marginTop: 2 }}>{job.description}</Text>
-                    </View>
-                  ) : (
-                    <Text style={text.muted}>No details provided.</Text>
-                  )}
-                </View>
-              );
-            }
-
-            const vehicleData = intake.vehicle || job.vehicle;
-            const symptomLabel = intake.symptom?.label || "Issue not specified";
-            const answers = intake.answers || {};
-            const context = intake.context || {};
-
-            const canMoveText = normalizeCanMove(context.can_move);
-            const locationText = normalizeLocation(context.location || context.location_type);
-            const timeText = context.time_preference || job.preferred_time || "Not specified";
-
-            return (
-              <View style={{ gap: spacing.md }}>
-                {vehicleData && (
-                  <View
-                    style={{
-                      backgroundColor: colors.surface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 12,
-                      padding: spacing.md,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <Ionicons name="car-outline" size={16} color={colors.accent} />
-                      <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>VEHICLE</Text>
-                    </View>
-                    <Text style={{ ...text.body, fontWeight: "900", fontSize: 16 }}>
-                      {vehicleData.year} {vehicleData.make} {vehicleData.model}
-                    </Text>
-                    {intake.vehicle?.nickname ? (
-                      <Text style={{ ...text.muted, fontSize: 13, marginTop: 2 }}>
-                        "{intake.vehicle.nickname}"
-                      </Text>
-                    ) : null}
-                  </View>
-                )}
-
-                <View
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                    padding: spacing.md,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                    <Ionicons name="alert-circle-outline" size={16} color={colors.accent} />
-                    <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>ISSUE</Text>
-                  </View>
-                  <Text style={{ ...text.body, fontWeight: "900", fontSize: 16 }}>{symptomLabel}</Text>
-                </View>
-
-                {Object.keys(answers).length > 0 && (
-                  <View
-                    style={{
-                      backgroundColor: colors.surface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 12,
-                      padding: spacing.md,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                      <Ionicons name="chatbox-ellipses-outline" size={16} color={colors.accent} />
-                      <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>CUSTOMER ANSWERS</Text>
-                    </View>
-
-                    <View style={{ gap: spacing.sm }}>
-                      {Object.entries(answers).map(([key, value], idx) => {
-                        const label = questionMap[key] || key;
-                        return (
-                          <View key={key}>
-                            <Text style={{ ...text.muted, fontSize: 12 }}>{label}</Text>
-                            <Text style={{ ...text.body, marginTop: 2 }}>{value || "—"}</Text>
-                          </View>
-                        );
-                      })}
-                    </View>
-                  </View>
-                )}
-
-                <View
-                  style={{
-                    backgroundColor: colors.surface,
-                    borderWidth: 1,
-                    borderColor: colors.border,
-                    borderRadius: 12,
-                    padding: spacing.md,
-                  }}
-                >
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                    <Ionicons name="information-circle-outline" size={16} color={colors.accent} />
-                    <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>CONTEXT</Text>
-                  </View>
-
-                  <View style={{ gap: spacing.sm }}>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Can move</Text>
-                      <Text style={{ ...text.body, fontWeight: "900" }}>{canMoveText}</Text>
-                    </View>
-
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Vehicle location</Text>
-                      <Text style={{ ...text.body, fontWeight: "900" }}>{locationText}</Text>
-                    </View>
-
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>Time preference</Text>
-                      <Text style={{ ...text.body, fontWeight: "900" }}>{timeText}</Text>
-                    </View>
-
-                    {context.mileage ? (
-                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ ...text.muted, fontSize: 13 }}>Mileage</Text>
-                        <Text style={{ ...text.body, fontWeight: "900" }}>{context.mileage}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                </View>
-
-                {job.preferred_time ? (
-                  <View
-                    style={{
-                      backgroundColor: colors.surface,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                      borderRadius: 12,
-                      padding: spacing.md,
-                    }}
-                  >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                      <Ionicons name="time-outline" size={16} color={colors.accent} />
-                      <Text style={{ ...text.muted, fontSize: 13, fontWeight: "900" }}>PREFERRED TIME</Text>
-                    </View>
-                    <Text style={{ ...text.body, fontWeight: "900" }}>{job.preferred_time}</Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })()}
-        </SectionCard>
-
-        {job.status === "canceled" && (
-          <SectionCard title="Cancellation" icon="close-circle-outline">
-            <View
-              style={{
-                backgroundColor: "#FEE2E2",
-                borderWidth: 1,
-                borderColor: "#FCA5A5",
-                borderRadius: 12,
-                padding: spacing.md,
-                marginBottom: spacing.sm,
-              }}
-            >
-              <Text style={{ fontSize: 13, fontWeight: "900", color: "#991B1B" }}>
-                ❌ {job.canceled_by === "customer" ? "CANCELED BY CUSTOMER" : "JOB CANCELED"}
-              </Text>
-            </View>
-
-            <Text style={text.body}>
-              Canceled on: <Text style={{ fontWeight: "900" }}>{fmtDT(job.canceled_at || "")}</Text>
+            <Text style={{ fontSize: 24, fontWeight: "900", color: "#000", marginBottom: 8 }}>
+              {getDisplayTitle(job.title)}
             </Text>
 
-            {quoteRequest?.cancel_reason && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={{ ...text.muted, fontSize: 13 }}>Reason</Text>
-                <Text style={{ ...text.body, marginTop: 2 }}>
-                  {quoteRequest.cancel_reason.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+            {(intake?.vehicle || job.vehicle) && (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
+                <Ionicons name="car-outline" size={16} color="#000" />
+                <Text style={{ color: "#000", fontWeight: "600" }}>
+                  {(intake?.vehicle || job.vehicle)?.year} {(intake?.vehicle || job.vehicle)?.make} {(intake?.vehicle || job.vehicle)?.model}
                 </Text>
               </View>
             )}
 
-            {quoteRequest?.cancel_note && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={{ ...text.muted, fontSize: 13 }}>Customer Note</Text>
-                <Text style={{ ...text.body, marginTop: 2 }}>{quoteRequest.cancel_note}</Text>
-              </View>
-            )}
-
-            {quoteRequest?.cancellation_fee_cents && quoteRequest.cancellation_fee_cents > 0 && (
-              <View style={{ marginTop: spacing.sm }}>
-                <Text style={{ ...text.muted, fontSize: 13 }}>Cancellation Fee</Text>
-                <Text style={{ ...text.title, fontSize: 20, color: "#10b981", marginTop: 2 }}>
-                  ${(quoteRequest.cancellation_fee_cents / 100).toFixed(2)}
-                </Text>
-                <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
-                  This fee compensates for your time
-                </Text>
-              </View>
-            )}
-          </SectionCard>
-        )}
-
-        {contract && (
-          <SectionCard title="Job Progress" icon="trending-up-outline">
-            <JobProgressTracker
-              progress={progress}
-              status={job.status}
-              role="mechanic"
-            />
-          </SectionCard>
-        )}
-
-        {contract && job.status !== "completed" && job.status !== "canceled" && (
-          <SectionCard title="Actions" icon="hand-left-outline">
-            <JobActions
-              jobId={id}
-              progress={progress}
-              contract={contract}
-              role="mechanic"
-              onRefresh={load}
-              hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
-            />
-          </SectionCard>
-        )}
-
-        {!contract && job.status === "accepted" && (
-          <SectionCard title="Status" icon="hourglass-outline">
             <View
               style={{
-                backgroundColor: `${colors.accent}15`,
-                borderWidth: 1,
-                borderColor: `${colors.accent}40`,
-                borderRadius: 12,
-                padding: spacing.md,
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 12,
+                gap: 8,
+                backgroundColor: "rgba(0,0,0,0.15)",
+                alignSelf: "flex-start",
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20,
               }}
             >
-              <Ionicons name="time" size={24} color={colors.accent} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...text.body, fontWeight: "900", color: colors.accent }}>
-                  Waiting for Payment
+              <Ionicons name={statusInfo.icon} size={14} color="#000" />
+              <Text style={{ color: "#000", fontWeight: "700", fontSize: 12 }}>{statusInfo.label.toUpperCase()}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        <View style={{ paddingHorizontal: spacing.md, marginTop: -spacing.lg }}>
+          {chatUnlocked && (
+            <Pressable
+              onPress={openChat}
+              style={({ pressed }) => [
+                card,
+                {
+                  padding: spacing.md,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: colors.accent,
+                  borderColor: colors.accent,
+                  marginBottom: spacing.md,
+                },
+                pressed && { opacity: 0.9 },
+              ]}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.15)", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="chatbubbles" size={22} color="#000" />
+                </View>
+                <View>
+                  <Text style={{ fontWeight: "900", color: "#000", fontSize: 16 }}>Chat with Customer</Text>
+                  <Text style={{ color: "rgba(0,0,0,0.7)", fontSize: 12, marginTop: 2 }}>Message your customer</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#000" />
+            </Pressable>
+          )}
+
+          {job.customer_id && (
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="person-outline" size={18} color={colors.accent} />
+                </View>
+                <Text style={text.section}>Customer</Text>
+              </View>
+              <UserProfileCard
+                userId={job.customer_id}
+                variant="mini"
+                context="quote_detail"
+                onPressViewProfile={() => setSelectedCustomerId(job.customer_id)}
+              />
+            </View>
+          )}
+
+          {quoteRequest && (
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#10B98120", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="pricetag-outline" size={18} color="#10B981" />
+                </View>
+                <Text style={text.section}>Your Quote</Text>
+              </View>
+              <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+                <Text style={{ ...text.muted, fontSize: 12 }}>Total Price</Text>
+                <Text style={{ fontSize: 32, fontWeight: "900", color: colors.accent, marginTop: 4 }}>
+                  {money(quoteRequest.price_cents)}
                 </Text>
-                <Text style={{ ...text.muted, fontSize: 13, marginTop: 4 }}>
-                  The customer is completing payment. You'll be notified when you can start.
+                {quoteRequest.estimated_hours && (
+                  <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
+                    Est. {quoteRequest.estimated_hours < 1 ? `${Math.round(quoteRequest.estimated_hours * 60)} min` : `${quoteRequest.estimated_hours.toFixed(1)} hrs`}
+                  </Text>
+                )}
+              </View>
+              {quoteRequest.notes && (
+                <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, marginTop: spacing.sm }}>
+                  <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>YOUR NOTE</Text>
+                  <Text style={text.body}>{quoteRequest.notes.split('\n').filter(line => !line.includes('Platform fee')).join('\n')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          <Pressable
+            onPress={() => {
+              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+              setDetailsExpanded(!detailsExpanded);
+            }}
+            style={[card, { padding: spacing.md, marginBottom: spacing.md }]}
+          >
+            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="document-text-outline" size={18} color={colors.accent} />
+                </View>
+                <Text style={text.section}>Job Details</Text>
+              </View>
+              <Animated.View style={detailsChevronStyle}>
+                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
+              </Animated.View>
+            </View>
+
+            {!detailsExpanded && (
+              <Text style={{ ...text.muted, marginTop: spacing.sm }} numberOfLines={1}>
+                {intake?.symptom?.label || "Tap to view details"}
+              </Text>
+            )}
+
+            {detailsExpanded && intake && (
+              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                {intake.symptom?.label && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>ISSUE</Text>
+                    <Text style={{ ...text.body, fontWeight: "700" }}>{intake.symptom.label}</Text>
+                  </View>
+                )}
+
+                {intake.answers && Object.keys(intake.answers).length > 0 && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, gap: 8 }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>CUSTOMER ANSWERS</Text>
+                    {Object.entries(intake.answers).map(([key, value]) => (
+                      <View key={key} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ ...text.muted, flex: 1 }}>{questionMap[key] || key}</Text>
+                        <Text style={{ ...text.body, fontWeight: "700" }}>{value}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {context && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, gap: 8 }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>CONTEXT</Text>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={text.muted}>Can move vehicle</Text>
+                      <Text style={{ ...text.body, fontWeight: "700" }}>{canMoveText}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={text.muted}>Location</Text>
+                      <Text style={{ ...text.body, fontWeight: "700" }}>{locationText}</Text>
+                    </View>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                      <Text style={text.muted}>Time preference</Text>
+                      <Text style={{ ...text.body, fontWeight: "700" }}>{timeText}</Text>
+                    </View>
+                    {context.mileage && (
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={text.muted}>Mileage</Text>
+                        <Text style={{ ...text.body, fontWeight: "700" }}>{context.mileage}</Text>
+                      </View>
+                    )}
+                    {context.additional_details && (
+                      <View style={{ marginTop: 4 }}>
+                        <Text style={text.muted}>Additional details</Text>
+                        <Text style={{ ...text.body, marginTop: 4 }}>{context.additional_details}</Text>
+                      </View>
+                    )}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {detailsExpanded && !intake && (
+              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
+                {job.vehicle && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>VEHICLE</Text>
+                    <Text style={{ ...text.body, fontWeight: "700" }}>{job.vehicle.year} {job.vehicle.make} {job.vehicle.model}</Text>
+                  </View>
+                )}
+                {job.preferred_time && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>PREFERRED TIME</Text>
+                    <Text style={{ ...text.body, fontWeight: "700" }}>{job.preferred_time}</Text>
+                  </View>
+                )}
+                {job.description && !job.description.startsWith("{") && (
+                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
+                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>DESCRIPTION</Text>
+                    <Text style={text.body}>{job.description}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </Pressable>
+
+          {job.status === "canceled" && (
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md, borderColor: "#EF4444", borderWidth: 1 }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#EF444420", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="close-circle-outline" size={18} color="#EF4444" />
+                </View>
+                <Text style={{ ...text.section, color: "#EF4444" }}>Canceled</Text>
+              </View>
+
+              <View style={{ backgroundColor: "#FEE2E2", borderRadius: 12, padding: spacing.md, marginBottom: spacing.sm }}>
+                <Text style={{ fontSize: 13, fontWeight: "700", color: "#991B1B" }}>
+                  {job.canceled_by === "customer" ? "Canceled by customer" : "Job canceled"}
+                </Text>
+                <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
+                  {fmtDT(job.canceled_at || "")}
                 </Text>
               </View>
+
+              {quoteRequest?.cancel_reason && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={{ ...text.muted, fontSize: 12 }}>Reason</Text>
+                  <Text style={{ ...text.body, marginTop: 2 }}>
+                    {quoteRequest.cancel_reason.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())}
+                  </Text>
+                </View>
+              )}
+
+              {quoteRequest?.cancel_note && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={{ ...text.muted, fontSize: 12 }}>Customer note</Text>
+                  <Text style={{ ...text.body, marginTop: 2 }}>{quoteRequest.cancel_note}</Text>
+                </View>
+              )}
+
+              {quoteRequest?.cancellation_fee_cents && quoteRequest.cancellation_fee_cents > 0 && (
+                <View style={{ marginTop: spacing.md, backgroundColor: "#10B98120", borderRadius: 12, padding: spacing.md }}>
+                  <Text style={{ ...text.muted, fontSize: 12 }}>Cancellation fee earned</Text>
+                  <Text style={{ fontSize: 24, fontWeight: "900", color: "#10B981", marginTop: 4 }}>
+                    ${(quoteRequest.cancellation_fee_cents / 100).toFixed(2)}
+                  </Text>
+                </View>
+              )}
             </View>
-          </SectionCard>
-        )}
-
-        {contract && progress?.work_started_at && !progress?.finalized_at && job.status !== "canceled" && (
-          <Pressable
-            onPress={() => setShowAddLineItem(true)}
-            style={({ pressed }) => [
-              card,
-              {
-                padding: spacing.md,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: 10,
-                backgroundColor: colors.accent,
-                borderColor: colors.accent,
-              },
-              pressed && { opacity: 0.85 },
-            ]}
-          >
-            <Ionicons name="add-circle" size={20} color="#fff" />
-            <Text style={{ fontWeight: "900", color: "#fff", fontSize: 16 }}>Add Work / Parts</Text>
-          </Pressable>
-        )}
-
-        {invoice && (
-          <SectionCard title="Invoice" icon="receipt-outline">
-            <InvoiceView
-              invoice={invoice}
-              role="mechanic"
-              onRefresh={load}
-              showPendingActions={false}
-            />
-          </SectionCard>
-        )}
-
-        <SectionCard title="Customer" icon="person-outline">
-          <UserProfileCard
-            userId={job.customer_id}
-            variant="mini"
-            onPressViewProfile={() => setSelectedCustomerId(job.customer_id)}
-          />
-
-          {/* Submit Quote button - show when no quote exists and job is searching */}
-          {!quoteRequest && job.status === "searching" && (
-            <Pressable
-              onPress={() => {
-                router.push(`/(mechanic)/quote-composer/${id}` as any);
-              }}
-              style={({ pressed }) => [
-                {
-                  marginTop: spacing.md,
-                  paddingVertical: 14,
-                  backgroundColor: colors.accent,
-                  borderRadius: 14,
-                  alignItems: "center",
-                },
-                pressed && { opacity: 0.7 },
-              ]}
-            >
-              <Text style={{ fontWeight: "900", color: "#FFFFFF", fontSize: 15 }}>Submit Quote</Text>
-            </Pressable>
           )}
 
-          {/* Cancel Job button for mechanic - only show for active jobs where mechanic is accepted */}
-          {job.status !== "completed" && job.status !== "canceled" && job.accepted_mechanic_id === mechanicId && (
+          {contract && (
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="trending-up-outline" size={18} color={colors.accent} />
+                </View>
+                <Text style={text.section}>Job Progress</Text>
+              </View>
+              <JobProgressTracker progress={progress} status={job.status} role="mechanic" />
+            </View>
+          )}
+
+          {contract && job.status !== "completed" && job.status !== "canceled" && (
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
+                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#f59e0b20", alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="hand-left-outline" size={18} color="#f59e0b" />
+                </View>
+                <Text style={text.section}>Actions</Text>
+              </View>
+              <JobActions
+                jobId={id}
+                progress={progress}
+                contract={contract}
+                role="mechanic"
+                onRefresh={load}
+                hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
+              />
+            </View>
+          )}
+
+          {invoice && (
             <Pressable
               onPress={() => {
-                Alert.alert(
-                  "Withdraw from Job?",
-                  "Are you sure you want to withdraw from this job? The customer will be notified and may leave a review.",
-                  [
-                    { text: "Keep Job", style: "cancel" },
-                    {
-                      text: "Withdraw",
-                      style: "destructive",
-                      onPress: async () => {
-                        try {
-                          // Update the quote to withdrawn
-                          if (quoteRequest?.id) {
-                            await supabase
-                              .from("quotes")
-                              .update({
-                                status: "withdrawn",
-                                updated_at: new Date().toISOString()
-                              })
-                              .eq("id", quoteRequest.id);
-                          }
-
-                          // Update job status back to searching if no other accepted quote
-                          await supabase
-                            .from("jobs")
-                            .update({
-                              status: "canceled",
-                              accepted_mechanic_id: null,
-                              canceled_at: new Date().toISOString(),
-                              canceled_by: "mechanic",
-                              updated_at: new Date().toISOString()
-                            })
-                            .eq("id", id);
-
-                          Alert.alert(
-                            "Withdrawn",
-                            "You have withdrawn from this job.",
-                            [{ text: "OK", onPress: () => router.replace("/(mechanic)/(tabs)/jobs" as any) }]
-                          );
-                        } catch (e: any) {
-                          Alert.alert("Error", e?.message ?? "Failed to withdraw from job");
-                        }
-                      },
-                    },
-                  ]
-                );
+                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                setInvoiceExpanded(!invoiceExpanded);
               }}
-              style={({ pressed }) => [
-                {
-                  marginTop: spacing.md,
-                  paddingVertical: 14,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.error,
-                  borderRadius: 14,
-                  alignItems: "center",
-                },
-                pressed && { opacity: 0.7 },
-              ]}
+              style={[card, { padding: spacing.md, marginBottom: spacing.md }]}
             >
-              <Text style={{ fontWeight: "900", color: colors.error }}>Withdraw from Job</Text>
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#10B98120", alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="receipt-outline" size={18} color="#10B981" />
+                  </View>
+                  <Text style={text.section}>Invoice</Text>
+                </View>
+                <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
+              </View>
+
+              {!invoiceExpanded && (
+                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
+                  <Text style={text.muted}>Your earnings</Text>
+                  <Text style={{ ...text.body, color: "#10B981", fontWeight: "900" }}>
+                    ${((invoice.approved_subtotal_cents + invoice.pending_subtotal_cents) / 100).toFixed(2)}
+                  </Text>
+                </View>
+              )}
+
+              {invoiceExpanded && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <InvoiceView
+                    invoice={invoice}
+                    role="mechanic"
+                    onRefresh={load}
+                    showPendingActions={job.status !== "completed" && job.status !== "canceled"}
+                  />
+
+                  {job.status !== "completed" && job.status !== "canceled" && (
+                    <Pressable
+                      onPress={() => setShowAddLineItem(true)}
+                      style={({ pressed }) => ({
+                        marginTop: spacing.md,
+                        paddingVertical: 14,
+                        backgroundColor: colors.surface,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        borderRadius: 12,
+                        alignItems: "center",
+                        flexDirection: "row",
+                        justifyContent: "center",
+                        gap: 8,
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
+                      <Text style={{ fontWeight: "700", color: colors.accent }}>Add Line Item</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
             </Pressable>
           )}
-        </SectionCard>
+        </View>
       </ScrollView>
 
-      <AddLineItemForm
-        jobId={id}
-        visible={showAddLineItem}
-        onClose={() => setShowAddLineItem(false)}
-        onSuccess={load}
-      />
-
-      {selectedCustomerId ? (
+      {selectedCustomerId && (
         <ProfileCardModal
           visible={!!selectedCustomerId}
           userId={selectedCustomerId}
@@ -924,7 +737,19 @@ export default function MechanicJobDetails() {
           title="Customer Profile"
           showReviewsButton={false}
         />
-      ) : null}
+      )}
+
+      {showAddLineItem && (
+        <AddLineItemForm
+          visible={showAddLineItem}
+          onClose={() => setShowAddLineItem(false)}
+          jobId={id}
+          onSuccess={() => {
+            setShowAddLineItem(false);
+            load();
+          }}
+        />
+      )}
     </View>
   );
 }

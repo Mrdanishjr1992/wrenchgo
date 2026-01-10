@@ -34,12 +34,11 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json(401, { error: "Missing authorization" }, headers);
 
-    const supabase = createClient(supabaseUrl, serviceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const serviceSupabase = createClient(supabaseUrl, serviceKey);
+    const token = authHeader.replace("Bearer ", "");
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const serviceSupabase = supabase;
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
 
     // ----------------------------

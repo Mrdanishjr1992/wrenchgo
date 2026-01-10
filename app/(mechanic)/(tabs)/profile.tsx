@@ -118,7 +118,8 @@ export default function MechanicProfile() {
           city,
           state,
           theme_preference,
-          created_at
+          created_at,
+          payout_method_status
         `)
         .eq("id", userId)
         .single();

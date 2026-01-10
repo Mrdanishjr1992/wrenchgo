@@ -19,15 +19,21 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json(401, { error: "Missing authorization header" }, headers);
 
-    const supabase = createClient(supabaseUrl, serviceKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
+    // Extract the JWT token
+    const token = authHeader.replace("Bearer ", "");
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
-    if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
+    // Create client with service key for DB operations
+    const supabaseAdmin = createClient(supabaseUrl, serviceKey);
+
+    // Verify the user's JWT token
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
+    if (userError || !user) {
+      console.error("[SETUP_PM] Auth error:", userError?.message);
+      return json(401, { error: "Unauthorized", details: userError?.message }, headers);
+    }
 
     // Load (or create) profile
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
       .select("id, full_name, email, stripe_customer_id")
       .eq("id", user.id)
@@ -37,7 +43,7 @@ serve(async (req) => {
 
     let prof = profile;
     if (!prof) {
-      const { data: created, error: createErr } = await supabase
+      const { data: created, error: createErr } = await supabaseAdmin
         .from("profiles")
         .upsert({ id: user.id, email: user.email, full_name: user.user_metadata?.full_name || "", role: "customer" })
         .select("id, full_name, email, stripe_customer_id")
@@ -56,7 +62,7 @@ serve(async (req) => {
       });
       stripeCustomerId = customer.id;
 
-      const { error: updErr } = await supabase
+      const { error: updErr } = await supabaseAdmin
         .from("profiles")
         .update({ stripe_customer_id: stripeCustomerId, updated_at: new Date().toISOString() })
         .eq("id", prof.id);

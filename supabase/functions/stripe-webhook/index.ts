@@ -3,17 +3,41 @@ import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { requireEnv } from "../_shared/helpers.ts";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, stripe-signature",
+  "Access-Control-Allow-Methods": "POST,OPTIONS",
+};
+
+function json(data: unknown, status = 200, extraHeaders: Record<string, string> = {}) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders,
+      ...extraHeaders,
+      "Content-Type": "application/json; charset=utf-8",
+    },
+  });
+}
+
 const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
 
-const supabase = createClient(requireEnv("SUPABASE_URL"), requireEnv("SUPABASE_SERVICE_ROLE_KEY"));
+const supabase = createClient(
+  requireEnv("SUPABASE_URL"),
+  requireEnv("SUPABASE_SERVICE_ROLE_KEY")
+);
+
 const webhookSecret = requireEnv("STRIPE_WEBHOOK_SECRET");
 
 serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
+
   const sig = req.headers.get("stripe-signature");
-  if (!sig) return new Response(JSON.stringify({ error: "Missing signature" }), { status: 400 });
+  if (!sig) return json({ error: "Missing signature" }, 400);
 
   let event: Stripe.Event;
   let rawBody = "";
@@ -23,7 +47,7 @@ serve(async (req) => {
     event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
   } catch (e: any) {
     console.error("[WH] Signature verification failed:", e?.message || e);
-    return new Response(JSON.stringify({ error: "Invalid signature" }), { status: 400 });
+    return json({ error: "Invalid signature" }, 400);
   }
 
   console.log(`[WH] ${event.type} ${event.id} account=${(event as any).account || ""}`);
@@ -36,11 +60,10 @@ serve(async (req) => {
       metadata: { received_at: new Date().toISOString() },
     });
 
-    // If unique constraint exists and it conflicts, treat as already processed.
     if (insertErr) {
       const msg = insertErr.message || "";
       if (msg.includes("duplicate") || msg.includes("already exists") || msg.includes("23505")) {
-        return new Response(JSON.stringify({ received: true, already_processed: true }), { status: 200 });
+        return json({ received: true, already_processed: true }, 200);
       }
       console.error("[WH] Failed to insert event row:", insertErr.message);
       // continue anyway (better to process than drop), but this may duplicate if Stripe retries
@@ -107,48 +130,59 @@ serve(async (req) => {
         break;
     }
 
-    await supabase.from("stripe_webhook_events").update({
-      metadata: { processed: true, processed_at: new Date().toISOString() },
-    }).eq("stripe_event_id", event.id);
+    await supabase
+      .from("stripe_webhook_events")
+      .update({
+        metadata: { processed: true, processed_at: new Date().toISOString() },
+      })
+      .eq("stripe_event_id", event.id);
 
-    return new Response(JSON.stringify({ received: true }), { status: 200 });
-
+    return json({ received: true }, 200);
   } catch (e: any) {
     console.error(`[WH] Error processing ${event.id}:`, e?.message || e);
 
-    await supabase.from("stripe_webhook_events").update({
-      metadata: { processed: false, error: e?.message || "unknown", attempted_at: new Date().toISOString() },
-    }).eq("stripe_event_id", event.id);
+    await supabase
+      .from("stripe_webhook_events")
+      .update({
+        metadata: {
+          processed: false,
+          error: e?.message || "unknown",
+          attempted_at: new Date().toISOString(),
+        },
+      })
+      .eq("stripe_event_id", event.id);
 
-    return new Response(JSON.stringify({ error: e?.message || "Processing failed" }), { status: 500 });
+    return json({ error: e?.message || "Processing failed" }, 500);
   }
 });
 
 // -------------------- PaymentIntent handlers --------------------
 
 async function onPaymentIntentUpdated(pi: Stripe.PaymentIntent) {
-  // Mark requires_action when status flips; Stripe does not emit payment_intent.requires_action event type.
   if (pi.status !== "requires_action") return;
 
-  await supabase.from("payments").update({
-    status: "requires_action",
-    updated_at: new Date().toISOString(),
-  }).eq("stripe_payment_intent_id", pi.id);
+  await supabase
+    .from("payments")
+    .update({ status: "requires_action", updated_at: new Date().toISOString() })
+    .eq("stripe_payment_intent_id", pi.id);
 }
 
 async function onPaymentIntentProcessing(pi: Stripe.PaymentIntent) {
-  await supabase.from("payments").update({
-    status: "processing",
-    updated_at: new Date().toISOString(),
-  }).eq("stripe_payment_intent_id", pi.id);
+  await supabase
+    .from("payments")
+    .update({ status: "processing", updated_at: new Date().toISOString() })
+    .eq("stripe_payment_intent_id", pi.id);
 }
 
 async function onPaymentIntentFailed(pi: Stripe.PaymentIntent) {
-  await supabase.from("payments").update({
-    status: "failed",
-    error_message: pi.last_payment_error?.message || "Payment failed",
-    updated_at: new Date().toISOString(),
-  }).eq("stripe_payment_intent_id", pi.id);
+  await supabase
+    .from("payments")
+    .update({
+      status: "failed",
+      error_message: pi.last_payment_error?.message || "Payment failed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("stripe_payment_intent_id", pi.id);
 
   const { data: payment } = await supabase
     .from("payments")
@@ -168,10 +202,10 @@ async function onPaymentIntentFailed(pi: Stripe.PaymentIntent) {
 }
 
 async function onPaymentIntentCanceled(pi: Stripe.PaymentIntent) {
-  await supabase.from("payments").update({
-    status: "cancelled",
-    updated_at: new Date().toISOString(),
-  }).eq("stripe_payment_intent_id", pi.id);
+  await supabase
+    .from("payments")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("stripe_payment_intent_id", pi.id);
 }
 
 async function onPaymentIntentSucceeded(pi: Stripe.PaymentIntent, eventId: string) {
@@ -181,7 +215,6 @@ async function onPaymentIntentSucceeded(pi: Stripe.PaymentIntent, eventId: strin
   const mechanicIdFromMeta = meta.mechanic_id || null;
   const mechanicStripeAccountId = meta.mechanic_stripe_account_id || null;
 
-  // Find payment by PI id first, fallback by metadata payment_id
   let payment = null as any;
 
   const byPi = await supabase.from("payments").select("*").eq("stripe_payment_intent_id", pi.id).maybeSingle();
@@ -223,8 +256,9 @@ async function onPaymentIntentSucceeded(pi: Stripe.PaymentIntent, eventId: strin
     }).eq("id", jobId);
   }
 
-  // Ledger: upsert to avoid duplicates (add unique index on mechanic_ledger(payment_id) if possible)
-  const mechanicNetCents = Number(meta.transfer_cents || meta.mechanic_net_cents || payment?.metadata?.mechanic_net_cents || 0);
+  const mechanicNetCents = Number(
+    meta.transfer_cents || meta.mechanic_net_cents || payment?.metadata?.mechanic_net_cents || 0
+  );
   const nextMonday = getNextMonday();
 
   await supabase.from("mechanic_ledger").upsert({
@@ -233,18 +267,16 @@ async function onPaymentIntentSucceeded(pi: Stripe.PaymentIntent, eventId: strin
     job_id: jobId,
     stripe_account_id: mechanicStripeAccountId,
     amount_cents: mechanicNetCents,
-    status: "pending_transfer", // more accurate; transfer.created can flip to transferred
+    status: "pending_transfer",
     available_for_transfer_at: nextMonday.toISOString(),
     transferred_at: new Date().toISOString(),
   }, { onConflict: "payment_id" });
 
-  // Promo award (your existing logic)
   if (payment.customer_id && Number(payment.platform_fee_cents || 0) > 0) {
     await handleInvitationAward(payment.customer_id, payment.id, Number(payment.platform_fee_cents || 0), eventId);
   }
 
-  // Notifications
-  const notifs = [];
+  const notifs: any[] = [];
 
   if (payment.customer_id) {
     notifs.push({
@@ -276,21 +308,22 @@ async function onSetupIntentSucceeded(si: Stripe.SetupIntent) {
   const paymentMethodId = si.payment_method as string | null;
   if (!customerId || !paymentMethodId) return;
 
-  // Find profile by stripe_customer_id
-  const { data: profile } = await supabase.from("profiles").select("id").eq("stripe_customer_id", customerId).maybeSingle();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("stripe_customer_id", customerId)
+    .maybeSingle();
+
   if (!profile) return;
 
-  // Pull PM details (brand/last4/exp)
   const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
   if (pm.type !== "card" || !pm.card) return;
 
-  // clear defaults
   await supabase.from("customer_payment_methods")
     .update({ is_default: false, updated_at: new Date().toISOString() })
     .eq("customer_id", profile.id)
     .is("deleted_at", null);
 
-  // upsert new PM row
   await supabase.from("customer_payment_methods").insert({
     customer_id: profile.id,
     stripe_customer_id: customerId,
@@ -314,7 +347,8 @@ async function onSetupIntentSucceeded(si: Stripe.SetupIntent) {
 
 async function onAccountUpdated(acct: Stripe.Account) {
   await supabase.from("mechanic_stripe_accounts").update({
-    onboarding_completed: acct.details_submitted || false,
+    // small fix: keep naming consistent with your other functions
+    onboarding_complete: acct.details_submitted || false,
     charges_enabled: acct.charges_enabled || false,
     payouts_enabled: acct.payouts_enabled || false,
     details_submitted: acct.details_submitted || false,
@@ -330,7 +364,9 @@ async function onChargeRefunded(charge: Stripe.Charge) {
 
   await supabase.from("payments").update({ status: "refunded", updated_at: new Date().toISOString() }).eq("id", payment.id);
 
-  if (payment.invoice_id) await supabase.from("job_invoices").update({ status: "refunded", updated_at: new Date().toISOString() }).eq("id", payment.invoice_id);
+  if (payment.invoice_id) {
+    await supabase.from("job_invoices").update({ status: "refunded", updated_at: new Date().toISOString() }).eq("id", payment.invoice_id);
+  }
 
   await supabase.from("mechanic_ledger").update({ status: "refunded" }).eq("payment_id", payment.id);
 
@@ -360,7 +396,9 @@ async function onDisputeCreated(dispute: Stripe.Dispute) {
   if (!payment) return;
 
   await supabase.from("jobs").update({ status: "disputed", updated_at: new Date().toISOString() }).eq("id", payment.job_id);
-  if (payment.invoice_id) await supabase.from("job_invoices").update({ status: "disputed", updated_at: new Date().toISOString() }).eq("id", payment.invoice_id);
+  if (payment.invoice_id) {
+    await supabase.from("job_invoices").update({ status: "disputed", updated_at: new Date().toISOString() }).eq("id", payment.invoice_id);
+  }
 
   await supabase.from("notifications").insert([
     {
@@ -390,8 +428,6 @@ async function onTransferCreated(transfer: Stripe.Transfer) {
     destination_account: transfer.destination as string,
     metadata: transfer.metadata,
   }, { onConflict: "stripe_transfer_id" });
-
-  // optional: flip ledger from pending_transfer -> transferred if you can map it
 }
 
 async function onTransferFailed(transfer: Stripe.Transfer) {
@@ -400,7 +436,6 @@ async function onTransferFailed(transfer: Stripe.Transfer) {
   await supabase.from("transfers").update({ status: "failed", error_message: "Transfer failed" }).eq("id", t.id);
 }
 
-// IMPORTANT: For connected payouts, use event.account to identify connected acct
 async function onPayoutPaid(event: Stripe.Event, payout: Stripe.Payout) {
   const connectedAccountId = (event as any).account as string | undefined;
   if (!connectedAccountId) return;
@@ -418,7 +453,7 @@ async function onPayoutPaid(event: Stripe.Event, payout: Stripe.Payout) {
     status: "paid_out",
     stripe_payout_id: payout.id,
     paid_out_at: new Date((payout.arrival_date || 0) * 1000).toISOString(),
-  }).in("id", ledgerItems.map(i => i.id));
+  }).in("id", ledgerItems.map((i: any) => i.id));
 
   const mechanicId = ledgerItems[0].mechanic_id;
   await supabase.from("notifications").insert({
@@ -459,9 +494,13 @@ async function handleInvitationAward(customerId: string, paymentId: string, plat
   if (awardError) return;
 
   if (awardResult?.success && awardResult?.inviter_id) {
-    const awardType = awardResult.award_type === "FEELESS_1"
-      ? "1 free platform fee credit"
-      : "5 x $5 off platform fee credits";
+    const awardType =
+      awardResult.award_type === "FEELESS_1"
+        ? "1 free platform fee credit"
+        : awardResult.award_type === "FEELESS_3"
+          ? "3 free platform fee credits"
+          : "platform fee credits";
+
 
     await supabase.from("notifications").insert({
       user_id: awardResult.inviter_id,

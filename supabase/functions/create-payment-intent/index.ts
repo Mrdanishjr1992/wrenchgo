@@ -3,11 +3,6 @@ import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { corsHeadersFor, json, requireEnv } from "../_shared/helpers.ts";
 
-
-
-const headers = corsHeadersFor(req);
-
-
 const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
@@ -17,19 +12,18 @@ const supabaseUrl = requireEnv("SUPABASE_URL");
 const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 
 serve(async (req) => {
-  const origin = getOrigin(req);
-  const headers = corsHeaders(isAllowedOrigin(origin) ? origin : null);
-
+  const headers = corsHeadersFor(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers });
 
   try {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) return json(401, { error: "Missing authorization" }, headers);
 
-    const supabase = createClient(supabaseUrl, serviceKey, { global: { headers: { Authorization: authHeader } } });
-    const serviceSupabase = createClient(supabaseUrl, serviceKey);
+    const token = authHeader.replace("Bearer ", "");
+    const supabase = createClient(supabaseUrl, serviceKey);
+    const serviceSupabase = supabase;
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
     if (userError || !user) return json(401, { error: "Unauthorized" }, headers);
 
     const body = await req.json().catch(() => null);

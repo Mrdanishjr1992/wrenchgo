@@ -30,12 +30,17 @@ export default function StripeOnboardingScreen() {
 
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [account, setAccount] = useState<MechanicStripeAccount | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
-  const loadAccount = useCallback(async () => {
+  const loadAccount = useCallback(async (showRefreshing = false) => {
     try {
-      setLoading(true);
+      if (showRefreshing) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -48,7 +53,7 @@ export default function StripeOnboardingScreen() {
       try {
         await refreshStripeAccountStatus(user.id);
       } catch (e) {
-        // Ignore refresh errors, fall back to cached data
+        console.log('Refresh error (non-fatal):', e);
       }
 
       const accountData = await getMechanicStripeAccount(user.id);
@@ -57,6 +62,7 @@ export default function StripeOnboardingScreen() {
       console.error('Error loading account:', error);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [router]);
 
@@ -67,10 +73,30 @@ export default function StripeOnboardingScreen() {
   useFocusEffect(
     useCallback(() => {
       if (userId) {
-        loadAccount();
+        loadAccount(true);
       }
     }, [userId, loadAccount])
   );
+
+  useEffect(() => {
+    const handleDeepLink = (event: { url: string }) => {
+      if (event.url.includes('stripe-connect-return') || event.url.includes('stripe-connect-refresh')) {
+        loadAccount(true);
+      }
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    Linking.getInitialURL().then((url) => {
+      if (url && (url.includes('stripe-connect-return') || url.includes('stripe-connect-refresh'))) {
+        loadAccount(true);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [loadAccount]);
 
   const handleStartOnboarding = async () => {
     try {
@@ -92,6 +118,10 @@ export default function StripeOnboardingScreen() {
     }
   };
 
+  const handleRefresh = async () => {
+    await loadAccount(true);
+  };
+
   const handleContinue = () => {
     if (isStripeAccountReady(account)) {
       router.back();
@@ -111,6 +141,7 @@ export default function StripeOnboardingScreen() {
 
   const isReady = isStripeAccountReady(account);
   const statusMessage = getStripeAccountStatusMessage(account);
+  const isPending = account && !isReady;
 
   return (
     <ScrollView
@@ -132,29 +163,36 @@ export default function StripeOnboardingScreen() {
             width: 80,
             height: 80,
             borderRadius: 40,
-            backgroundColor: isReady ? colors.accent + '20' : colors.accent + '20',
+            backgroundColor: isReady ? '#10B981' + '20' : isPending ? '#F59E0B' + '20' : colors.accent + '20',
             alignItems: 'center',
             justifyContent: 'center',
             marginBottom: spacing.md,
           }}
         >
           <Ionicons
-            name={isReady ? 'checkmark-circle' : 'card-outline'}
+            name={isReady ? 'checkmark-circle' : isPending ? 'time' : 'card-outline'}
             size={40}
-            color={isReady ? colors.accent : colors.accent}
+            color={isReady ? '#10B981' : isPending ? '#F59E0B' : colors.accent}
           />
         </View>
 
         <Text style={[text.title, { textAlign: 'center', marginBottom: spacing.sm }]}>
-          {isReady ? 'Payout Account Active' : 'Set Up Payouts'}
+          {isReady ? 'Payout Account Active' : isPending ? 'Setup In Progress' : 'Set Up Payouts'}
         </Text>
 
         <Text style={{ ...text.muted, textAlign: 'center' }}>
           {statusMessage}
         </Text>
+
+        {refreshing && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: spacing.sm }}>
+            <ActivityIndicator size="small" color={colors.accent} />
+            <Text style={{ ...text.muted, fontSize: 12 }}>Refreshing status...</Text>
+          </View>
+        )}
       </View>
 
-      {!isReady && (
+      {!isReady && !isPending && (
         <>
           <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
             <Text style={[text.section, { marginBottom: spacing.md }]}>Why do I need this?</Text>
@@ -199,7 +237,7 @@ export default function StripeOnboardingScreen() {
           </View>
 
           <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
-            <Text style={[text.section, { marginBottom: spacing.md }]}>What you&apos;ll need</Text>
+            <Text style={[text.section, { marginBottom: spacing.md }]}>What you'll need</Text>
 
             <View style={{ gap: spacing.sm }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
@@ -247,10 +285,48 @@ export default function StripeOnboardingScreen() {
         </>
       )}
 
+      {isPending && (
+        <View style={[card, { padding: spacing.lg, marginBottom: spacing.md, backgroundColor: '#FEF3C7' }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.sm }}>
+            <Ionicons name="information-circle" size={20} color="#D97706" />
+            <Text style={{ ...text.body, fontWeight: '700', color: '#92400E' }}>Almost There!</Text>
+          </View>
+          <Text style={{ ...text.body, color: '#92400E', marginBottom: spacing.md }}>
+            Your account setup is incomplete. Please continue with Stripe to finish setting up your payout account.
+          </Text>
+          <View style={{ gap: spacing.xs }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: '#92400E' }}>Details Submitted</Text>
+              <Ionicons
+                name={account?.onboarding_complete ? 'checkmark-circle' : 'close-circle'}
+                size={18}
+                color={account?.onboarding_complete ? '#10B981' : '#EF4444'}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: '#92400E' }}>Charges Enabled</Text>
+              <Ionicons
+                name={account?.charges_enabled ? 'checkmark-circle' : 'close-circle'}
+                size={18}
+                color={account?.charges_enabled ? '#10B981' : '#EF4444'}
+              />
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ color: '#92400E' }}>Payouts Enabled</Text>
+              <Ionicons
+                name={account?.payouts_enabled ? 'checkmark-circle' : 'close-circle'}
+                size={18}
+                color={account?.payouts_enabled ? '#10B981' : '#EF4444'}
+              />
+            </View>
+          </View>
+        </View>
+      )}
+
       {isReady && (
         <View style={[card, { padding: spacing.lg, marginBottom: spacing.md }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
-            <Ionicons name="checkmark-circle" size={24} color={colors.accent} />
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" />
             <Text style={text.section}>Account Status</Text>
           </View>
 
@@ -258,42 +334,24 @@ export default function StripeOnboardingScreen() {
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={text.muted}>Charges Enabled</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons
-                  name={account?.charges_enabled ? 'checkmark-circle' : 'close-circle'}
-                  size={16}
-                  color={account?.charges_enabled ? '#10B981' : '#EF4444'}
-                />
-                <Text style={text.body}>
-                  {account?.charges_enabled ? 'Yes' : 'No'}
-                </Text>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={text.body}>Yes</Text>
               </View>
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={text.muted}>Payouts Enabled</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons
-                  name={account?.payouts_enabled ? 'checkmark-circle' : 'close-circle'}
-                  size={16}
-                  color={account?.payouts_enabled ? '#10B981' : '#EF4444'}
-                />
-                <Text style={text.body}>
-                  {account?.payouts_enabled ? 'Yes' : 'No'}
-                </Text>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={text.body}>Yes</Text>
               </View>
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               <Text style={text.muted}>Details Submitted</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Ionicons
-                  name={account?.details_submitted ? 'checkmark-circle' : 'close-circle'}
-                  size={16}
-                  color={account?.details_submitted ? '#10B981' : '#EF4444'}
-                />
-                <Text style={text.body}>
-                  {account?.details_submitted ? 'Yes' : 'No'}
-                </Text>
+                <Ionicons name="checkmark-circle" size={16} color="#10B981" />
+                <Text style={text.body}>Yes</Text>
               </View>
             </View>
           </View>
@@ -309,21 +367,42 @@ export default function StripeOnboardingScreen() {
           borderRadius: 16,
           alignItems: 'center',
           opacity: processing ? 0.5 : pressed ? 0.8 : 1,
-          marginBottom: spacing.xl,
+          marginBottom: spacing.sm,
         })}
       >
         {processing ? (
-          <ActivityIndicator size="small" color="#fff" />
+          <ActivityIndicator size="small" color="#000" />
         ) : (
-          <Text style={{ color: '#fff', fontWeight: '900', fontSize: 16 }}>
-            {isReady ? 'Continue' : 'Start Setup'}
+          <Text style={{ color: '#000', fontWeight: '900', fontSize: 16 }}>
+            {isReady ? 'Done' : isPending ? 'Continue Setup' : 'Start Setup'}
           </Text>
         )}
       </Pressable>
 
-      {!isReady && (
-        <Text style={{ ...text.muted, textAlign: 'center', fontSize: 12 }}>
-          By continuing, you agree to Stripe&apos;s Terms of Service
+      {isPending && (
+        <Pressable
+          onPress={handleRefresh}
+          disabled={refreshing}
+          style={({ pressed }) => ({
+            backgroundColor: colors.surface,
+            paddingVertical: 14,
+            borderRadius: 16,
+            alignItems: 'center',
+            borderWidth: 1,
+            borderColor: colors.border,
+            opacity: refreshing ? 0.5 : pressed ? 0.8 : 1,
+            marginBottom: spacing.md,
+          })}
+        >
+          <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>
+            Refresh Status
+          </Text>
+        </Pressable>
+      )}
+
+      {!isReady && !isPending && (
+        <Text style={{ ...text.muted, textAlign: 'center', fontSize: 12, marginTop: spacing.sm }}>
+          By continuing, you agree to Stripe's Terms of Service
         </Text>
       )}
     </ScrollView>

@@ -2,7 +2,8 @@ import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import Stripe from "https://esm.sh/stripe@14.11.0?target=deno";
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
+const stripeKey = Deno.env.get("STRIPE_SECRET_KEY") || "";
+const stripe = new Stripe(stripeKey, {
   apiVersion: "2023-10-16",
   httpClient: Stripe.createFetchHttpClient(),
 });
@@ -10,80 +11,86 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 };
 
+function json(data: unknown, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+function getBearerToken(req: Request) {
+  const raw =
+    req.headers.get("Authorization") ||
+    req.headers.get("authorization") ||
+    "";
+  const match = raw.match(/^Bearer\s+(.+)$/i);
+  return match?.[1]?.trim() || "";
+}
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
     console.log("=== Stripe Connect Account Link Request ===");
 
-    // Check required environment variables
-    const supabaseUrl = Deno.env.get("SUPABASE_URL");
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    const stripeKey = Deno.env.get("STRIPE_SECRET_KEY");
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") || "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 
     console.log("Environment check:", {
       hasSupabaseUrl: !!supabaseUrl,
       hasServiceRoleKey: !!serviceRoleKey,
-      serviceRoleKeyPrefix: serviceRoleKey?.substring(0, 10),
-      serviceRoleKeyPrefix: serviceRoleKey?.substring(0, 10),
+      serviceRoleKeyPrefix: serviceRoleKey ? serviceRoleKey.substring(0, 10) : null,
       hasStripeKey: !!stripeKey,
     });
 
     if (!supabaseUrl || !serviceRoleKey) {
       console.error("Missing required environment variables");
-      return new Response(JSON.stringify({
-        error: "Server configuration error",
-        details: "Missing Supabase credentials"
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(
+        { error: "Server configuration error", details: "Missing Supabase credentials" },
+        500
+      );
     }
 
-    const authHeader = req.headers.get("Authorization");
-    console.log("Auth header present:", !!authHeader);
-
-    if (!authHeader) {
-      console.error("No Authorization header provided");
-      return new Response(JSON.stringify({ error: "No authorization header" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (!stripeKey) {
+      console.error("Missing STRIPE_SECRET_KEY");
+      return json(
+        { error: "Server configuration error", details: "Missing Stripe credentials" },
+        500
+      );
     }
 
-    // Extract the JWT token from the Authorization header
-    const token = authHeader.replace("Bearer ", "");
-    console.log("Token extracted, length:", token.length);
+    const token = getBearerToken(req);
+    console.log("Auth header present:", !!(req.headers.get("Authorization") || req.headers.get("authorization")));
+    console.log("Token present:", !!token);
 
-    // Create Supabase client with service role for admin operations
+    if (!token) {
+      console.error("No Bearer token provided");
+      return json({ error: "No authorization header" }, 401);
+    }
+
     const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
+      auth: { autoRefreshToken: false, persistSession: false },
     });
 
-    // Verify the user's JWT token
     console.log("Verifying user token...");
     const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
 
     console.log("User result:", { user: !!user, error: userError?.message });
 
     if (userError || !user) {
-      console.error("Auth error:", userError);
-      return new Response(JSON.stringify({
-        code: 401,
-        message: "Invalid JWT",
-        error: "Unauthorized",
-        details: userError?.message || "No user found"
-      }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      console.error("Auth error:", userError?.message);
+      return json(
+        {
+          code: 401,
+          message: "Invalid JWT",
+          error: "Unauthorized",
+          details: userError?.message || "No user found",
+        },
+        401
+      );
     }
 
     console.log("User authenticated:", user.id);
@@ -97,13 +104,10 @@ serve(async (req) => {
 
     if (profileError || !profile) {
       console.error("Profile not found for user:", user.id, "Error:", profileError?.message);
-      return new Response(JSON.stringify({
-        error: "Profile not found",
-        details: profileError?.message || "No profile record exists"
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      return json(
+        { error: "Profile not found", details: profileError?.message || "No profile record exists" },
+        404
+      );
     }
 
     const { data: existingAccount, error: existingError } = await supabaseAdmin
@@ -112,12 +116,15 @@ serve(async (req) => {
       .eq("mechanic_id", user.id)
       .maybeSingle();
 
-    console.log("Existing account query:", { data: existingAccount, error: existingError?.message });
+    console.log("Existing account query:", { hasAccount: !!existingAccount, error: existingError?.message });
 
     let stripeAccountId = existingAccount?.stripe_account_id;
 
+    const now = new Date().toISOString();
+
     if (!stripeAccountId) {
       console.log("Creating new Stripe account for mechanic:", user.id);
+
       const account = await stripe.accounts.create({
         type: "express",
         country: "US",
@@ -127,54 +134,55 @@ serve(async (req) => {
           transfers: { requested: true },
         },
         business_type: "individual",
-        metadata: {
-          mechanic_id: user.id,
-        },
+        metadata: { mechanic_id: user.id },
       });
 
       stripeAccountId = account.id;
       console.log("Created Stripe account:", stripeAccountId);
 
       console.log("Inserting into mechanic_stripe_accounts...");
-      const { data: insertData, error: insertError } = await supabaseAdmin.from("mechanic_stripe_accounts").insert({
-        mechanic_id: user.id,
-        stripe_account_id: stripeAccountId,
-        onboarding_complete: false,
-        charges_enabled: false,
-        payouts_enabled: false,
-      }).select();
+      const { data: insertData, error: insertError } = await supabaseAdmin
+        .from("mechanic_stripe_accounts")
+        .insert({
+          mechanic_id: user.id,
+          stripe_account_id: stripeAccountId,
+          onboarding_complete: false,
+          charges_enabled: false,
+          payouts_enabled: false,
+        })
+        .select();
 
-      console.log("Insert result:", { data: insertData, error: insertError?.message, code: insertError?.code });
+      console.log("Insert result:", {
+        inserted: !!insertData?.length,
+        error: insertError?.message,
+        code: insertError?.code,
+      });
 
       if (insertError) {
-        console.error("Error inserting mechanic_stripe_accounts:", JSON.stringify(insertError));
+        console.error("Error inserting mechanic_stripe_accounts:", insertError);
         throw new Error(`Failed to save Stripe account: ${insertError.message}`);
       }
 
       // Also update mechanic_profiles with the stripe_account_id
-      const { error: updateError } = await supabaseAdmin.from("mechanic_profiles").update({
-        stripe_account_id: stripeAccountId,
-        updated_at: new Date().toISOString(),
-      }).eq("id", user.id);
+      const { error: updateError } = await supabaseAdmin
+        .from("mechanic_profiles")
+        .update({ stripe_account_id: stripeAccountId, updated_at: now })
+        .eq("id", user.id);
 
-      if (updateError) {
-        console.error("Error updating mechanic_profiles:", updateError);
-      }
+      if (updateError) console.error("Error updating mechanic_profiles:", updateError);
     } else {
       console.log("Using existing Stripe account:", stripeAccountId);
-      // Ensure mechanic_profiles has the stripe_account_id (in case it was missed before)
-      const { error: updateError } = await supabaseAdmin.from("mechanic_profiles").update({
-        stripe_account_id: stripeAccountId,
-        updated_at: new Date().toISOString(),
-      }).eq("id", user.id);
 
-      if (updateError) {
-        console.error("Error updating mechanic_profiles:", updateError);
-      }
+      // Ensure mechanic_profiles has the stripe_account_id (in case it was missed before)
+      const { error: updateError } = await supabaseAdmin
+        .from("mechanic_profiles")
+        .update({ stripe_account_id: stripeAccountId, updated_at: now })
+        .eq("id", user.id);
+
+      if (updateError) console.error("Error updating mechanic_profiles:", updateError);
     }
 
     // Stripe requires HTTPS URLs, not deep links
-    // We'll use a web redirect that then opens the app
     const returnUrl = `${supabaseUrl}/functions/v1/stripe-connect-return`;
     const refreshUrl = `${supabaseUrl}/functions/v1/stripe-connect-refresh`;
 
@@ -192,47 +200,44 @@ serve(async (req) => {
     console.log("Retrieving account data...");
     const accountData = await stripe.accounts.retrieve(stripeAccountId);
 
-    const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1);
+    const onboardingComplete = !!accountData.details_submitted;
+    const chargesEnabled = !!accountData.charges_enabled;
+    const payoutsEnabled = !!accountData.payouts_enabled;
 
     console.log("Updating mechanic_stripe_accounts...");
     await supabaseAdmin
       .from("mechanic_stripe_accounts")
       .update({
-        onboarding_complete: accountData.details_submitted || false,
-        charges_enabled: accountData.charges_enabled || false,
-        payouts_enabled: accountData.payouts_enabled || false,
-        updated_at: new Date().toISOString(),
+        onboarding_complete: onboardingComplete,
+        charges_enabled: chargesEnabled,
+        payouts_enabled: payoutsEnabled,
+        updated_at: now,
       })
       .eq("mechanic_id", user.id);
 
-    console.log("Success! Returning account link");
+    // Update payout_method_status in profiles table
+    // (keeps your intent: active if details + payouts; otherwise pending)
+    const payoutStatus = onboardingComplete && payoutsEnabled ? "active" : "pending";
 
-    return new Response(
-      JSON.stringify({
+    await supabaseAdmin
+      .from("profiles")
+      .update({ payout_method_status: payoutStatus })
+      .eq("id", user.id);
+
+    console.log("Success! Returning account link, payout_method_status:", payoutStatus);
+
+    return json(
+      {
         url: accountLink.url,
         accountId: stripeAccountId,
-        status: accountData.details_submitted
-          ? accountData.charges_enabled && accountData.payouts_enabled
-            ? "active"
-            : "pending"
+        status: onboardingComplete
+          ? (chargesEnabled && payoutsEnabled ? "active" : "pending")
           : "pending",
-      }),
-      {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
+      },
+      200
     );
   } catch (error) {
     console.error("Error creating account link:", error);
-    return new Response(
-      JSON.stringify({
-        error: error.message || "Failed to create account link",
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return json({ error: error?.message || "Failed to create account link" }, 500);
   }
 });
