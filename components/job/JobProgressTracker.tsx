@@ -253,18 +253,22 @@ export function JobProgressTracker({ progress, status, role }: JobProgressTracke
         label: 'Work In Progress',
         description: 'Repair work is underway',
         icon: 'construct',
-        completed: !!progress?.work_started_at,
-        active: !!progress?.work_started_at && !progress?.finalized_at,
+        completed: !!progress?.work_started_at && !!progress?.mechanic_completed_at,
+        active: !!progress?.work_started_at && !progress?.mechanic_completed_at,
         timestamp: progress?.work_started_at ?? undefined,
       },
       {
         key: 'completed',
         label: 'Job Completed',
-        description: 'All work has been finished',
+        description: progress?.finalized_at
+          ? 'All work has been finished'
+          : progress?.mechanic_completed_at
+            ? (role === 'customer' ? 'Mechanic marked complete - please confirm' : 'Waiting for customer confirmation')
+            : 'All work has been finished',
         icon: 'trophy',
         completed: !!progress?.finalized_at,
-        active: false,
-        timestamp: progress?.finalized_at ?? undefined,
+        active: !!progress?.mechanic_completed_at && !progress?.finalized_at,
+        timestamp: progress?.finalized_at ?? progress?.mechanic_completed_at ?? undefined,
       },
     ];
 

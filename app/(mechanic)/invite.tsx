@@ -117,7 +117,7 @@ export default function MechanicInviteScreen() {
                   </View>
                 </View>
               )}
-              {credits.feeoff5_credits > 0 && (
+              {credits.feeless3_credits > 0 && (
                 <View style={{
                   flexDirection: "row",
                   alignItems: "center",
@@ -128,9 +128,9 @@ export default function MechanicInviteScreen() {
                   <Ionicons name="pricetag" size={24} color={colors.accent} />
                   <View style={{ marginLeft: spacing.sm, flex: 1 }}>
                     <Text style={[text.body, { fontWeight: "700" }]}>
-                      {credits.feeoff5_credits} x $5 Off Credits
+                      {credits.feeless3_credits} x $3 Off Credits
                     </Text>
-                    <Text style={text.muted}>$5 off commission each</Text>
+                    <Text style={text.muted}>$3 off commission each</Text>
                   </View>
                 </View>
               )}

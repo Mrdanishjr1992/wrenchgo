@@ -12,6 +12,7 @@ interface ReviewsListProps {
   onReportReview?: (reviewId: string) => void;
   ListHeaderComponent?: React.ReactElement;
   mechanicName?: string;
+  revieweeRole?: 'mechanic' | 'customer';
 }
 
 export function ReviewsList({
@@ -22,6 +23,7 @@ export function ReviewsList({
   onReportReview,
   ListHeaderComponent,
   mechanicName,
+  revieweeRole = 'mechanic',
 }: ReviewsListProps) {
   const { colors } = useTheme();
 
@@ -30,6 +32,7 @@ export function ReviewsList({
       review={item}
       colors={colors}
       onReport={onReportReview}
+      revieweeRole={revieweeRole}
     />
   );
 
@@ -68,9 +71,10 @@ interface ReviewCardProps {
   review: Review;
   colors: any;
   onReport?: (reviewId: string) => void;
+  revieweeRole: 'mechanic' | 'customer';
 }
 
-function ReviewCard({ review, colors, onReport }: ReviewCardProps) {
+function ReviewCard({ review, colors, onReport, revieweeRole }: ReviewCardProps) {
   const reviewerName = review.reviewer?.full_name || review.reviewer_name || 'Anonymous';
 
   const renderStars = (rating: number) => {
@@ -130,27 +134,55 @@ function ReviewCard({ review, colors, onReport }: ReviewCardProps) {
       </View>
 
       <View style={[styles.categoryRatings, { borderColor: colors.border }]}>
-        <CategoryRating
-          icon="speedometer-outline"
-          label="Performance"
-          value={review.performance_rating}
-          iconColor={colors.textSecondary}
-          textColor={colors.textPrimary}
-        />
-        <CategoryRating
-          icon="time-outline"
-          label="Timing"
-          value={review.timing_rating}
-          iconColor={colors.textSecondary}
-          textColor={colors.textPrimary}
-        />
-        <CategoryRating
-          icon="cash-outline"
-          label="Cost"
-          value={review.cost_rating}
-          iconColor={colors.textSecondary}
-          textColor={colors.textPrimary}
-        />
+        {revieweeRole === 'mechanic' ? (
+          <>
+            <CategoryRating
+              icon="speedometer-outline"
+              label="Quality"
+              value={review.performance_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+            <CategoryRating
+              icon="time-outline"
+              label="Timeliness"
+              value={review.timing_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+            <CategoryRating
+              icon="cash-outline"
+              label="Value"
+              value={review.cost_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+          </>
+        ) : (
+          <>
+            <CategoryRating
+              icon="chatbubble-outline"
+              label="Communication"
+              value={review.communication_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+            <CategoryRating
+              icon="time-outline"
+              label="Punctuality"
+              value={review.punctuality_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+            <CategoryRating
+              icon="card-outline"
+              label="Payment"
+              value={review.payment_rating}
+              iconColor={colors.textSecondary}
+              textColor={colors.textPrimary}
+            />
+          </>
+        )}
       </View>
 
       {review.comment && (

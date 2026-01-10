@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Alert, TextInput, Pressable } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Alert, Pressable } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { Ionicons } from "@expo/vector-icons";
@@ -11,8 +11,7 @@ import { AppButton } from "@/src/ui/components/AppButton";
 import { acceptQuoteAndCreateContract } from "@/src/lib/job-contract";
 import { notifyUser } from "@/src/lib/notify";
 import { getDisplayTitle } from "@/src/lib/format-symptom";
-import { previewPromoDiscount, getPromoDiscountDescription, acceptInvitation } from "@/src/lib/promos";
-import { validatePromotion } from "@/src/lib/payments";
+import { previewPromoDiscount, getPromoDiscountDescription } from "@/src/lib/promos";
 import type { PromoDiscountPreview } from "@/src/types/promos";
 
 const PLATFORM_FEE_CENTS = 1500;
@@ -33,13 +32,6 @@ type Quote = {
   accepted_at: string | null;
 };
 
-type AppliedPromo = {
-  code: string;
-  discountCents: number;
-  discountType: string;
-  promoId: string;
-};
-
 export default function JobPayment() {
   const { jobId, quoteId } = useLocalSearchParams<{ jobId: string; quoteId?: string }>();
   const router = useRouter();
@@ -52,11 +44,6 @@ export default function JobPayment() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [processing, setProcessing] = useState(false);
   const [promoPreview, setPromoPreview] = useState<PromoDiscountPreview | null>(null);
-
-  const [promoCode, setPromoCode] = useState("");
-  const [promoValidating, setPromoValidating] = useState(false);
-  const [promoError, setPromoError] = useState<string | null>(null);
-  const [appliedPromo, setAppliedPromo] = useState<AppliedPromo | null>(null);
 
   const loadPaymentInfo = useCallback(async () => {
     if (!jobId) return;
@@ -145,73 +132,39 @@ export default function JobPayment() {
     }, [loadPaymentInfo])
   );
 
-  const handleApplyPromo = useCallback(async () => {
-    if (!promoCode.trim() || !quote) return;
-
-    setPromoValidating(true);
-    setPromoError(null);
-
-    const code = promoCode.trim().toUpperCase();
-
-    try {
-      // First try the promotions table
-      const result = await validatePromotion(code, quote.price_cents + PLATFORM_FEE_CENTS);
-
-      if (result.valid) {
-        setAppliedPromo({
-          code,
-          discountCents: result.discountCents || 0,
-          discountType: result.promotion?.type || "fixed_discount",
-          promoId: result.promotion?.code || "",
-        });
-        setPromoError(null);
-        return;
-      }
-
-      // If not a promo code, try as an invite code
-      const inviteResult = await acceptInvitation(code);
-
-      if (inviteResult.success) {
-        // Refresh promo preview to show the new credit
-        const newPreview = await previewPromoDiscount(PLATFORM_FEE_CENTS);
-        setPromoPreview(newPreview);
-        setPromoCode("");
-        setPromoError(null);
-        Alert.alert(
-          "Invite Code Applied!",
-          "Referral credit has been added to your account and will be applied to this payment."
-        );
-        return;
-      }
-
-      // Neither worked
-      setPromoError(result.reason || inviteResult.error || "Invalid code");
-      setAppliedPromo(null);
-    } catch (error: any) {
-      console.error("Promo validation error:", error);
-      setPromoError(error?.message || "Failed to validate code");
-      setAppliedPromo(null);
-    } finally {
-      setPromoValidating(false);
-    }
-  }, [promoCode, quote]);
-
-  const handleRemovePromo = useCallback(() => {
-    setAppliedPromo(null);
-    setPromoCode("");
-    setPromoError(null);
-  }, []);
-
   const handlePayment = useCallback(async () => {
     if (!quote || !job) return;
 
     try {
       setProcessing(true);
 
+      // Calculate final platform fee (only referral credits apply)
+      const referralDiscount = promoPreview?.has_discount ? promoPreview.discount_cents : 0;
+      const finalFee = Math.max(0, PLATFORM_FEE_CENTS - referralDiscount);
+
       const contractResult = await acceptQuoteAndCreateContract(quote.id);
 
       if (!contractResult.success) {
         throw new Error(contractResult.error || "Failed to create contract");
+      }
+
+      // Create payment record
+      const { data: paymentResult, error: paymentError } = await supabase.rpc("create_payment_intent", {
+        p_job_id: job.id,
+        p_amount_cents: quote.price_cents + finalFee,
+        p_stripe_payment_intent_id: `manual_${Date.now()}`,
+      });
+
+      if (paymentError) {
+        console.error("Payment record error:", paymentError);
+      }
+
+      // Update payment status to succeeded
+      if (paymentResult?.payment_id) {
+        await supabase
+          .from("payments")
+          .update({ status: "succeeded", paid_at: new Date().toISOString() })
+          .eq("id", paymentResult.payment_id);
       }
 
       notifyUser({
@@ -239,7 +192,7 @@ export default function JobPayment() {
     } finally {
       setProcessing(false);
     }
-  }, [quote, job, jobId, router]);
+  }, [quote, job, jobId, router, promoPreview]);
 
   if (loading) {
     return (
@@ -275,9 +228,7 @@ export default function JobPayment() {
 
   const platformFeeCents = PLATFORM_FEE_CENTS;
   const referralDiscountCents = promoPreview?.has_discount ? promoPreview.discount_cents : 0;
-  const promoDiscountCents = appliedPromo?.discountCents || 0;
-  const totalDiscountCents = referralDiscountCents + promoDiscountCents;
-  const finalPlatformFeeCents = Math.max(0, platformFeeCents - totalDiscountCents);
+  const finalPlatformFeeCents = Math.max(0, platformFeeCents - referralDiscountCents);
   const totalCents = quote.price_cents + finalPlatformFeeCents;
   const totalDollars = (totalCents / 100).toFixed(2);
 
@@ -287,7 +238,7 @@ export default function JobPayment() {
         <View style={[card, { padding: spacing.lg, marginBottom: spacing.lg }]}>
           <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
             <Ionicons name="card" size={32} color={colors.accent} />
-            <Text style={[text.title, { marginLeft: spacing.md }]}>Complete Payment</Text>
+            <Text style={[text.title, { marginLeft: spacing.md }]}>Commit to Payment</Text>
           </View>
 
           <View style={{ marginBottom: spacing.lg }}>
@@ -295,72 +246,8 @@ export default function JobPayment() {
             <Text style={text.body}>{getDisplayTitle(job.title)}</Text>
           </View>
 
-          <View style={{ marginBottom: spacing.lg }}>
-            <Text style={[text.muted, { marginBottom: spacing.sm, fontWeight: "600" }]}>Promo Code</Text>
-            {appliedPromo ? (
-              <View style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: "#10B98115",
-                borderRadius: 8,
-                padding: spacing.md,
-                borderWidth: 1,
-                borderColor: "#10B98140",
-              }}>
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-                <Text style={[text.body, { flex: 1, marginLeft: spacing.sm, color: "#10B981", fontWeight: "600" }]}>
-                  {appliedPromo.code} applied (-${(appliedPromo.discountCents / 100).toFixed(2)})
-                </Text>
-                <Pressable onPress={handleRemovePromo} hitSlop={8}>
-                  <Ionicons name="close-circle" size={24} color={colors.textMuted} />
-                </Pressable>
-              </View>
-            ) : (
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                <TextInput
-                  style={{
-                    flex: 1,
-                    backgroundColor: colors.surface,
-                    borderRadius: 8,
-                    padding: spacing.md,
-                    borderWidth: 1,
-                    borderColor: promoError ? "#EF4444" : colors.border,
-                    color: colors.textPrimary,
-                    fontSize: 16,
-                  }}
-                  placeholder="Enter promo code"
-                  placeholderTextColor={colors.textMuted}
-                  value={promoCode}
-                  onChangeText={setPromoCode}
-                  autoCapitalize="characters"
-                  editable={!promoValidating}
-                />
-                <Pressable
-                  onPress={handleApplyPromo}
-                  disabled={promoValidating || !promoCode.trim()}
-                  style={({ pressed }) => ({
-                    backgroundColor: promoValidating || !promoCode.trim() ? colors.border : colors.accent,
-                    borderRadius: 8,
-                    paddingHorizontal: spacing.lg,
-                    justifyContent: "center",
-                    opacity: pressed ? 0.8 : 1,
-                  })}
-                >
-                  {promoValidating ? (
-                    <ActivityIndicator size="small" color="#000" />
-                  ) : (
-                    <Text style={{ fontWeight: "700", color: "#000" }}>Apply</Text>
-                  )}
-                </Pressable>
-              </View>
-            )}
-            {promoError && (
-              <Text style={{ color: "#EF4444", fontSize: 12, marginTop: spacing.xs }}>{promoError}</Text>
-            )}
-          </View>
-
-          <View style={{ 
-            padding: spacing.lg, 
+          <View style={{
+            padding: spacing.lg,
             backgroundColor: colors.surface,
             borderRadius: 12,
             borderWidth: 1,
@@ -372,7 +259,7 @@ export default function JobPayment() {
               <Text style={text.body}>Service</Text>
               <Text style={text.body}>${(quote.price_cents / 100).toFixed(2)}</Text>
             </View>
-            
+
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
               <Text style={text.body}>Platform Fee</Text>
               <Text style={text.body}>${(platformFeeCents / 100).toFixed(2)}</Text>
@@ -391,17 +278,6 @@ export default function JobPayment() {
               </View>
             )}
 
-            {appliedPromo && promoDiscountCents > 0 && (
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                <Text style={[text.body, { color: "#10B981" }]}>
-                  Promo: {appliedPromo.code}
-                </Text>
-                <Text style={[text.body, { color: "#10B981" }]}>
-                  -${(promoDiscountCents / 100).toFixed(2)}
-                </Text>
-              </View>
-            )}
-
             <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.xs }} />
 
             <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
@@ -410,7 +286,7 @@ export default function JobPayment() {
             </View>
           </View>
 
-          {(promoPreview?.has_discount || appliedPromo) && (
+          {promoPreview?.has_discount && (
             <View style={{
               padding: spacing.md,
               backgroundColor: "#10B98115",
@@ -423,7 +299,7 @@ export default function JobPayment() {
             }}>
               <Ionicons name="gift" size={20} color="#10B981" style={{ marginRight: spacing.sm }} />
               <Text style={[text.body, { color: "#10B981", flex: 1 }]}>
-                You're saving ${(totalDiscountCents / 100).toFixed(2)}!
+                You're saving ${(referralDiscountCents / 100).toFixed(2)}!
               </Text>
             </View>
           )}
@@ -442,13 +318,13 @@ export default function JobPayment() {
           <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
             <Ionicons name="shield-checkmark" size={24} color={colors.accent} style={{ marginRight: spacing.sm }} />
             <Text style={[text.body, { flex: 1, color: colors.textSecondary }]}>
-              Your payment is processed securely through Stripe. The mechanic will be notified immediately after payment.
+              Your payment is processed securely through Stripe. The mechanic will be notified immediately after Authorization. Can cancel before mechanic starts departure with no charge. 
             </Text>
           </View>
         </View>
 
         <AppButton
-          title={processing ? "Processing..." : `Pay $${totalDollars}`}
+          title={processing ? "Processing..." : `Authorize Hold`}
           variant="primary"
           onPress={handlePayment}
           disabled={processing}

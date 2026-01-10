@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/ui/theme-context';
+import { supabase } from '../../src/lib/supabase';
 import type { JobProgress, JobContract } from '../../src/types/job-lifecycle';
 import { getJobPhase, canCustomerCancel, formatCents } from '../../src/types/job-lifecycle';
 import {
@@ -13,6 +14,7 @@ import {
   customerConfirmComplete,
   cancelJob,
 } from '../../src/lib/job-contract';
+import { acceptInvitation } from '../../src/lib/promos';
 
 interface JobActionsProps {
   jobId: string;
@@ -33,8 +35,35 @@ export function JobActions({
 }: JobActionsProps) {
   const { colors, spacing } = useTheme();
   const [loading, setLoading] = useState(false);
+  const [referralCode, setReferralCode] = useState('');
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [referralApplied, setReferralApplied] = useState(false);
+  const [referralError, setReferralError] = useState<string | null>(null);
+  const [hasUsedReferral, setHasUsedReferral] = useState<boolean | null>(null);
 
   const phase = getJobPhase(progress, contract);
+
+  // Check if user has already used a referral code
+  React.useEffect(() => {
+    checkReferralUsage();
+  }, []);
+
+  const checkReferralUsage = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('invitation_awards')
+        .select('id')
+        .limit(1);
+
+      if (!error && data && data.length > 0) {
+        setHasUsedReferral(true);
+      } else {
+        setHasUsedReferral(false);
+      }
+    } catch {
+      setHasUsedReferral(false);
+    }
+  };
 
   const handleAction = async (
     action: () => Promise<{ success: boolean; error?: string }>,
@@ -55,6 +84,31 @@ export function JobActions({
       Alert.alert('Error', e.message || 'An error occurred');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleApplyReferralCode = async () => {
+    if (!referralCode.trim()) return;
+
+    setReferralLoading(true);
+    setReferralError(null);
+
+    try {
+      const result = await acceptInvitation(referralCode.trim().toUpperCase());
+      if (result.success) {
+        setReferralApplied(true);
+        setReferralCode('');
+        Alert.alert(
+          'Referral Code Applied!',
+          `The person who invited you has received ${(result as any).credits_awarded || 1} free platform fee credit(s) as a thank you!`
+        );
+      } else {
+        setReferralError(result.error || 'Invalid referral code');
+      }
+    } catch (e: any) {
+      setReferralError(e.message || 'Failed to apply code');
+    } finally {
+      setReferralLoading(false);
     }
   };
 
@@ -137,6 +191,64 @@ export function JobActions({
             <Text style={[styles.actionDescription, { color: colors.textSecondary }]}>
               The mechanic has marked the work as complete. Please review and confirm if you're satisfied.
             </Text>
+
+            {/* Referral Code Section - only show if not already used */}
+            {!referralApplied && !hasUsedReferral && hasUsedReferral !== null && (
+              <View style={[styles.referralSection, { borderColor: colors.border }]}>
+                <Text style={[styles.referralTitle, { color: colors.text }]}>
+                  Have a referral code?
+                </Text>
+                <Text style={[styles.referralSubtitle, { color: colors.textSecondary }]}>
+                  Enter it now to reward the person who invited you
+                </Text>
+                <View style={styles.referralInputRow}>
+                  <TextInput
+                    style={[styles.referralInput, {
+                      backgroundColor: colors.surface,
+                      borderColor: referralError ? colors.error : colors.border,
+                      color: colors.text
+                    }]}
+                    placeholder="Enter code"
+                    placeholderTextColor={colors.textMuted}
+                    value={referralCode}
+                    onChangeText={(text) => {
+                      setReferralCode(text.toUpperCase());
+                      setReferralError(null);
+                    }}
+                    autoCapitalize="characters"
+                    editable={!referralLoading}
+                  />
+                  <Pressable
+                    style={[styles.referralButton, {
+                      backgroundColor: referralCode.trim() ? colors.accent : colors.border
+                    }]}
+                    onPress={handleApplyReferralCode}
+                    disabled={!referralCode.trim() || referralLoading}
+                  >
+                    {referralLoading ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.referralButtonText}>Apply</Text>
+                    )}
+                  </Pressable>
+                </View>
+                {referralError && (
+                  <Text style={[styles.referralError, { color: colors.error }]}>
+                    {referralError}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            {referralApplied && (
+              <View style={[styles.referralApplied, { backgroundColor: `${colors.success}15` }]}>
+                <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                <Text style={[styles.referralAppliedText, { color: colors.success }]}>
+                  Referral code applied! Your friend has been rewarded.
+                </Text>
+              </View>
+            )}
+
             <Pressable
               style={[styles.primaryButton, { backgroundColor: colors.success }]}
               onPress={() => {
@@ -320,6 +432,64 @@ export function JobActions({
               Mark the job as complete when you're done.
             </Text>
           )}
+
+          {/* Referral Code Section for Mechanic - only show if not already used */}
+          {!referralApplied && !hasUsedReferral && hasUsedReferral !== null && (
+            <View style={[styles.referralSection, { borderColor: colors.border }]}>
+              <Text style={[styles.referralTitle, { color: colors.text }]}>
+                Have a referral code?
+              </Text>
+              <Text style={[styles.referralSubtitle, { color: colors.textSecondary }]}>
+                Enter it now to reward the person who invited you
+              </Text>
+              <View style={styles.referralInputRow}>
+                <TextInput
+                  style={[styles.referralInput, {
+                    backgroundColor: colors.surface,
+                    borderColor: referralError ? colors.error : colors.border,
+                    color: colors.text
+                  }]}
+                  placeholder="Enter code"
+                  placeholderTextColor={colors.textMuted}
+                  value={referralCode}
+                  onChangeText={(text) => {
+                    setReferralCode(text.toUpperCase());
+                    setReferralError(null);
+                  }}
+                  autoCapitalize="characters"
+                  editable={!referralLoading}
+                />
+                <Pressable
+                  style={[styles.referralButton, {
+                    backgroundColor: referralCode.trim() ? colors.accent : colors.border
+                  }]}
+                  onPress={handleApplyReferralCode}
+                  disabled={!referralCode.trim() || referralLoading}
+                >
+                  {referralLoading ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.referralButtonText}>Apply</Text>
+                  )}
+                </Pressable>
+              </View>
+              {referralError && (
+                <Text style={[styles.referralError, { color: colors.error }]}>
+                  {referralError}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {referralApplied && (
+            <View style={[styles.referralApplied, { backgroundColor: `${colors.success}15` }]}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+              <Text style={[styles.referralAppliedText, { color: colors.success }]}>
+                Referral code applied! Your friend has been rewarded.
+              </Text>
+            </View>
+          )}
+
           <Pressable
             style={[
               styles.primaryButton,
@@ -417,6 +587,66 @@ const styles = StyleSheet.create({
   cancelButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  referralSection: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+  },
+  referralTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  referralSubtitle: {
+    fontSize: 12,
+    marginBottom: 10,
+  },
+  referralInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  referralInput: {
+    flex: 1,
+    height: 40,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  referralButton: {
+    height: 40,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  referralButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  referralError: {
+    fontSize: 12,
+    marginTop: 6,
+  },
+  referralApplied: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 12,
+    padding: 12,
+    borderRadius: 8,
+  },
+  referralAppliedText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
   },
 });
 

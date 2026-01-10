@@ -99,9 +99,14 @@ export interface UserRating {
   user_id: string;
   review_count: number;
   avg_overall_rating: number;
+  // Mechanic ratings (from customer reviews)
   avg_performance_rating: number;
   avg_timing_rating: number;
   avg_cost_rating: number;
+  // Customer ratings (from mechanic reviews)
+  avg_communication_rating: number;
+  avg_punctuality_rating: number;
+  avg_payment_rating: number;
   last_review_at: string;
   five_star_count: number;
   four_star_count: number;

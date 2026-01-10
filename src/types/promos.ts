@@ -1,7 +1,7 @@
 export interface PromoCredit {
   id: string;
   user_id: string;
-  credit_type: 'FEELESS' | 'FEEOFF5';
+  credit_type: 'FEELESS' | 'FEELESS3';
   remaining_uses: number;
   source_invited_user_id: string | null;
   source_invitation_id: string | null;
@@ -10,13 +10,13 @@ export interface PromoCredit {
 
 export interface PromoCreditsBalance {
   feeless_credits: number;
-  feeoff5_credits: number;
+  feeless3_credits: number;
   total_credits: number;
 }
 
 export interface PromoDiscountPreview {
   has_discount: boolean;
-  credit_type?: 'FEELESS' | 'FEEOFF5';
+  credit_type?: 'FEELESS' | 'FEELESS3';
   discount_cents: number;
   fee_after_cents: number;
   reason?: string;
@@ -24,7 +24,7 @@ export interface PromoDiscountPreview {
 
 export interface PromoApplicationResult {
   applied: boolean;
-  credit_type?: 'FEELESS' | 'FEEOFF5';
+  credit_type?: 'FEELESS' | 'FEELESS3';
   fee_before_cents?: number;
   discount_cents?: number;
   fee_after_cents?: number;

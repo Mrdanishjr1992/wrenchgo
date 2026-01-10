@@ -60,7 +60,7 @@ export default function FinancialSummary({ userId, role, compact = false }: Prop
         <StatBox
           label={isMechanic ? "Earnings" : "Spent"}
           value={formatCentsCompact(
-            isMechanic ? summary.total_earnings_cents || 0 : summary.total_spent_cents || 0
+            isMechanic ? summary.gross_earnings_cents || 0 : summary.total_spent_cents || 0
           )}
           color={colors.accent}
         />
@@ -112,7 +112,7 @@ export default function FinancialSummary({ userId, role, compact = false }: Prop
             <SummaryRow
               icon="cash-outline"
               label="Total Earnings"
-              value={formatCents(summary.total_earnings_cents || 0)}
+              value={formatCents(summary.gross_earnings_cents || 0)}
               color={colors.success}
             />
             <SummaryRow

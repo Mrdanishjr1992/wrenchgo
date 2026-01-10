@@ -57,6 +57,7 @@ export type FinancialSummary = {
   total_spent_cents?: number;
   total_fees_cents?: number;
   // Mechanic fields
+  gross_earnings_cents?: number;
   total_earnings_cents?: number;
   total_commission_cents?: number;
   pending_payouts_cents?: number;

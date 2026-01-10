@@ -25,8 +25,14 @@ import { getDisplayTitle, formatAddressWithoutStreet } from "../../../src/lib/fo
 import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
+import { symptomQuestions } from "../../../src/data/symptomQuestions";
 
 type QuoteType = "diagnostic_only" | "range" | "fixed";
+
+type JobAnswer = {
+  question: string;
+  label: string;
+};
 
 type Job = {
   id: string;
@@ -145,6 +151,34 @@ export default function QuoteComposer() {
       router.back();
     } finally {
       setLoading(false);
+    }
+  };
+
+  const parseJobAnswers = (): JobAnswer[] => {
+    if (!job?.description) return [];
+    try {
+      const parsed = JSON.parse(job.description);
+      if (!parsed.answers) return [];
+
+      const symptomKey = parsed.symptom?.key;
+      const questions = symptomKey ? symptomQuestions[symptomKey] || [] : [];
+      const questionMap: Record<string, string> = {};
+      questions.forEach((q) => {
+        questionMap[q.question_key] = q.question_label;
+      });
+
+      const answers: JobAnswer[] = [];
+      Object.entries(parsed.answers).forEach(([key, value]: [string, any]) => {
+        const questionLabel = questionMap[key] || key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        if (value && typeof value === 'object' && value.label) {
+          answers.push({ question: questionLabel, label: value.label });
+        } else if (value && typeof value === 'string') {
+          answers.push({ question: questionLabel, label: value });
+        }
+      });
+      return answers;
+    } catch {
+      return [];
     }
   };
 
@@ -454,6 +488,23 @@ export default function QuoteComposer() {
                   <Text style={[styles.jobDetailText, { color: colors.textSecondary }]}>
                     {job.description}
                   </Text>
+                </View>
+              )}
+              {parseJobAnswers().length > 0 && (
+                <View style={[styles.qaSection, { borderTopColor: colors.border }]}>
+                  <Text style={[styles.qaSectionTitle, { color: colors.textPrimary }]}>
+                    Customer Responses
+                  </Text>
+                  {parseJobAnswers().map((answer, index) => (
+                    <View key={index} style={styles.qaItem}>
+                      <Text style={[styles.qaQuestion, { color: colors.textMuted }]}>
+                        {answer.question}
+                      </Text>
+                      <Text style={[styles.qaAnswer, { color: colors.textSecondary }]}>
+                        {answer.label}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
               )}
               {job.location_address && (
@@ -1246,5 +1297,26 @@ const styles = StyleSheet.create({
   },
   pickerOptionText: {
     fontSize: 16,
+  },
+  qaSection: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  qaSectionTitle: {
+    fontSize: 14,
+    fontWeight: "700",
+    marginBottom: 10,
+  },
+  qaItem: {
+    marginBottom: 10,
+  },
+  qaQuestion: {
+    fontSize: 12,
+    fontWeight: "600",
+    marginBottom: 2,
+  },
+  qaAnswer: {
+    fontSize: 14,
   },
 });

@@ -34,7 +34,7 @@ export async function getPromoCreditsBalance(): Promise<PromoCreditsBalance | nu
   }
   return {
     feeless_credits: data.feeless_credits,
-    feeoff5_credits: data.feeoff5_credits,
+    feeless3_credits: data.feeless3_credits,
     total_credits: data.total_credits,
   };
 }
@@ -84,14 +84,14 @@ export function formatPromoCredits(balance: PromoCreditsBalance): string {
   if (balance.feeless_credits > 0) {
     parts.push(`${balance.feeless_credits} free fee${balance.feeless_credits > 1 ? 's' : ''}`);
   }
-  if (balance.feeoff5_credits > 0) {
-    parts.push(`${balance.feeoff5_credits} x $5 off`);
+  if (balance.feeless3_credits > 0) {
+    parts.push(`${balance.feeless3_credits} x $3 off`);
   }
   return parts.length > 0 ? parts.join(', ') : 'No credits';
 }
 
-export function getPromoDiscountDescription(creditType: 'FEELESS' | 'FEEOFF5'): string {
-  return creditType === 'FEELESS' 
-    ? 'Free platform fee (referral credit)' 
-    : '$5 off platform fee (referral credit)';
+export function getPromoDiscountDescription(creditType: 'FEELESS' | 'FEELESS3'): string {
+  return creditType === 'FEELESS'
+    ? 'Free platform fee (referral credit)'
+    : '$3 off platform fee (referral credit)';
 }

@@ -93,26 +93,54 @@ export function UserProfileCard({ profile, onPress, compact = false }: UserProfi
         </View>
       </View>
 
+      {/* Mechanic sub-ratings: Performance, Timing, Cost */}
       {!compact && profile.role === 'mechanic' && (
         <View style={[styles.subRatings, { borderTopColor: colors.border }]}>
           <SubRating
             icon="speedometer-outline"
-            label="Performance"
+            label="Quality"
             value={profile.ratings?.avg_performance_rating || 0}
             color={colors.textPrimary}
             iconColor={colors.textSecondary}
           />
           <SubRating
             icon="time-outline"
-            label="Timing"
+            label="Timeliness"
             value={profile.ratings?.avg_timing_rating || 0}
             color={colors.textPrimary}
             iconColor={colors.textSecondary}
           />
           <SubRating
             icon="cash-outline"
-            label="Cost"
+            label="Value"
             value={profile.ratings?.avg_cost_rating || 0}
+            color={colors.textPrimary}
+            iconColor={colors.textSecondary}
+          />
+        </View>
+      )}
+
+      {/* Customer sub-ratings: Communication, Punctuality, Payment */}
+      {!compact && profile.role === 'customer' && (
+        <View style={[styles.subRatings, { borderTopColor: colors.border }]}>
+          <SubRating
+            icon="chatbubble-outline"
+            label="Communication"
+            value={profile.ratings?.avg_communication_rating || 0}
+            color={colors.textPrimary}
+            iconColor={colors.textSecondary}
+          />
+          <SubRating
+            icon="time-outline"
+            label="Punctuality"
+            value={profile.ratings?.avg_punctuality_rating || 0}
+            color={colors.textPrimary}
+            iconColor={colors.textSecondary}
+          />
+          <SubRating
+            icon="card-outline"
+            label="Payment"
+            value={profile.ratings?.avg_payment_rating || 0}
             color={colors.textPrimary}
             iconColor={colors.textSecondary}
           />

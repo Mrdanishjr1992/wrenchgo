@@ -1,11 +1,15 @@
 // Profile Card Types for Quotes Flow
 export interface PublicProfileCardRatings {
   overall_avg: number;
+  // Mechanic ratings (from customer reviews)
   performance_avg: number;
   timing_avg: number;
   cost_avg: number;
   professionalism_avg: number;
+  // Customer ratings (from mechanic reviews)
   communication_avg: number;
+  punctuality_avg: number;
+  payment_avg: number;
   review_count: number;
   would_recommend_count: number;
   would_recommend_total: number;

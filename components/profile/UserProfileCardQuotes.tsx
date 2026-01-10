@@ -267,9 +267,9 @@ function FullProfileCard({
           {hasRatings && (
             <>
               <View style={styles.ratingBreakdown}>
-                <RatingBar label="Performance" value={profile.ratings.performance_avg} icon="speedometer" />
-                <RatingBar label="Timing" value={profile.ratings.timing_avg} icon="time" />
-                <RatingBar label="Professionalism" value={profile.ratings.professionalism_avg} icon="briefcase" />
+                <RatingBar label="Quality" value={profile.ratings.performance_avg} icon="speedometer" />
+                <RatingBar label="Timeliness" value={profile.ratings.timing_avg} icon="time" />
+                <RatingBar label="Value" value={profile.ratings.cost_avg} icon="cash" />
               </View>
 
               {profile.ratings.would_recommend_total > 0 && (
@@ -292,12 +292,46 @@ function FullProfileCard({
         </View>
       )}
 
-      {!hasContent && profile.role === 'customer' && (
-        <View style={styles.emptyState}>
-          <Ionicons name="information-circle-outline" size={48} color={colors.textMuted} />
-          <Text style={[styles.emptyStateText, { color: colors.textMuted }]}>
-            This customer is new to the platform
-          </Text>
+      {profile.role === 'customer' && (
+        <View style={styles.ratingsSection}>
+          <View style={styles.overallRating}>
+            <Ionicons name="star" size={32} color={hasRatings ? '#FFD700' : colors.textMuted} />
+            <Text style={[styles.overallRatingText, { color: colors.textPrimary }]}>
+              {hasRatings ? profile.ratings.overall_avg.toFixed(1) : '0.0'}
+            </Text>
+            <Text style={[styles.reviewCountText, { color: colors.textMuted }]}>
+              {hasRatings
+                ? `${profile.ratings.review_count} ${profile.ratings.review_count === 1 ? 'review' : 'reviews'}`
+                : 'No ratings yet'
+              }
+            </Text>
+          </View>
+
+          {hasRatings && (
+            <>
+              <View style={styles.ratingBreakdown}>
+                <RatingBar label="Communication" value={profile.ratings.communication_avg} icon="chatbubble" />
+                <RatingBar label="Punctuality" value={profile.ratings.punctuality_avg} icon="time" />
+                <RatingBar label="Payment" value={profile.ratings.payment_avg} icon="card" />
+              </View>
+
+              {profile.ratings.would_recommend_total > 0 && (
+                <View style={[styles.recommendRow, { backgroundColor: '#10b98115', borderColor: '#10b98140' }]}>
+                  <Ionicons name="thumbs-up" size={16} color="#10b981" />
+                  <Text style={{ color: '#10b981', fontWeight: '600', marginLeft: 6 }}>
+                    {Math.round((profile.ratings.would_recommend_count / profile.ratings.would_recommend_total) * 100)}% would recommend
+                  </Text>
+                </View>
+              )}
+
+              {showActions && onPressReviews && profile.ratings.review_count > 0 && (
+                <TouchableOpacity onPress={onPressReviews} style={styles.reviewsButton}>
+                  <Text style={[styles.reviewsButtonText, { color: colors.accent }]}>View All Reviews</Text>
+                  <Ionicons name="chevron-forward" size={16} color={colors.accent} />
+                </TouchableOpacity>
+              )}
+            </>
+          )}
         </View>
       )}
 

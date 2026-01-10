@@ -32,8 +32,15 @@ export default function ReviewForm({
   const router = useRouter();
 
   const [rating, setRating] = useState(0);
-  const [professionalismRating, setProfessionalismRating] = useState(0);
+  // Customer reviewing mechanic: performance, timing, cost
+  const [performanceRating, setPerformanceRating] = useState(0);
+  const [timingRating, setTimingRating] = useState(0);
+  const [costRating, setCostRating] = useState(0);
+  // Mechanic reviewing customer: communication, punctuality, payment
   const [communicationRating, setCommunicationRating] = useState(0);
+  const [punctualityRating, setPunctualityRating] = useState(0);
+  const [paymentRating, setPaymentRating] = useState(0);
+
   const [wouldRecommend, setWouldRecommend] = useState<boolean | null>(null);
   const [comment, setComment] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -61,9 +68,15 @@ export default function ReviewForm({
         p_reviewee_id: revieweeId,
         p_rating: rating,
         p_comment: comment.trim() || null,
-        p_professionalism_rating: professionalismRating || null,
-        p_communication_rating: communicationRating || null,
         p_would_recommend: wouldRecommend,
+        // Customer reviewing mechanic
+        p_performance_rating: reviewerRole === 'customer' ? (performanceRating || null) : null,
+        p_timing_rating: reviewerRole === 'customer' ? (timingRating || null) : null,
+        p_cost_rating: reviewerRole === 'customer' ? (costRating || null) : null,
+        // Mechanic reviewing customer
+        p_communication_rating: reviewerRole === 'mechanic' ? (communicationRating || null) : null,
+        p_punctuality_rating: reviewerRole === 'mechanic' ? (punctualityRating || null) : null,
+        p_payment_rating: reviewerRole === 'mechanic' ? (paymentRating || null) : null,
       });
 
       if (error) throw error;
@@ -130,16 +143,22 @@ export default function ReviewForm({
 
       {renderStars(rating, setRating, 'Overall Rating *')}
 
-      {renderStars(
-        professionalismRating,
-        setProfessionalismRating,
-        'Professionalism (Optional)'
+      {/* Customer reviewing mechanic */}
+      {reviewerRole === 'customer' && (
+        <>
+          {renderStars(performanceRating, setPerformanceRating, 'Quality of Work (Optional)')}
+          {renderStars(timingRating, setTimingRating, 'Timeliness (Optional)')}
+          {renderStars(costRating, setCostRating, 'Value for Money (Optional)')}
+        </>
       )}
 
-      {renderStars(
-        communicationRating,
-        setCommunicationRating,
-        'Communication (Optional)'
+      {/* Mechanic reviewing customer */}
+      {reviewerRole === 'mechanic' && (
+        <>
+          {renderStars(communicationRating, setCommunicationRating, 'Communication (Optional)')}
+          {renderStars(punctualityRating, setPunctualityRating, 'Punctuality (Optional)')}
+          {renderStars(paymentRating, setPaymentRating, 'Payment Experience (Optional)')}
+        </>
       )}
 
       <View style={{ marginBottom: spacing.md }}>

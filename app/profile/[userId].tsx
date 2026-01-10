@@ -185,6 +185,7 @@ export default function ProfileScreen() {
             loading={reviewsLoading}
             onReportReview={handleReportReview}
             mechanicName={profile.role === 'mechanic' ? displayName : undefined}
+            revieweeRole={profile.role as 'mechanic' | 'customer'}
           />
         </View>
       </View>

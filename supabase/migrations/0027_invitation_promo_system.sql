@@ -11,7 +11,7 @@ BEGIN;
 -- ENUM: promo_credit_type
 -- =====================================================
 DO $$ BEGIN
-  CREATE TYPE public.promo_credit_type AS ENUM ('FEELESS', 'FEEOFF5');
+  CREATE TYPE public.promo_credit_type AS ENUM ('FEELESS', 'FEELESS3');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -452,27 +452,27 @@ AS $$
 DECLARE
   v_user_id uuid;
   v_feeless_count int;
-  v_feeoff5_count int;
+  v_feeless3_count int;
 BEGIN
   v_user_id := auth.uid();
-  
+
   IF v_user_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
   END IF;
-  
+
   SELECT COALESCE(SUM(remaining_uses), 0) INTO v_feeless_count
   FROM promo_credits
   WHERE user_id = v_user_id AND credit_type = 'FEELESS' AND remaining_uses > 0;
-  
-  SELECT COALESCE(SUM(remaining_uses), 0) INTO v_feeoff5_count
+
+  SELECT COALESCE(SUM(remaining_uses), 0) INTO v_feeless3_count
   FROM promo_credits
-  WHERE user_id = v_user_id AND credit_type = 'FEEOFF5' AND remaining_uses > 0;
-  
+  WHERE user_id = v_user_id AND credit_type = 'FEELESS3' AND remaining_uses > 0;
+
   RETURN jsonb_build_object(
     'success', true,
     'feeless_credits', v_feeless_count,
-    'feeoff5_credits', v_feeoff5_count,
-    'total_credits', v_feeless_count + v_feeoff5_count
+    'feeless3_credits', v_feeless3_count,
+    'total_credits', v_feeless_count + v_feeless3_count
   );
 END;
 $$;
@@ -495,11 +495,11 @@ DECLARE
   v_discount_cents int;
 BEGIN
   v_user_id := auth.uid();
-  
+
   IF v_user_id IS NULL THEN
     RETURN jsonb_build_object('success', false, 'error', 'Not authenticated');
   END IF;
-  
+
   IF p_platform_fee_cents <= 0 THEN
     RETURN jsonb_build_object(
       'success', true,
@@ -509,17 +509,17 @@ BEGIN
       'reason', 'No platform fee to discount'
     );
   END IF;
-  
-  -- Get oldest available credit, prioritizing FEELESS over FEEOFF5
+
+  -- Get oldest available credit, prioritizing FEELESS over FEELESS3
   SELECT * INTO v_credit
   FROM promo_credits
   WHERE user_id = v_user_id AND remaining_uses > 0
-  ORDER BY 
+  ORDER BY
     CASE credit_type WHEN 'FEELESS' THEN 0 ELSE 1 END,
     created_at ASC
   LIMIT 1
   FOR UPDATE SKIP LOCKED;
-  
+
   IF v_credit IS NULL THEN
     RETURN jsonb_build_object(
       'success', true,
@@ -529,14 +529,14 @@ BEGIN
       'reason', 'No promo credits available'
     );
   END IF;
-  
+
   -- Calculate discount
   IF v_credit.credit_type = 'FEELESS' THEN
     v_discount_cents := p_platform_fee_cents;
-  ELSE -- FEEOFF5
+  ELSE -- FEELESS3
     v_discount_cents := LEAST(500, p_platform_fee_cents);
   END IF;
-  
+
   RETURN jsonb_build_object(
     'success', true,
     'has_discount', true,
@@ -618,7 +618,7 @@ BEGIN
   -- Calculate discount
   IF v_credit.credit_type = 'FEELESS' THEN
     v_discount_cents := v_fee_before;
-  ELSE -- FEEOFF5
+  ELSE -- FEELESS3
     v_discount_cents := LEAST(500, v_fee_before);
   END IF;
   

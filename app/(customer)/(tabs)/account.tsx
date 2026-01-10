@@ -12,6 +12,7 @@ import {
   Platform,
   TextInput,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
@@ -78,7 +79,8 @@ export default function CustomerAccount() {
   const [isDirty, setIsDirty] = useState(false);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [jobStats, setJobStats] = useState({ active: 0, completed: 0 });
-  const [ratingStats, setRatingStats] = useState({ avg: 0, count: 0 });
+  const [ratingStats, setRatingStats] = useState({ avg: 0, count: 0, avgCommunication: 0, avgPunctuality: 0, avgPayment: 0 });
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -161,9 +163,9 @@ export default function CustomerAccount() {
         .select(`
           id,
           overall_rating,
-          performance_rating,
-          timing_rating,
-          cost_rating,
+          communication_rating,
+          punctuality_rating,
+          payment_rating,
           comment,
           created_at,
           reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
@@ -180,7 +182,16 @@ export default function CustomerAccount() {
       const avgRating = reviewCount > 0 && reviewsData && reviewsData.length > 0
         ? reviewsData.reduce((sum: number, r: any) => sum + (r.overall_rating || 0), 0) / reviewsData.length
         : 0;
-      setRatingStats({ avg: avgRating, count: reviewCount });
+      const avgCommunication = reviewCount > 0 && reviewsData && reviewsData.length > 0
+        ? reviewsData.reduce((sum: number, r: any) => sum + (r.communication_rating || 0), 0) / reviewsData.length
+        : 0;
+      const avgPunctuality = reviewCount > 0 && reviewsData && reviewsData.length > 0
+        ? reviewsData.reduce((sum: number, r: any) => sum + (r.punctuality_rating || 0), 0) / reviewsData.length
+        : 0;
+      const avgPayment = reviewCount > 0 && reviewsData && reviewsData.length > 0
+        ? reviewsData.reduce((sum: number, r: any) => sum + (r.payment_rating || 0), 0) / reviewsData.length
+        : 0;
+      setRatingStats({ avg: avgRating, count: reviewCount, avgCommunication, avgPunctuality, avgPayment });
 
       setIsDirty(false);
     } catch (e: any) {
@@ -201,28 +212,13 @@ export default function CustomerAccount() {
     setRefreshing(false);
   }, [load]);
 
-  const changePhoto = useCallback(async () => {
+  const uploadPhoto = useCallback(async (uri: string | undefined) => {
+    if (!uri) return;
+    setPhotoModalVisible(false);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission needed", "Please allow access to your photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-      });
-
-      if (result.canceled) return;
-
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
       if (!userId) return router.replace("/(auth)/sign-in");
-
-      const uri = result.assets?.[0]?.uri;
-      if (!uri) return;
 
       const ext = getExt(uri);
       const buffer = await uriToArrayBuffer(uri);
@@ -243,10 +239,50 @@ export default function CustomerAccount() {
       Alert.alert("Success", "Profile photo updated.");
       await load();
     } catch (e: any) {
-      console.error("Photo error:", e);
-      Alert.alert("Photo error", e?.message ?? "Failed to update photo.");
+      console.error("Upload error:", e);
+      Alert.alert("Upload error", e?.message ?? "Failed to update photo.");
     }
   }, [load, router]);
+
+  const pickFromCamera = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Please allow access to your camera.");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled) await uploadPhoto(result.assets?.[0]?.uri);
+    } catch (e: any) {
+      console.error("Camera error:", e);
+      Alert.alert("Camera error", e?.message ?? "Failed to take photo.");
+    }
+  }, [uploadPhoto]);
+
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Please allow access to your photos.");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled) await uploadPhoto(result.assets?.[0]?.uri);
+    } catch (e: any) {
+      console.error("Photo error:", e);
+      Alert.alert("Photo error", e?.message ?? "Failed to select photo.");
+    }
+  }, [uploadPhoto]);
 
   const saveProfile = useCallback(async () => {
     if (!profile?.id) return;
@@ -549,7 +585,7 @@ export default function CustomerAccount() {
           <View style={{ gap: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
               <Pressable
-                onPress={changePhoto}
+                onPress={() => setPhotoModalVisible(true)}
                 style={{
                   width: 72,
                   height: 72,
@@ -947,6 +983,37 @@ export default function CustomerAccount() {
                 </View>
               ) : (
                 <View style={{ gap: spacing.md, marginTop: spacing.xs }}>
+                  {/* Average ratings summary */}
+                  <View style={{ flexDirection: "row", justifyContent: "space-around", paddingVertical: spacing.sm, backgroundColor: colors.bg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border }}>
+                    <View style={{ alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="star" size={16} color="#FFB800" />
+                        <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 16 }}>{ratingStats.avg.toFixed(1)}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>Overall</Text>
+                    </View>
+                    <View style={{ alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="chatbubble-outline" size={14} color={colors.textSecondary} />
+                        <Text style={{ fontWeight: "600", color: colors.textPrimary, fontSize: 14 }}>{ratingStats.avgCommunication.toFixed(1)}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>Communication</Text>
+                    </View>
+                    <View style={{ alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="time-outline" size={14} color={colors.textSecondary} />
+                        <Text style={{ fontWeight: "600", color: colors.textPrimary, fontSize: 14 }}>{ratingStats.avgPunctuality.toFixed(1)}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>Punctuality</Text>
+                    </View>
+                    <View style={{ alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                        <Ionicons name="card-outline" size={14} color={colors.textSecondary} />
+                        <Text style={{ fontWeight: "600", color: colors.textPrimary, fontSize: 14 }}>{ratingStats.avgPayment.toFixed(1)}</Text>
+                      </View>
+                      <Text style={{ fontSize: 11, color: colors.textMuted }}>Payment</Text>
+                    </View>
+                  </View>
                   {reviews.slice(0, 3).map((review: any) => (
                     <View
                       key={review.id}
@@ -982,6 +1049,27 @@ export default function CustomerAccount() {
                             {review.overall_rating}
                           </Text>
                         </View>
+                      </View>
+                      {/* Customer sub-ratings */}
+                      <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
+                        {review.communication_rating > 0 && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Ionicons name="chatbubble-outline" size={12} color={colors.textMuted} />
+                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{review.communication_rating}</Text>
+                          </View>
+                        )}
+                        {review.punctuality_rating > 0 && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{review.punctuality_rating}</Text>
+                          </View>
+                        )}
+                        {review.payment_rating > 0 && (
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+                            <Ionicons name="card-outline" size={12} color={colors.textMuted} />
+                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{review.payment_rating}</Text>
+                          </View>
+                        )}
                       </View>
                       {review.comment && (
                         <Text style={{ ...text.muted, fontSize: 13, marginTop: 8, lineHeight: 18 }} numberOfLines={2}>
@@ -1232,6 +1320,127 @@ export default function CustomerAccount() {
           WrenchGo • Customer
         </Text>
       </ScrollView>
+
+      <Modal
+        visible={photoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "flex-end",
+          }}
+          onPress={() => setPhotoModalVisible(false)}
+        >
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingBottom: insets.bottom + 16,
+              paddingTop: 8,
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                backgroundColor: colors.border,
+                borderRadius: 2,
+                alignSelf: "center",
+                marginBottom: 16,
+              }}
+            />
+            <Text
+              style={{
+                ...text.title,
+                fontSize: 18,
+                textAlign: "center",
+                marginBottom: 20,
+              }}
+            >
+              Change Profile Photo
+            </Text>
+
+            <Pressable
+              onPress={pickFromCamera}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 16,
+                paddingHorizontal: 24,
+                backgroundColor: pressed ? colors.surface : "transparent",
+                gap: 16,
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.accent + "20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="camera" size={24} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...text.body, fontWeight: "600" }}>Take Photo</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Use your camera</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              onPress={pickFromGallery}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 16,
+                paddingHorizontal: 24,
+                backgroundColor: pressed ? colors.surface : "transparent",
+                gap: 16,
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.info + "20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="images" size={24} color={colors.info} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...text.body, fontWeight: "600" }}>Choose from Gallery</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Select an existing photo</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPhotoModalVisible(false)}
+              style={({ pressed }) => ({
+                marginTop: 8,
+                marginHorizontal: 24,
+                paddingVertical: 14,
+                borderRadius: 12,
+                backgroundColor: pressed ? colors.surface : colors.border + "40",
+                alignItems: "center",
+              })}
+            >
+              <Text style={{ ...text.body, fontWeight: "600" }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

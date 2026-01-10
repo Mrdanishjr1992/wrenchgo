@@ -20,6 +20,8 @@ export type Review = {
   performance_rating: number | null;
   timing_rating: number | null;
   cost_rating: number | null;
+  punctuality_rating: number | null;
+  payment_rating: number | null;
   comment: string | null;
   visibility: string;
   created_at: string;
@@ -241,7 +243,7 @@ export async function getPublicProfile(userId: string): Promise<any | null> {
 
     const { data: reviews } = await supabase
       .from('reviews')
-      .select('overall_rating')
+      .select('overall_rating, performance_rating, timing_rating, cost_rating, communication_rating, punctuality_rating, payment_rating')
       .eq('reviewee_id', userId)
       .eq('is_hidden', false)
       .is('deleted_at', null);
@@ -249,6 +251,26 @@ export async function getPublicProfile(userId: string): Promise<any | null> {
     const ratingCount = reviews?.length || 0;
     const ratingAvg = ratingCount > 0
       ? reviews!.reduce((sum, r) => sum + r.overall_rating, 0) / ratingCount
+      : 0;
+
+    // Calculate role-specific averages
+    const avgPerformance = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.performance_rating || 0), 0) / ratingCount
+      : 0;
+    const avgTiming = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.timing_rating || 0), 0) / ratingCount
+      : 0;
+    const avgCost = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.cost_rating || 0), 0) / ratingCount
+      : 0;
+    const avgCommunication = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.communication_rating || 0), 0) / ratingCount
+      : 0;
+    const avgPunctuality = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.punctuality_rating || 0), 0) / ratingCount
+      : 0;
+    const avgPayment = ratingCount > 0
+      ? reviews!.reduce((sum, r) => sum + (r.payment_rating || 0), 0) / ratingCount
       : 0;
 
     let serviceArea: string | undefined;
@@ -285,9 +307,12 @@ export async function getPublicProfile(userId: string): Promise<any | null> {
       ratings: {
         review_count: ratingCount,
         avg_overall_rating: ratingAvg,
-        avg_performance_rating: 0,
-        avg_timing_rating: 0,
-        avg_cost_rating: 0,
+        avg_performance_rating: avgPerformance,
+        avg_timing_rating: avgTiming,
+        avg_cost_rating: avgCost,
+        avg_communication_rating: avgCommunication,
+        avg_punctuality_rating: avgPunctuality,
+        avg_payment_rating: avgPayment,
         last_review_at: '',
         five_star_count: 0,
         four_star_count: 0,
@@ -333,6 +358,9 @@ export async function getUserReviews(
         performance_rating,
         timing_rating,
         cost_rating,
+        communication_rating,
+        punctuality_rating,
+        payment_rating,
         comment,
         is_hidden,
         created_at,
@@ -354,10 +382,12 @@ export async function getUserReviews(
       reviewee_id: review.reviewee_id,
       overall_rating: review.overall_rating,
       professionalism_rating: review.performance_rating,
-      communication_rating: review.timing_rating,
+      communication_rating: review.communication_rating,
       performance_rating: review.performance_rating,
       timing_rating: review.timing_rating,
       cost_rating: review.cost_rating,
+      punctuality_rating: review.punctuality_rating,
+      payment_rating: review.payment_rating,
       comment: review.comment,
       visibility: review.is_hidden ? 'hidden' : 'visible',
       created_at: review.created_at,

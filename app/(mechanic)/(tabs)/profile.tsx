@@ -13,9 +13,11 @@ import {
   TextInput,
   Linking,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../src/lib/supabase";
@@ -56,6 +58,7 @@ function toTitleCase(str: string): string {
 export default function MechanicProfile() {
   const router = useRouter();
   const { mode, toggle, colors, spacing, radius, text } = useTheme();
+  const insets = useSafeAreaInsets();
   const card = useMemo(() => createCard(colors), [colors]);
 
   const [loading, setLoading] = useState(true);
@@ -97,6 +100,7 @@ export default function MechanicProfile() {
   const [refreshing, setRefreshing] = useState(false);
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
+  const [photoModalVisible, setPhotoModalVisible] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -207,6 +211,9 @@ export default function MechanicProfile() {
         .select(`
           id,
           overall_rating,
+          performance_rating,
+          timing_rating,
+          cost_rating,
           comment,
           created_at,
           reviewer:profiles!reviews_reviewer_id_fkey(id, full_name, avatar_url)
@@ -243,26 +250,14 @@ export default function MechanicProfile() {
     }, [load])
   );
 
-  const changePhoto = useCallback(async () => {
+  const uploadPhoto = useCallback(async (uri: string | undefined) => {
+    if (!uri) return;
+    setPhotoModalVisible(false);
     try {
-      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (!perm.granted) {
-        Alert.alert("Permission needed", "Please allow access to your photos.");
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.9,
-      });
-
-      if (result.canceled) return;
-
-      const uri = result.assets[0].uri;
       const ext = getExt(uri);
       const { data: userData } = await supabase.auth.getUser();
       const userId = userData.user?.id;
+      if (!userId) return router.replace("/(auth)/sign-in");
 
       const buffer = await uriToArrayBuffer(uri);
       const path = `avatars/${userId}.${ext}`;
@@ -287,10 +282,50 @@ export default function MechanicProfile() {
       Alert.alert("Success", "Profile photo updated.");
       await load();
     } catch (e: any) {
-      console.error("Photo error:", e);
-      Alert.alert("Photo error", e.message ?? "Failed to update photo.");
+      console.error("Upload error:", e);
+      Alert.alert("Upload error", e?.message ?? "Failed to update photo.");
     }
-  }, [load]);
+  }, [load, router]);
+
+  const pickFromCamera = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Please allow access to your camera.");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled) await uploadPhoto(result.assets?.[0]?.uri);
+    } catch (e: any) {
+      console.error("Camera error:", e);
+      Alert.alert("Camera error", e?.message ?? "Failed to take photo.");
+    }
+  }, [uploadPhoto]);
+
+  const pickFromGallery = useCallback(async () => {
+    try {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert("Permission needed", "Please allow access to your photos.");
+        return;
+      }
+      await new Promise(resolve => setTimeout(resolve, 100));
+      const result = await ImagePicker.launchImageLibraryAsync({
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (!result.canceled) await uploadPhoto(result.assets?.[0]?.uri);
+    } catch (e: any) {
+      console.error("Photo error:", e);
+      Alert.alert("Photo error", e?.message ?? "Failed to select photo.");
+    }
+  }, [uploadPhoto]);
 
   const save = async () => {
     try {
@@ -663,7 +698,7 @@ export default function MechanicProfile() {
           <View style={{ gap: spacing.md }}>
             <View style={{ flexDirection: "row", alignItems: "flex-start", gap: spacing.md }}>
               <Pressable
-                onPress={changePhoto}
+                onPress={() => setPhotoModalVisible(true)}
                 style={{
                   width: 72,
                   height: 72,
@@ -1880,6 +1915,127 @@ export default function MechanicProfile() {
           WrenchGo • Mechanic
         </Text>
       </ScrollView>
+
+      <Modal
+        visible={photoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPhotoModalVisible(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "flex-end",
+          }}
+          onPress={() => setPhotoModalVisible(false)}
+        >
+          <View
+            style={{
+              backgroundColor: colors.surface,
+              borderTopLeftRadius: 24,
+              borderTopRightRadius: 24,
+              paddingBottom: insets.bottom + 16,
+              paddingTop: 8,
+            }}
+          >
+            <View
+              style={{
+                width: 40,
+                height: 4,
+                backgroundColor: colors.border,
+                borderRadius: 2,
+                alignSelf: "center",
+                marginBottom: 16,
+              }}
+            />
+            <Text
+              style={{
+                ...text.title,
+                fontSize: 18,
+                textAlign: "center",
+                marginBottom: 20,
+              }}
+            >
+              Change Profile Photo
+            </Text>
+
+            <Pressable
+              onPress={pickFromCamera}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 16,
+                paddingHorizontal: 24,
+                backgroundColor: pressed ? colors.surface : "transparent",
+                gap: 16,
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.accent + "20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="camera" size={24} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...text.body, fontWeight: "600" }}>Take Photo</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Use your camera</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              onPress={pickFromGallery}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                paddingVertical: 16,
+                paddingHorizontal: 24,
+                backgroundColor: pressed ? colors.surface : "transparent",
+                gap: 16,
+              })}
+            >
+              <View
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 24,
+                  backgroundColor: colors.info + "20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="images" size={24} color={colors.info} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...text.body, fontWeight: "600" }}>Choose from Gallery</Text>
+                <Text style={{ ...text.muted, fontSize: 13 }}>Select an existing photo</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => setPhotoModalVisible(false)}
+              style={({ pressed }) => ({
+                marginTop: 8,
+                marginHorizontal: 24,
+                paddingVertical: 14,
+                borderRadius: 12,
+                backgroundColor: pressed ? colors.surface : colors.border + "40",
+                alignItems: "center",
+              })}
+            >
+              <Text style={{ ...text.body, fontWeight: "600" }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

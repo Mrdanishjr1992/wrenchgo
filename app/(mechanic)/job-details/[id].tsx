@@ -27,6 +27,7 @@ import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract 
 import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
+import { symptomQuestions } from "../../../src/data/symptomQuestions";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -243,22 +244,12 @@ export default function MechanicJobDetails() {
 
       const intake = parseJobIntake(data?.description);
       if (intake?.symptom?.key && intake?.answers) {
-        const answerKeys = Object.keys(intake.answers);
-        if (answerKeys.length > 0) {
-          const { data: questions } = await supabase
-            .from("symptom_questions")
-            .select("question_key, question_text")
-            .eq("symptom_key", intake.symptom.key)
-            .in("question_key", answerKeys);
-
-          if (questions) {
-            const qMap: Record<string, string> = {};
-            questions.forEach((q: any) => {
-              qMap[q.question_key] = q.question_text;
-            });
-            setQuestionMap(qMap);
-          }
-        }
+        const questions = symptomQuestions[intake.symptom.key] || [];
+        const qMap: Record<string, string> = {};
+        questions.forEach((q) => {
+          qMap[q.question_key] = q.question_label;
+        });
+        setQuestionMap(qMap);
       }
     } catch (e: any) {
       Alert.alert("Job error", e?.message ?? "Failed to load job.");
