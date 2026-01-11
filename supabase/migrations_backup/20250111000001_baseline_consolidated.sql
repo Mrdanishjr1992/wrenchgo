@@ -1,16 +1,27 @@
--- =====================================================
--- CONSOLIDATED BASELINE SCHEMA
--- =====================================================
--- Purpose: Complete schema for fresh database installations
--- Version: Launch-ready (consolidates migrations 0001-0080)
--- 
--- USAGE: Apply this INSTEAD of running all migrations
---        for new environments. For existing environments,
---        continue using incremental migrations.
+-- ============================================================================
+-- Migration: 20250111000001_baseline_consolidated.sql
+-- ============================================================================
+-- Purpose: Complete schema baseline - extensions, ENUMs, and ALL tables
+-- Dependencies: None (this is the foundation)
+-- Risk Level: Low (idempotent with IF NOT EXISTS)
+-- Rollback: N/A - baseline migration, requires full DB reset
 --
--- WARNING: This file is auto-generated from existing migrations.
---          Do not edit directly - regenerate from source migrations.
--- =====================================================
+-- TABLES CREATED:
+--   Core: profiles, vehicles, jobs, quote_requests, quotes, reviews
+--   Mechanic: mechanic_profiles, mechanic_skills, mechanic_tools, mechanic_safety
+--   Lookup: skills, tools, safety_measures, symptoms, symptom_mappings
+--   Education: education_cards, symptom_education, symptom_questions
+--   Messaging: messages, notifications
+--   Media: media_assets
+--   Payments: mechanic_stripe_accounts, customer_payment_methods, payments
+--   Trust: badges, user_badges, badge_history, trust_scores
+--   Reviews: review_media, review_reports, skill_verifications
+--   Moderation: message_audit_logs, user_violations, chat_restrictions
+--   Other: preferred_mechanics, chat_lifecycle_config, support_requests
+--
+-- WARNING: Do not modify - this migration is applied in production.
+--          Create new migrations for any schema changes.
+-- ============================================================================
 
 BEGIN;
 

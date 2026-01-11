@@ -1,3 +1,29 @@
+-- ============================================================================
+-- Migration: 20250111000003_baseline_functions.sql
+-- ============================================================================
+-- Purpose: Database functions, triggers, and RPC endpoints
+-- Dependencies: 20250111000001 (tables), 20250111000002 (RLS policies)
+-- Risk Level: Low (CREATE OR REPLACE is idempotent)
+-- Rollback: N/A - baseline migration, requires full DB reset
+--
+-- FUNCTIONS CREATED:
+--   Utility: update_updated_at_column
+--   Auth: handle_new_user, set_user_role
+--   Mechanic: update_mechanic_rating, increment_mechanic_job_count
+--   RPC: get_mechanic_leads, get_public_profile_card, get_nearby_mechanics
+--   Reviews: get_review_summary, get_reviews_for_user
+--   Trust: calculate_trust_score, award_badge
+--
+-- TRIGGERS CREATED:
+--   - on_auth_user_created (auth.users -> handle_new_user)
+--   - set_updated_at on all tables with updated_at column
+--   - update_mechanic_rating_trigger (reviews -> mechanic_profiles)
+--   - increment_mechanic_job_count_trigger (jobs -> mechanic_profiles)
+--
+-- WARNING: Do not modify - this migration is applied in production.
+--          Create new migrations for any function changes.
+-- ============================================================================
+
 -- =====================================================
 -- CONSOLIDATED BASELINE - PART 3: FUNCTIONS & TRIGGERS
 -- =====================================================
@@ -467,41 +493,9 @@ END;
 $$;
 
 -- =====================================================
--- POSTGIS LOCATION SYNC (conditional)
+-- POSTGIS LOCATION SYNC (skipped - PostGIS not available)
 -- =====================================================
-
-DO $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
-    -- Add location_geo column if PostGIS is available
-    IF NOT EXISTS (
-      SELECT 1 FROM information_schema.columns 
-      WHERE table_schema = 'public' AND table_name = 'jobs' AND column_name = 'location_geo'
-    ) THEN
-      ALTER TABLE public.jobs ADD COLUMN location_geo geometry(Point, 4326);
-      CREATE INDEX IF NOT EXISTS idx_jobs_location_geo ON public.jobs USING GIST (location_geo);
-    END IF;
-  END IF;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.sync_job_location_geo()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') THEN
-    IF NEW.location_lat IS NOT NULL AND NEW.location_lng IS NOT NULL THEN
-      NEW.location_geo := ST_SetSRID(ST_MakePoint(NEW.location_lng, NEW.location_lat), 4326);
-    ELSE
-      NEW.location_geo := NULL;
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$;
+-- Note: If PostGIS is enabled later, add location_geo column and sync trigger manually
 
 -- =====================================================
 -- TRIGGERS
@@ -519,7 +513,6 @@ DROP TRIGGER IF EXISTS sync_payout_status ON public.mechanic_stripe_accounts;
 DROP TRIGGER IF EXISTS update_support_requests_timestamp ON public.support_requests;
 DROP TRIGGER IF EXISTS update_rating_prompt_timestamp ON public.user_rating_prompt_state;
 DROP TRIGGER IF EXISTS on_job_completed_rating ON public.jobs;
-DROP TRIGGER IF EXISTS sync_job_location ON public.jobs;
 
 -- Create triggers
 CREATE TRIGGER on_auth_user_created
@@ -565,10 +558,6 @@ CREATE TRIGGER update_rating_prompt_timestamp
 CREATE TRIGGER on_job_completed_rating
   AFTER UPDATE ON public.jobs
   FOR EACH ROW EXECUTE FUNCTION public.on_job_completed_rating_prompt();
-
-CREATE TRIGGER sync_job_location
-  BEFORE INSERT OR UPDATE ON public.jobs
-  FOR EACH ROW EXECUTE FUNCTION public.sync_job_location_geo();
 
 -- =====================================================
 -- FUNCTION GRANTS

@@ -1,0 +1,6 @@
+# DO NOT APPLY THESE MIGRATIONS
+# This directory is for reference only.
+# See README.md for details.
+
+# Ignore all SQL files in this directory
+*.sql

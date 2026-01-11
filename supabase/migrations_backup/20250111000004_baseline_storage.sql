@@ -1,3 +1,23 @@
+-- ============================================================================
+-- Migration: 20250111000004_baseline_storage.sql
+-- ============================================================================
+-- Purpose: Storage buckets and access policies for file uploads
+-- Dependencies: 20250111000001 (profiles table for owner checks)
+-- Risk Level: Low (idempotent with ON CONFLICT and DROP POLICY IF EXISTS)
+-- Rollback: N/A - baseline migration, requires full DB reset
+--
+-- BUCKETS CREATED:
+--   - avatars (public read, owner write)
+--   - vehicle-images (owner access)
+--   - job-images (participant access)
+--   - review-media (participant access)
+--   - chat-attachments (participant access)
+--   - support-screenshots (owner access)
+--
+-- WARNING: Do not modify - this migration is applied in production.
+--          Create new migrations for any storage changes.
+-- ============================================================================
+
 -- =====================================================
 -- CONSOLIDATED BASELINE - PART 4: STORAGE POLICIES
 -- =====================================================

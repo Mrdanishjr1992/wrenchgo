@@ -1,3 +1,27 @@
+-- ============================================================================
+-- Migration: 20250111000002_baseline_rls_policies.sql
+-- ============================================================================
+-- Purpose: Enable RLS on all tables and create security policies
+-- Dependencies: 20250111000001_baseline_consolidated.sql (all tables)
+-- Risk Level: Low (idempotent with DROP POLICY IF EXISTS)
+-- Rollback: N/A - baseline migration, requires full DB reset
+--
+-- POLICIES CREATED:
+--   - profiles: own profile CRUD, public profile read
+--   - vehicles: owner CRUD
+--   - jobs: customer/mechanic access based on role
+--   - quote_requests: customer/mechanic access
+--   - reviews: public read, participant write
+--   - mechanic_*: mechanic profile management
+--   - lookup tables: public read
+--   - messages/notifications: participant access
+--   - payments: participant access
+--   - badges/trust: public read, system write
+--
+-- WARNING: Do not modify - this migration is applied in production.
+--          Create new migrations for any policy changes.
+-- ============================================================================
+
 -- =====================================================
 -- CONSOLIDATED BASELINE - PART 2: RLS, POLICIES, GRANTS
 -- =====================================================

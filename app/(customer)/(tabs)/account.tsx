@@ -222,7 +222,7 @@ export default function CustomerAccount() {
 
       const ext = getExt(uri);
       const buffer = await uriToArrayBuffer(uri);
-      const path = `avatars/${userId}.${ext}`;
+      const path = `${userId}.${ext}`;
 
       const up = await supabase.storage.from("avatars").upload(path, buffer, {
         contentType: contentTypeFromExt(ext),

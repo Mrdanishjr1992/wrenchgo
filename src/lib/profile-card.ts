@@ -26,7 +26,7 @@ export async function getPublicProfileCard(
 
   try {
     const { data, error } = await supabase.rpc('get_public_profile_card', {
-      user_id: userId,
+      p_user_id: userId,
     });
 
     if (error) {

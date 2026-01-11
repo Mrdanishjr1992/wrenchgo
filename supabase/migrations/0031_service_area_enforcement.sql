@@ -160,6 +160,11 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
 
 -- 8. Get nearest hub with distance
+-- COMMENTED OUT: This function is now defined in migration 0086 with double precision parameters
+-- to avoid function overload conflicts. The version in 0086 uses Haversine formula instead of PostGIS.
+/*
+DROP FUNCTION IF EXISTS get_nearest_hub(DECIMAL, DECIMAL);
+
 CREATE OR REPLACE FUNCTION get_nearest_hub(
   check_lat DECIMAL,
   check_lng DECIMAL
@@ -173,7 +178,7 @@ CREATE OR REPLACE FUNCTION get_nearest_hub(
 ) AS $$
 BEGIN
   RETURN QUERY
-  SELECT 
+  SELECT
     h.id,
     h.name,
     h.slug,
@@ -196,6 +201,7 @@ BEGIN
   LIMIT 1;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER STABLE;
+*/
 
 -- 9. Get nearby jobs for mechanics (with safety limit)
 CREATE OR REPLACE FUNCTION get_nearby_jobs(
@@ -372,11 +378,12 @@ CREATE INDEX IF NOT EXISTS idx_location_audit_flagged ON location_audit(flagged)
 
 -- 15. Insert Oak Lawn hub (60453)
 INSERT INTO service_hubs (name, slug, zip, lat, lng, max_radius_miles, active_radius_miles, is_active, invite_only, launch_date)
-VALUES ('Chicago', 'chicago', '60453', 41.7200, -87.7500, 100, 25, true, true, CURRENT_DATE)
+VALUES ('Chicago', 'chicago', '60453', 41.7200, -87.7500, 100, 100, true, true, CURRENT_DATE)
 ON CONFLICT (slug) DO UPDATE SET
   zip = EXCLUDED.zip,
   lat = EXCLUDED.lat,
-  lng = EXCLUDED.lng;
+  lng = EXCLUDED.lng,
+  active_radius_miles = EXCLUDED.active_radius_miles;
 
 -- 16. Function to check expansion readiness
 CREATE OR REPLACE FUNCTION check_ring_expansion_ready(
@@ -440,7 +447,7 @@ GRANT SELECT ON waitlist_by_ring TO authenticated;
 GRANT SELECT ON ring_launch_readiness TO authenticated;
 GRANT SELECT ON hub_daily_metrics TO authenticated;
 GRANT EXECUTE ON FUNCTION is_within_service_area TO authenticated, anon;
-GRANT EXECUTE ON FUNCTION get_nearest_hub TO authenticated, anon;
+-- GRANT EXECUTE ON FUNCTION get_nearest_hub TO authenticated, anon; -- Commented out - function now in 0086
 GRANT EXECUTE ON FUNCTION get_nearby_jobs TO authenticated;
 GRANT EXECUTE ON FUNCTION check_ring_expansion_ready TO authenticated;
 

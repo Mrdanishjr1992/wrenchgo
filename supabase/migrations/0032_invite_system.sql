@@ -261,7 +261,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 8. Dashboard view: Current hub health
-CREATE OR REPLACE VIEW hub_health_dashboard AS
+DROP VIEW IF EXISTS hub_health_dashboard;
+CREATE VIEW hub_health_dashboard AS
 SELECT 
   h.id as hub_id,
   h.name as hub_name,

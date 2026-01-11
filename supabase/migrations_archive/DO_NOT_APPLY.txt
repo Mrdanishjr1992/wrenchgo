@@ -1,0 +1,8 @@
+# DO NOT APPLY - REFERENCE ONLY
+# ================================
+# This file prevents accidental application of archived migrations.
+# The Supabase CLI only reads from supabase/migrations/ by default,
+# but this file serves as an additional safeguard.
+#
+# If you see this file, you are in the WRONG directory.
+# Use: supabase/migrations/ for active migrations.

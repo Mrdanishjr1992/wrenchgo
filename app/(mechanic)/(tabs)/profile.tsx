@@ -260,7 +260,7 @@ export default function MechanicProfile() {
       if (!userId) return router.replace("/(auth)/sign-in");
 
       const buffer = await uriToArrayBuffer(uri);
-      const path = `avatars/${userId}.${ext}`;
+      const path = `${userId}.${ext}`;
 
       const { error: uploadError } = await supabase.storage.from("avatars").upload(path, buffer, {
         contentType: contentTypeFromExt(ext),

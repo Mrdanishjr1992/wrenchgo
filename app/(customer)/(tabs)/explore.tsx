@@ -1,8 +1,9 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState, useEffect } from "react";
 import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, RefreshControl } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import * as Location from "expo-location";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { spacing } from "../../../src/ui/theme";
@@ -11,6 +12,7 @@ import { VehicleChip } from "../../../src/components/VehicleChip";
 import { VehiclePickerDrawer } from "../../../src/components/VehiclePickerDrawer";
 import { RiskBadge } from "../../../src/components/RiskBadge";
 import { useSymptoms } from "../../../src/hooks/use-symptoms";
+import { useServiceAreaByCoords } from "../../../src/hooks/useServiceArea";
 
 type Vehicle = {
   id: string;
@@ -76,6 +78,19 @@ export default function Explore() {
   const [showVehicleDrawer, setShowVehicleDrawer] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  const serviceArea = useServiceAreaByCoords(userLocation?.lat ?? null, userLocation?.lng ?? null);
+
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status === "granted") {
+        const loc = await Location.getCurrentPositionAsync({});
+        setUserLocation({ lat: loc.coords.latitude, lng: loc.coords.longitude });
+      }
+    })();
+  }, []);
 
   const { symptoms, loading: loadingSymptoms, error: symptomsError, refetch } = useSymptoms();
 
@@ -257,6 +272,42 @@ export default function Explore() {
           gap: spacing.md,
         }}
       >
+        {/* Service Area Banner */}
+        {!serviceArea.loading && userLocation && (
+          serviceArea.allowed ? (
+            <View
+              style={{
+                padding: spacing.md,
+                borderRadius: 12,
+                backgroundColor: colors.success + "15",
+                borderWidth: 1,
+                borderColor: colors.success,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.success }}>
+                {serviceArea.message || `You're in our ${serviceArea.hubName || "service"} area!`}
+              </Text>
+            </View>
+          ) : (
+            <View
+              style={{
+                padding: spacing.md,
+                borderRadius: 12,
+                backgroundColor: colors.warning + "15",
+                borderWidth: 1,
+                borderColor: colors.warning,
+              }}
+            >
+              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.warning, marginBottom: 4 }}>
+                {serviceArea.boundaryStatus === "future_ring" ? "Expanding to your area soon!" : "Not in service area yet"}
+              </Text>
+              <Text style={{ fontSize: 13, fontWeight: "500", color: colors.textMuted }}>
+                {serviceArea.message}
+              </Text>
+            </View>
+          )
+        )}
+
         {/* Step 1: Vehicle */}
         {stepPill("STEP 1")}
         {selectedVehicle ? (

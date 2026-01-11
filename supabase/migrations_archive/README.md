@@ -1,86 +1,63 @@
-# Archived Migrations - 2026-01-04
+# WrenchGo Migrations Archive - REFERENCE ONLY
 
-This folder contains patch migrations that were created during debugging and have been merged into the main migration files.
+> **WARNING: DO NOT APPLY THESE MIGRATIONS**
+> 
+> This directory contains archived migrations that were replaced by the baseline consolidation.
+> They are preserved for reference only and should NOT be applied to any database.
 
-## Archived Files
+## Purpose
 
-### 20260104012628_add_symptom_mappings_seed_data.sql
-- **Purpose**: Added symptom_mappings seed data
-- **Merged into**: `20250127000005_seed_data.sql`
-- **Status**: Symptom mappings already existed in seed data
+This directory contains migrations that were archived during the baseline consolidation on 2025-02-11. These migrations were applied to earlier versions of the database but have been superseded by the consolidated baseline in `supabase/migrations/`.
 
-### 20260104014322_fix_handle_new_user_function.sql
-- **Purpose**: Fixed handle_new_user to not explicitly set id column
-- **Merged into**: `20250127000003_functions_triggers.sql`
-- **Status**: Function already correct in baseline
+## Why These Exist
 
-### 20260104014713_grant_trigger_permissions.sql
-- **Purpose**: Added grants and exception handling to handle_new_user
-- **Merged into**: `20250127000003_functions_triggers.sql`
-- **Status**: Permissions and error handling incorporated
+1. **Historical Reference** - Document the original migration sequence
+2. **Rollback Reference** - Understand what was originally applied
+3. **Audit Trail** - Maintain complete history of schema changes
+4. **Debugging** - Compare implementations across versions
 
-### 20260104015503_make_set_user_role_idempotent.sql
-- **Purpose**: Made set_user_role idempotent (allow same role to be set multiple times)
-- **Merged into**: `20250127000003_functions_triggers.sql`
-- **Status**: Idempotency logic incorporated
+## Contents
 
-### 20260104015933_fix_corrupted_role_data.sql
-- **Purpose**: Reset corrupted role values to NULL
-- **Status**: One-time data fix, not needed in baseline
+These files represent the migration history from various development phases:
 
-### 20260104022103_ensure_profiles_for_auth_users.sql
-- **Purpose**: Create profiles for auth users missing them
-- **Status**: One-time data fix, not needed in baseline
+- `001_stripe_marketplace_schema.sql` - Early Stripe integration
+- `20240101_*` - 2024 development migrations
+- `20250127*` - January 2025 baseline attempt
+- `20250202*` - February 2025 feature additions
+- `20250204*` - February 2025 bug fixes
+- `20250205*` - Customer eligibility features
+- `20250206*` - ID verification removal
+- `20260104*` - Role and profile fixes (note: future-dated for ordering)
 
-### 20260104022508_add_missing_profile_columns.sql
-- **Purpose**: Added email and phone columns to profiles table
-- **Merged into**: `20250127000001_baseline_schema.sql`
-- **Status**: Columns already in baseline schema
+## DO NOT
 
-### 20260104022623_recreate_missing_profiles.sql
-- **Purpose**: Recreate profiles for users who got stuck during schema mismatch
-- **Status**: One-time data fix, not needed in baseline
+- Move these files to `supabase/migrations/`
+- Run `supabase db push` from this directory
+- Apply these migrations to any database
+- Assume these are compatible with current schema
 
-### 20260104023541_fix_postgres_role_corruption.sql
-- **Purpose**: Reset invalid role values (like 'postgres') to NULL
-- **Status**: One-time data fix, not needed in baseline
+## Current Authoritative Migrations
 
-### 20260104023656_force_reset_specific_user_role.sql
-- **Purpose**: Force reset role for specific user with corrupted data
-- **Status**: One-time data fix, not needed in baseline
+Use the migrations in `supabase/migrations/`:
 
-### 20260104023747_recreate_set_user_role_function.sql
-- **Purpose**: Updated set_user_role to handle enum types with dynamic SQL
-- **Merged into**: `20250127000003_functions_triggers.sql`
-- **Status**: Enum handling incorporated
+| Migration | Purpose |
+|-----------|---------|
+| `20250111000001_baseline_consolidated.sql` | Complete schema |
+| `20250111000002_baseline_rls_policies.sql` | RLS policies |
+| `20250111000003_baseline_functions.sql` | Functions & triggers |
+| `20250111000004_baseline_storage.sql` | Storage buckets |
+| `20250213000001+` | Incremental updates |
 
-### 20260104024053_fix_role_column_type_mismatch.sql
-- **Purpose**: Ensure user_role enum exists and update set_user_role to handle it
-- **Merged into**: 
-  - `20250127000001_baseline_schema.sql` (user_role enum type)
-  - `20250127000003_functions_triggers.sql` (function with enum handling)
-- **Status**: Enum type and handling fully incorporated
+## Related Directories
 
-## Key Changes Merged
+| Directory | Status |
+|-----------|--------|
+| `supabase/migrations/` | **AUTHORITATIVE** - Use this |
+| `supabase/migrations_backup/` | Reference only |
+| `supabase/migrations_archive/` | Reference only (this directory) |
+| `supabase/migrations_backup_20250212/` | Reference only |
+| `supabase/migrations_launch_ready/` | Reference only |
 
-1. **user_role enum type**: Added to baseline schema (20250127000001)
-2. **profiles.role column**: Changed from `text CHECK` to `user_role` enum type
-3. **set_user_role function**: Updated to handle enum type with dynamic SQL and better validation
-4. **handle_new_user function**: Already correct, no changes needed
-5. **Idempotency**: set_user_role now allows setting the same role multiple times
+## Contact
 
-## Migration Order (Final)
-
-1. `20250127000000_fix_role_selection_flow.sql` - No-op placeholder
-2. `20250127000001_baseline_schema.sql` - All tables, types, extensions
-3. `20250127000002_rls_policies.sql` - Row Level Security policies
-4. `20250127000003_functions_triggers.sql` - Functions and triggers
-5. `20250127000004_indexes_performance.sql` - Performance indexes
-6. `20250127000005_seed_data.sql` - Seed data
-7. `20250127000006_project_b_integration.sql` - Project B integration
-8. `20250202000000_create_media_assets.sql` - Media assets table
-9. `20250202000001_repair_reserved_word_columns.sql` - Repair reserved word columns
-
-## Testing
-
-All migrations have been tested with `supabase db reset` and run successfully without errors.
+For questions about archived migrations, consult git history or the database team.

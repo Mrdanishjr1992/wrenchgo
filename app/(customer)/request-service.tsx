@@ -265,13 +265,26 @@ export default function RequestService() {
       if (dbQuestions.length > 0) {
         setQuestions(dbQuestions);
       } else {
-        // fallback
-        setQuestions(QUESTION_FLOWS[symptom] ?? []);
+        // fallback to hardcoded questions
+        const fallback = QUESTION_FLOWS[symptom] ?? [];
+        if (fallback.length > 0) {
+          setQuestions(fallback);
+        } else {
+          // No questions at all - skip to details
+          setQuestions([]);
+          setStep("details");
+        }
       }
     } catch (e: any) {
       console.error("Failed to load questions:", e?.message ?? e);
       // fallback
-      setQuestions(QUESTION_FLOWS[symptom] ?? []);
+      const fallback = QUESTION_FLOWS[symptom] ?? [];
+      if (fallback.length > 0) {
+        setQuestions(fallback);
+      } else {
+        setQuestions([]);
+        setStep("details");
+      }
     } finally {
       setLoadingQuestions(false);
     }
