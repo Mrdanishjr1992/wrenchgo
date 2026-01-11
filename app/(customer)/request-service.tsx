@@ -535,6 +535,7 @@ export default function RequestService() {
         p_location_lng: locationLng,
         p_vehicle_id: vehicleId,
         p_preferred_time: timePreference || null,
+        p_symptom_key: symptomKey || null,
       });
 
       if (error) throw error;

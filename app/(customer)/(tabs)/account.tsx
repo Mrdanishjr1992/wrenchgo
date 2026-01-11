@@ -28,6 +28,7 @@ import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import * as ImagePicker from "expo-image-picker";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useStripe } from "@stripe/stripe-react-native";
+import { acceptInvitation, getInvitationStatus } from "../../../src/lib/promos";
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -81,6 +82,9 @@ export default function CustomerAccount() {
   const [jobStats, setJobStats] = useState({ active: 0, completed: 0 });
   const [ratingStats, setRatingStats] = useState({ avg: 0, count: 0, avgCommunication: 0, avgPunctuality: 0, avgPayment: 0 });
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [referralInput, setReferralInput] = useState("");
+  const [applyingReferral, setApplyingReferral] = useState(false);
+  const [wasInvited, setWasInvited] = useState(false);
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -193,6 +197,9 @@ export default function CustomerAccount() {
         : 0;
       setRatingStats({ avg: avgRating, count: reviewCount, avgCommunication, avgPunctuality, avgPayment });
 
+      const invitationStatus = await getInvitationStatus();
+      setWasInvited(invitationStatus?.was_invited ?? false);
+
       setIsDirty(false);
     } catch (e: any) {
       console.error("Profile load error:", e);
@@ -211,6 +218,25 @@ export default function CustomerAccount() {
     await load();
     setRefreshing(false);
   }, [load]);
+
+  const handleApplyReferral = useCallback(async () => {
+    if (!referralInput.trim()) return;
+    setApplyingReferral(true);
+    try {
+      const result = await acceptInvitation(referralInput.trim().toUpperCase());
+      if (result.success) {
+        Alert.alert("Success!", "Referral code applied. You'll receive credits after your first completed job!");
+        setReferralInput("");
+        load();
+      } else {
+        Alert.alert("Error", result.error || "Failed to apply referral code");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error?.message || "Failed to apply referral code");
+    } finally {
+      setApplyingReferral(false);
+    }
+  }, [referralInput, load]);
 
   const uploadPhoto = useCallback(async (uri: string | undefined) => {
     if (!uri) return;
@@ -1290,6 +1316,56 @@ export default function CustomerAccount() {
 
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
+
+        {!wasInvited && (
+          <View style={[card, { padding: spacing.lg, borderRadius: radius.lg }]}>
+            <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.xs }}>
+              Have a Referral Code?
+            </Text>
+            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted, marginBottom: spacing.md }}>
+              Enter a friend's code to connect and earn rewards together.
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: "600",
+                  letterSpacing: 2,
+                }}
+                placeholder="Enter code"
+                placeholderTextColor={colors.textMuted}
+                value={referralInput}
+                onChangeText={setReferralInput}
+                autoCapitalize="characters"
+                maxLength={8}
+              />
+              <Pressable
+                onPress={handleApplyReferral}
+                disabled={!referralInput.trim() || applyingReferral}
+                style={({ pressed }) => ({
+                  backgroundColor: colors.accent,
+                  paddingHorizontal: spacing.lg,
+                  borderRadius: 8,
+                  alignItems: "center",
+                  justifyContent: "center",
+                  opacity: (!referralInput.trim() || applyingReferral) ? 0.5 : pressed ? 0.8 : 1,
+                })}
+              >
+                <Text style={{ fontWeight: "700", color: colors.black }}>
+                  {applyingReferral ? "..." : "Apply"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         <Pressable
           onPress={signOut}

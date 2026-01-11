@@ -96,7 +96,7 @@ export function MessagesListView({ role }: MessagesListViewProps) {
       let query = supabase
         .from("jobs")
         .select("id, title, customer_id, accepted_mechanic_id, created_at")
-        .in("status", ["accepted", "work_in_progress", "completed"])
+        .in("status", ["accepted", "scheduled", "in_progress", "work_in_progress", "completed"])
         .order("created_at", { ascending: false });
 
       if (isCustomer) {

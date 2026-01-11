@@ -11,7 +11,7 @@ import { AppButton } from "@/src/ui/components/AppButton";
 import { acceptQuoteAndCreateContract } from "@/src/lib/job-contract";
 import { notifyUser } from "@/src/lib/notify";
 import { getDisplayTitle } from "@/src/lib/format-symptom";
-import { previewPromoDiscount, getPromoDiscountDescription } from "@/src/lib/promos";
+import { previewPromoDiscount, getPromoDiscountDescription, applyPromoToPayment } from "@/src/lib/promos";
 import type { PromoDiscountPreview } from "@/src/types/promos";
 
 const PLATFORM_FEE_CENTS = 1500;
@@ -138,32 +138,44 @@ export default function JobPayment() {
     try {
       setProcessing(true);
 
-      // Calculate final platform fee (only referral credits apply)
-      const referralDiscount = promoPreview?.has_discount ? promoPreview.discount_cents : 0;
-      const finalFee = Math.max(0, PLATFORM_FEE_CENTS - referralDiscount);
-
       const contractResult = await acceptQuoteAndCreateContract(quote.id);
 
       if (!contractResult.success) {
         throw new Error(contractResult.error || "Failed to create contract");
       }
 
-      // Create payment record
+      // Create payment record first (with full fee)
       const { data: paymentResult, error: paymentError } = await supabase.rpc("create_payment_intent", {
         p_job_id: job.id,
-        p_amount_cents: quote.price_cents + finalFee,
+        p_amount_cents: quote.price_cents + PLATFORM_FEE_CENTS,
         p_stripe_payment_intent_id: `manual_${Date.now()}`,
       });
 
       if (paymentError) {
         console.error("Payment record error:", paymentError);
+        throw new Error("Failed to create payment record");
+      }
+
+      // Apply promo credit to payment if available (this consumes the credit and records in payment_promo_applications)
+      let appliedDiscount = 0;
+      if (promoPreview?.has_discount && paymentResult?.payment_id) {
+        const promoResult = await applyPromoToPayment(paymentResult.payment_id, PLATFORM_FEE_CENTS);
+        if (promoResult.success && promoResult.has_credit) {
+          appliedDiscount = promoResult.discount_cents || 0;
+        }
       }
 
       // Update payment status to succeeded
       if (paymentResult?.payment_id) {
+        const finalAmount = quote.price_cents + PLATFORM_FEE_CENTS - appliedDiscount;
         await supabase
           .from("payments")
-          .update({ status: "succeeded", paid_at: new Date().toISOString() })
+          .update({
+            status: "succeeded",
+            paid_at: new Date().toISOString(),
+            amount_cents: finalAmount,
+            platform_fee_cents: PLATFORM_FEE_CENTS - appliedDiscount,
+          })
           .eq("id", paymentResult.payment_id);
       }
 

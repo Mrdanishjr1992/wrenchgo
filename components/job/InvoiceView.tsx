@@ -1,21 +1,63 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/ui/theme-context';
 import type { Invoice, InvoiceLineItem } from '../../src/types/job-lifecycle';
 import { formatCents } from '../../src/types/job-lifecycle';
 import { formatLineItemType, getLineItemIcon, approveLineItem, rejectLineItem } from '../../src/lib/invoice';
+import { retroactiveApplyPromo, previewPromoDiscount } from '../../src/lib/promos';
 
 interface InvoiceViewProps {
   invoice: Invoice;
   role: 'customer' | 'mechanic';
   onRefresh?: () => void;
   showPendingActions?: boolean;
+  jobId?: string;
 }
 
-export function InvoiceView({ invoice, role, onRefresh, showPendingActions = true }: InvoiceViewProps) {
+export function InvoiceView({ invoice, role, onRefresh, showPendingActions = true, jobId }: InvoiceViewProps) {
   const { colors } = useTheme();
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const [hasAvailablePromo, setHasAvailablePromo] = useState(false);
+  const [applyingPromo, setApplyingPromo] = useState(false);
+
+  const { contract } = invoice;
+  const hasPromoApplied = contract.promo_discount_cents && contract.promo_discount_cents > 0;
+
+  useEffect(() => {
+    if (role === 'customer' && !hasPromoApplied && jobId) {
+      previewPromoDiscount(1500).then((preview) => {
+        setHasAvailablePromo(preview?.has_discount ?? false);
+      });
+    }
+  }, [role, hasPromoApplied, jobId]);
+
+  const handleApplyPromo = async () => {
+    if (!jobId) return;
+    Alert.alert(
+      'Apply Promo Credit?',
+      'This will apply your available promo credit to waive the platform fee for this job.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: async () => {
+            setApplyingPromo(true);
+            const result = await retroactiveApplyPromo(jobId);
+            setApplyingPromo(false);
+            if (result.success && result.has_credit) {
+              Alert.alert('Success', `Applied ${result.credit_type === 'FEELESS' ? 'full fee waiver' : '$3 discount'}!`);
+              onRefresh?.();
+            } else if (result.success && !result.has_credit) {
+              Alert.alert('No Credits', 'You don\'t have any promo credits available.');
+            } else {
+              Alert.alert('Error', result.error || 'Failed to apply promo');
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const handleApprove = async (item: InvoiceLineItem) => {
     Alert.alert(
@@ -161,7 +203,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
     );
   };
 
-  const { contract, approved_items, pending_items, rejected_items } = invoice;
+  const { approved_items, pending_items, rejected_items } = invoice;
 
   // Filter out platform_fee items - shown separately in summary
   const filteredApprovedItems = approved_items.filter(item => item.item_type !== 'platform_fee');
@@ -239,16 +281,63 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                 </Text>
               </View>
               <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
-                {formatCents(contract.platform_fee_cents)}
+                {formatCents(contract.original_platform_fee_cents || contract.platform_fee_cents)}
               </Text>
             </View>
+
+            {/* Promo discount */}
+            {hasPromoApplied && (
+              <View style={styles.totalRow}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="gift" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                  <Text style={[styles.totalLabel, { color: '#10B981' }]}>
+                    {contract.promo_credit_type === 'FEELESS'
+                      ? 'Referral Credit (Fee Waived)'
+                      : 'Referral Credit ($3 Off)'}
+                  </Text>
+                </View>
+                <Text style={[styles.totalValue, { color: '#10B981' }]}>
+                  -{formatCents(contract.promo_discount_cents!)}
+                </Text>
+              </View>
+            )}
+
+            {/* Apply promo button - show if no promo applied and user has available credits */}
+            {!hasPromoApplied && hasAvailablePromo && jobId && (
+              <Pressable
+                onPress={handleApplyPromo}
+                disabled={applyingPromo}
+                style={[
+                  styles.totalRow,
+                  {
+                    backgroundColor: '#10B98115',
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    marginTop: 8,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="gift" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                  <Text style={[styles.totalLabel, { color: '#10B981', fontWeight: '600' }]}>
+                    Apply Referral Credit
+                  </Text>
+                </View>
+                {applyingPromo ? (
+                  <ActivityIndicator size="small" color="#10B981" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={18} color="#10B981" />
+                )}
+              </Pressable>
+            )}
 
             <View style={[styles.totalRow, styles.grandTotalRow]}>
               <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
                 Total Due
               </Text>
               <Text style={[styles.grandTotalValue, { color: colors.accent }]}>
-                {formatCents(contract.total_customer_cents)}
+                {formatCents(contract.total_customer_cents - (contract.promo_discount_cents || 0))}
               </Text>
             </View>
           </>

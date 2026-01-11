@@ -17,7 +17,7 @@ export async function getOrCreateInviteCode(): Promise<string | null> {
 
 export async function acceptInvitation(inviteCode: string): Promise<{ success: boolean; error?: string }> {
   const { data, error } = await supabase.rpc('accept_invitation', {
-    p_invite_code: inviteCode,
+    p_code: inviteCode,
   });
   if (error) {
     console.error('Error accepting invitation:', error);
@@ -94,4 +94,94 @@ export function getPromoDiscountDescription(creditType: 'FEELESS' | 'FEELESS3'):
   return creditType === 'FEELESS'
     ? 'Free platform fee (referral credit)'
     : '$3 off platform fee (referral credit)';
+}
+
+export async function applyPromoCredit(jobId: string): Promise<{
+  success: boolean;
+  has_credit?: boolean;
+  credit_type?: string;
+  discount_cents?: number;
+  error?: string;
+}> {
+  const { data, error } = await supabase.rpc('apply_promo_credit_to_job', {
+    p_job_id: jobId,
+  });
+  if (error) {
+    console.error('Error applying promo credit:', error);
+    return { success: false, error: error.message };
+  }
+  return data;
+}
+
+export async function applyPromoToPayment(paymentId: string, platformFeeCents: number = 1500): Promise<{
+  success: boolean;
+  has_credit?: boolean;
+  credit_type?: string;
+  discount_cents?: number;
+  fee_after_cents?: number;
+  error?: string;
+}> {
+  const { data, error } = await supabase.rpc('apply_promo_to_payment', {
+    p_payment_id: paymentId,
+    p_platform_fee_cents: platformFeeCents,
+  });
+  if (error) {
+    console.error('Error applying promo to payment:', error);
+    return { success: false, error: error.message };
+  }
+  return data;
+}
+
+export async function getJobPromoInfo(jobId: string): Promise<{
+  success: boolean;
+  has_promo?: boolean;
+  discount_cents?: number;
+  credit_type?: string;
+  discount_description?: string;
+  error?: string;
+} | null> {
+  const { data, error } = await supabase.rpc('get_job_promo_info', {
+    p_job_id: jobId,
+  });
+  if (error) {
+    console.error('Error getting job promo info:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getPaymentPromoInfo(paymentId: string): Promise<{
+  has_promo: boolean;
+  credit_type?: string;
+  fee_before_cents?: number;
+  discount_cents?: number;
+  fee_after_cents?: number;
+  discount_description?: string;
+} | null> {
+  const { data, error } = await supabase.rpc('get_payment_promo_info', {
+    p_payment_id: paymentId,
+  });
+  if (error) {
+    console.error('Error getting payment promo info:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function retroactiveApplyPromo(jobId: string): Promise<{
+  success: boolean;
+  has_credit?: boolean;
+  credit_type?: string;
+  discount_cents?: number;
+  fee_after_cents?: number;
+  error?: string;
+}> {
+  const { data, error } = await supabase.rpc('retroactive_apply_promo', {
+    p_job_id: jobId,
+  });
+  if (error) {
+    console.error('Error applying retroactive promo:', error);
+    return { success: false, error: error.message };
+  }
+  return data;
 }

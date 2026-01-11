@@ -119,35 +119,62 @@ export async function getInvoiceLineItems(contractId: string): Promise<InvoiceLi
   return (data ?? []) as InvoiceLineItem[];
 }
 
-export async function getInvoice(contractId: string): Promise<Invoice | null> {
-  // Get contract
-  const { data: contract, error: contractError } = await supabase
-    .from('job_contracts')
-    .select('*')
-    .eq('id', contractId)
-    .single();
-  
-  if (contractError || !contract) {
-    console.error('Get contract error:', contractError);
-    return null;
+export async function getInvoice(contractId: string, preloadedContract?: any): Promise<Invoice | null> {
+  // Get contract (or use preloaded)
+  let contract = preloadedContract;
+  if (!contract) {
+    const { data, error: contractError } = await supabase
+      .from('job_contracts')
+      .select('*')
+      .eq('id', contractId)
+      .single();
+
+    if (contractError || !data) {
+      console.error('Get contract error:', contractError);
+      return null;
+    }
+    contract = data;
   }
-  
+
+  // If no promo info on contract, check payment_promo_applications via payments table
+  if (!contract.promo_discount_cents && contract.job_id) {
+    const { data: payment } = await supabase
+      .from('payments')
+      .select('id')
+      .eq('job_id', contract.job_id)
+      .maybeSingle();
+
+    if (payment) {
+      const { data: promoApp } = await supabase
+        .from('payment_promo_applications')
+        .select('discount_cents, credit_type, fee_before_cents')
+        .eq('payment_id', payment.id)
+        .maybeSingle();
+
+      if (promoApp && promoApp.discount_cents > 0) {
+        contract.promo_discount_cents = promoApp.discount_cents;
+        contract.promo_credit_type = promoApp.credit_type;
+        contract.original_platform_fee_cents = promoApp.fee_before_cents;
+      }
+    }
+  }
+
   // Get line items
   const lineItems = await getInvoiceLineItems(contractId);
-  
+
   // Categorize items
   const approvedItems = lineItems.filter(i => i.approval_status === 'approved');
   const pendingItems = lineItems.filter(i => i.approval_status === 'pending');
-  const rejectedItems = lineItems.filter(i => 
+  const rejectedItems = lineItems.filter(i =>
     i.approval_status === 'rejected' || i.approval_status === 'auto_rejected'
   );
-  
+
   // Calculate subtotals
   const approvedSubtotal = approvedItems
     .filter(i => i.item_type !== 'platform_fee')
     .reduce((sum, i) => sum + i.total_cents, 0);
   const pendingSubtotal = pendingItems.reduce((sum, i) => sum + i.total_cents, 0);
-  
+
   return {
     contract: contract as JobContract,
     line_items: lineItems,
@@ -166,14 +193,28 @@ export async function getInvoiceByJobId(jobId: string): Promise<Invoice | null> 
     .select('*')
     .eq('job_id', jobId)
     .single();
-  
+
   if (contractError || !contract) {
     if (contractError?.code === 'PGRST116') return null; // Not found
     console.error('Get contract error:', contractError);
     return null;
   }
-  
-  return getInvoice(contract.id);
+
+  // Get job promo info
+  const { data: job } = await supabase
+    .from('jobs')
+    .select('promo_discount_cents, promo_credit_type, applied_promo_credit_id')
+    .eq('id', jobId)
+    .single();
+
+  // Merge promo info into contract
+  if (job && job.promo_discount_cents) {
+    contract.promo_discount_cents = job.promo_discount_cents;
+    contract.promo_credit_type = job.promo_credit_type;
+    contract.original_platform_fee_cents = contract.platform_fee_cents;
+  }
+
+  return getInvoice(contract.id, contract);
 }
 
 // =====================================================

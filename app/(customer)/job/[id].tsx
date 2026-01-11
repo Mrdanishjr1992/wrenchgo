@@ -892,6 +892,7 @@ export default function CustomerJobDetails() {
                         role="customer"
                         onRefresh={load}
                         showPendingActions={job.status !== "completed" && job.status !== "canceled"}
+                        jobId={job.id}
                       />
                     </View>
                   )}

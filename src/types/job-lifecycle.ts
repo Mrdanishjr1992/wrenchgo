@@ -93,9 +93,9 @@ export interface JobContract {
   quote_id: string;
   customer_id: string;
   mechanic_id: string;
-  
+
   status: ContractStatus;
-  
+
   // Amounts
   quoted_price_cents: number;
   platform_fee_cents: number;
@@ -104,24 +104,29 @@ export interface JobContract {
   total_customer_cents: number;
   mechanic_commission_cents: number;
   mechanic_payout_cents: number;
-  
+
+  // Promo discount
+  promo_discount_cents?: number;
+  promo_credit_type?: string;
+  original_platform_fee_cents?: number;
+
   // Payment
   stripe_payment_intent_id: string | null;
   stripe_transfer_id: string | null;
   payment_authorized_at: string | null;
   payment_captured_at: string | null;
-  
+
   // Terms
   terms_version: string;
   terms_accepted_at: string;
-  
+
   // Cancellation
   cancelled_at: string | null;
   cancelled_by: string | null;
   cancellation_reason: CancellationReason | null;
   cancellation_note: string | null;
   refund_amount_cents: number | null;
-  
+
   created_at: string;
   updated_at: string;
 }

@@ -1,5 +1,5 @@
 import React, { useCallback, useState, useEffect } from "react";
-import { View, Text, ScrollView, ActivityIndicator, Share, Pressable, RefreshControl } from "react-native";
+import { View, Text, ScrollView, ActivityIndicator, Share, Pressable, RefreshControl, TextInput, Alert } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { setStringAsync } from "expo-clipboard";
@@ -10,6 +10,8 @@ import {
   getOrCreateInviteCode,
   getPromoCreditsBalance,
   getMyInvitations,
+  acceptInvitation,
+  getInvitationStatus,
 } from "@/src/lib/promos";
 import type { PromoCreditsBalance, MyInvitation } from "@/src/types/promos";
 
@@ -24,17 +26,22 @@ export default function MechanicInviteScreen() {
   const [credits, setCredits] = useState<PromoCreditsBalance | null>(null);
   const [invitations, setInvitations] = useState<MyInvitation[]>([]);
   const [copied, setCopied] = useState(false);
+  const [referralInput, setReferralInput] = useState("");
+  const [applyingReferral, setApplyingReferral] = useState(false);
+  const [wasInvited, setWasInvited] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
-      const [code, balance, invites] = await Promise.all([
+      const [code, balance, invites, invitationStatus] = await Promise.all([
         getOrCreateInviteCode(),
         getPromoCreditsBalance(),
         getMyInvitations(),
+        getInvitationStatus(),
       ]);
       setInviteCode(code);
       setCredits(balance);
       setInvitations(invites);
+      setWasInvited(invitationStatus?.was_invited ?? false);
     } catch (error) {
       console.error("Error loading invite data:", error);
     } finally {
@@ -69,6 +76,25 @@ export default function MechanicInviteScreen() {
       console.error("Error sharing:", error);
     }
   }, [inviteCode]);
+
+  const handleApplyReferral = useCallback(async () => {
+    if (!referralInput.trim()) return;
+    setApplyingReferral(true);
+    try {
+      const result = await acceptInvitation(referralInput.trim().toUpperCase());
+      if (result.success) {
+        Alert.alert("Success!", "Referral code applied. You'll receive credits after your first completed job!");
+        setReferralInput("");
+        loadData();
+      } else {
+        Alert.alert("Error", result.error || "Failed to apply referral code");
+      }
+    } catch (error: any) {
+      Alert.alert("Error", error?.message || "Failed to apply referral code");
+    } finally {
+      setApplyingReferral(false);
+    }
+  }, [referralInput, loadData]);
 
   if (loading) {
     return (
@@ -187,6 +213,46 @@ export default function MechanicInviteScreen() {
             <Text style={text.muted}>Unable to generate invite code</Text>
           )}
         </View>
+
+        {!wasInvited && (
+          <View style={[card, { padding: spacing.lg }]}>
+            <Text style={[text.title, { marginBottom: spacing.sm }]}>Have a Referral Code?</Text>
+            <Text style={[text.muted, { marginBottom: spacing.md }]}>
+              Enter a friend's code to connect and earn rewards together.
+            </Text>
+
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <TextInput
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.surface,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  fontSize: 16,
+                  fontWeight: "600",
+                  letterSpacing: 2,
+                  textTransform: "uppercase",
+                }}
+                placeholder="Enter code"
+                placeholderTextColor={colors.textMuted}
+                value={referralInput}
+                onChangeText={setReferralInput}
+                autoCapitalize="characters"
+                maxLength={8}
+              />
+              <AppButton
+                title={applyingReferral ? "..." : "Apply"}
+                variant="primary"
+                onPress={handleApplyReferral}
+                disabled={!referralInput.trim() || applyingReferral}
+                style={{ paddingHorizontal: spacing.lg }}
+              />
+            </View>
+          </View>
+        )}
 
         <View style={[card, { padding: spacing.lg }]}>
           <Text style={[text.title, { marginBottom: spacing.sm }]}>How It Works</Text>
