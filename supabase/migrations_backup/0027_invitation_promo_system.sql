@@ -80,17 +80,21 @@ COMMENT ON TABLE public.promo_credits IS 'Promo credit buckets for fee discounts
 -- TABLE: invitation_awards
 -- =====================================================
 -- Idempotency + audit for awards (unique on invited_id ensures one award per invited user)
-ALTER TABLE public.invitation_awards
-DROP CONSTRAINT IF EXISTS invitation_awards_award_type_check;
+CREATE TABLE IF NOT EXISTS public.invitation_awards (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  inviter_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  invited_id uuid NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  invitation_id uuid NOT NULL REFERENCES public.invitations(id) ON DELETE CASCADE,
+  award_type text NOT NULL CHECK (award_type IN ('FEELESS_1', 'FEELESS_3')),
+  stripe_event_id text,
+  awarded_at timestamptz DEFAULT now() NOT NULL,
 
-ALTER TABLE public.invitation_awards
-ADD CONSTRAINT invitation_awards_award_type_check
-CHECK (award_type IN ('FEELESS_1', 'FEELESS_3'));
+  CONSTRAINT invitation_awards_invited_unique UNIQUE (invited_id)
+);
 
 CREATE UNIQUE INDEX IF NOT EXISTS invitation_awards_stripe_event_id_unique
 ON public.invitation_awards (stripe_event_id)
 WHERE stripe_event_id IS NOT NULL;
-
 
 CREATE INDEX IF NOT EXISTS idx_invitation_awards_inviter ON public.invitation_awards(inviter_id);
 CREATE INDEX IF NOT EXISTS idx_invitation_awards_invited ON public.invitation_awards(invited_id);
