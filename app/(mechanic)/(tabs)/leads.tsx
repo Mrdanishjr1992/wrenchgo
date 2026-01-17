@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,6 +23,8 @@ import { LeadsEmptyState, LeadCardSkeleton } from '@/components/mechanic/LeadsEm
 import { LeadsHeader } from '@/components/mechanic/LeadsHeader';
 import type { LeadFilterType } from '@/src/types/mechanic-leads';
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from '@/src/onboarding';
+import { getVerificationStatus, type VerificationStatus } from '@/src/lib/verification';
+import { VERIFICATION_STATUS, VERIFICATION_STATUS_LABELS } from '@/src/constants/verification';
 
 export default function MechanicLeadsPage() {
   const router = useRouter();
@@ -32,6 +35,8 @@ export default function MechanicLeadsPage() {
   const [filter, setFilter] = useState<LeadFilterType>('all');
   const [location, setLocation] = useState<{ latitude: number; longitude: number } | null>(null);
   const [settingLocation, setSettingLocation] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<VerificationStatus | null>(null);
+  const [verificationLoading, setVerificationLoading] = useState(true);
 
   const { leads, summary, loading, error, hasMore, sortBy, profileStatus, refetch, loadMore, changeSortBy } =
     useMechanicLeads(
@@ -53,6 +58,22 @@ export default function MechanicLeadsPage() {
     };
     getCurrentUser();
   }, []);
+
+  useEffect(() => {
+    const fetchVerificationStatus = async () => {
+      if (!mechanicId) return;
+      setVerificationLoading(true);
+      try {
+        const status = await getVerificationStatus(mechanicId);
+        setVerificationStatus(status);
+      } catch (err) {
+        console.error('Error fetching verification status:', err);
+      } finally {
+        setVerificationLoading(false);
+      }
+    };
+    fetchVerificationStatus();
+  }, [mechanicId]);
 
   useEffect(() => {
     const requestLocationPermission = async () => {
@@ -216,6 +237,120 @@ export default function MechanicLeadsPage() {
 
   const showLocationBanner = profileStatus && !profileStatus.hasLocation;
   const showServiceAreaBanner = profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea;
+
+  const isVerified = verificationStatus?.status === VERIFICATION_STATUS.ACTIVE;
+
+  if (verificationLoading) {
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <LinearGradient
+          colors={[colors.accent, colors.accent + '28']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top }]}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.headerTitleRow}>
+              <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
+              <Text style={styles.headerTitle}>Leads</Text>
+            </View>
+          </View>
+        </LinearGradient>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.accent} />
+        </View>
+      </View>
+    );
+  }
+
+  if (!isVerified) {
+    const statusLabel = verificationStatus?.status
+      ? VERIFICATION_STATUS_LABELS[verificationStatus.status as keyof typeof VERIFICATION_STATUS_LABELS]
+      : 'Pending Verification';
+    return (
+      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+        <LinearGradient
+          colors={[colors.accent, colors.accent + '28']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={[styles.header, { paddingTop: insets.top }]}
+        >
+          <View style={styles.headerContent}>
+            <View style={styles.headerTitleRow}>
+              <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
+              <Text style={styles.headerTitle}>Leads</Text>
+            </View>
+          </View>
+        </LinearGradient>
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24 }}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={{ alignItems: 'center', gap: 16 }}>
+            <View style={{
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: colors.warning + '20',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+              <Ionicons name="shield-checkmark-outline" size={40} color={colors.warning || '#D97706'} />
+            </View>
+            <Text style={{
+              fontSize: 22,
+              fontWeight: '800',
+              color: colors.textPrimary,
+              textAlign: 'center',
+            }}>
+              Verification Required
+            </Text>
+            <Text style={{
+              fontSize: 15,
+              color: colors.textMuted,
+              textAlign: 'center',
+              lineHeight: 22,
+            }}>
+              Complete your profile verification to access leads and start quoting jobs.
+            </Text>
+            <View style={{
+              paddingHorizontal: 16,
+              paddingVertical: 8,
+              borderRadius: 20,
+              backgroundColor: colors.warning + '20',
+              marginTop: 8,
+            }}>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.warning || '#D97706' }}>
+                Status: {statusLabel}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => router.push('/(mechanic)/(tabs)/profile')}
+              style={{
+                backgroundColor: colors.accent,
+                paddingVertical: 14,
+                paddingHorizontal: 28,
+                borderRadius: 12,
+                marginTop: 16,
+              }}
+            >
+              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black }}>
+                Complete Verification
+              </Text>
+            </TouchableOpacity>
+            <Text style={{
+              fontSize: 13,
+              color: colors.textMuted,
+              textAlign: 'center',
+              marginTop: 8,
+            }}>
+              Go to your profile to upload required documents and complete the vetting questionnaire.
+            </Text>
+          </View>
+        </ScrollView>
+      </View>
+    );
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>

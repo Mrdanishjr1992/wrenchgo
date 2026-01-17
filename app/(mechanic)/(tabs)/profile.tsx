@@ -25,6 +25,8 @@ import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
+import { VerificationSection } from "@/components/verification/VerificationSection";
+import { checkIsAdmin } from "@/src/lib/verification";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 
@@ -101,6 +103,7 @@ export default function MechanicProfile() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [reviewCount, setReviewCount] = useState(0);
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -226,6 +229,9 @@ export default function MechanicProfile() {
 
       setReviews(reviewsData || []);
       setReviewCount(totalReviewCount || 0);
+
+      const adminStatus = await checkIsAdmin();
+      setIsAdmin(adminStatus);
 
       setIsDirty(false);
     } catch (e: any) {
@@ -825,6 +831,8 @@ export default function MechanicProfile() {
             </Pressable>
           </View>
         </LinearGradient>
+
+        <VerificationSection mechanicId={profile?.id} />
 
         {!editing && (
           <>
@@ -1885,6 +1893,44 @@ export default function MechanicProfile() {
 
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
+
+        {isAdmin && (
+          <Pressable
+            onPress={() => router.push("/(admin)/verification")}
+            style={({ pressed }) => [
+              card,
+              {
+                paddingVertical: 14,
+                paddingHorizontal: 16,
+                borderRadius: radius.lg,
+                opacity: pressed ? 0.9 : 1,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 12,
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: colors.info + "20",
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.info} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>Admin Panel</Text>
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+                Manage mechanic verifications
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+        )}
 
         <Pressable
           onPress={signOut}

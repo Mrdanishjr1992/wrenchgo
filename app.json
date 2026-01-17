@@ -19,7 +19,7 @@
 
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.wrenchgo.app",
+      "bundleIdentifier": "com.wrenchgo",
       "icon": "./assets/icon.png",
       "infoPlist": {
         "NSCameraUsageDescription": "We need camera access for ID verification",
@@ -50,7 +50,7 @@
       [
         "@stripe/stripe-react-native",
         {
-          "merchantIdentifier": "merchant.com.wrenchgo.app",
+          "merchantIdentifier": "merchant.com.wrenchgo",
           "enableGooglePay": true
         }
       ],
@@ -76,8 +76,9 @@
         "origin": false
       },
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "51e3aae3-f17e-46a3-8146-0f0d7ebbd71c"
       }
-    }
+    },
+    "owner": "mrdanishjr1992"
   }
 }

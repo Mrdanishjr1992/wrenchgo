@@ -454,33 +454,35 @@ export default function CustomerJobs() {
           showsVerticalScrollIndicator={false}
         >
           <LinearGradient
-            colors={[colors.accent, colors.accent + "CC"]}
+            colors={['#6366F1', '#8B5CF6', '#A855F7']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
             style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl, paddingHorizontal: spacing.md }}
           >
-            <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText }}>My Jobs</Text>
-            <Text style={{ fontSize: 14, color: colors.buttonText, opacity: 0.7, marginTop: 4 }}>Track your service requests</Text>
+            <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff' }}>My Jobs</Text>
+            <Text style={{ fontSize: 14, color: '#fff', opacity: 0.85, marginTop: 4 }}>Track your service requests</Text>
 
             <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="flash" size={14} color={colors.buttonText} />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Active</Text>
+                  <Ionicons name="flash" size={14} color="#FBBF24" />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Active</Text>
                 </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{active.length}</Text>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{active.length}</Text>
               </View>
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="time" size={14} color={colors.buttonText} />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Waiting</Text>
+                  <Ionicons name="time" size={14} color="#38BDF8" />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Waiting</Text>
                 </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{waitingForQuote.length}</Text>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{waitingForQuote.length}</Text>
               </View>
-              <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.1)", borderRadius: 16, padding: spacing.md }}>
+              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="checkmark-circle" size={14} color={colors.buttonText} />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: colors.buttonText, opacity: 0.7 }}>Done</Text>
+                  <Ionicons name="checkmark-circle" size={14} color="#4ADE80" />
+                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Done</Text>
                 </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: colors.buttonText, marginTop: 4 }}>{completed.length}</Text>
+                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{completed.length}</Text>
               </View>
             </View>
           </LinearGradient>
