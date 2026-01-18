@@ -12,6 +12,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
+import { symptomQuestions } from "../../../src/data/symptomQuestions";
 import React from "react";
 
 type Job = {
@@ -141,24 +142,14 @@ export default function JobDetail() {
         const parsedIntake = data.description ? JSON.parse(data.description) : null;
         setIntake(parsedIntake);
 
-        // Fetch question texts for this job's symptom
-        if (parsedIntake?.symptom?.key && parsedIntake?.answers) {
-          const answerKeys = Object.keys(parsedIntake.answers);
-          if (answerKeys.length > 0) {
-            const { data: questions } = await supabase
-              .from("symptom_questions")
-              .select("question_key, question_text")
-              .eq("symptom_key", parsedIntake.symptom.key)
-              .in("question_key", answerKeys);
-
-            if (questions) {
-              const qMap: Record<string, string> = {};
-              questions.forEach((q: any) => {
-                qMap[q.question_key] = q.question_text;
-              });
-              setQuestionMap(qMap);
-            }
-          }
+        // Build question map from local data
+        if (parsedIntake?.symptom?.key) {
+          const questions = symptomQuestions[parsedIntake.symptom.key] || [];
+          const qMap: Record<string, string> = {};
+          questions.forEach((q) => {
+            qMap[q.question_key] = q.question_label;
+          });
+          setQuestionMap(qMap);
         }
       } catch (e) {
         console.log("Failed to parse intake");
