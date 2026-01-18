@@ -1,4 +1,7 @@
 // Profile Card Types for Quotes Flow
+export type MechanicVerificationStatus = 'unverified' | 'pending' | 'verified' | 'suspended';
+export type MechanicTier = 'bronze' | 'silver' | 'gold' | 'platinum';
+
 export interface PublicProfileCardRatings {
   overall_avg: number;
   // Mechanic ratings (from customer reviews)
@@ -59,6 +62,8 @@ export interface PublicProfileCard {
   display_name: string;
   avatar_url: string | null;
   created_at: string;
+  verification_status: MechanicVerificationStatus;
+  mechanic_tier: MechanicTier;
   ratings: PublicProfileCardRatings;
   badges: PublicProfileCardBadge[];
   skills: PublicProfileCardSkill[];

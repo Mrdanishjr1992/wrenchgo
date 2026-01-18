@@ -3,28 +3,28 @@ import {
   View,
   Text,
   ScrollView,
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
-  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  FadeInDown,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard, cardPressed } from "../../../src/ui/styles";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { Ionicons } from "@expo/vector-icons";
 import { getPendingReviewPrompts, ReviewPrompt } from "../../../src/lib/reviews";
 import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 import { FinancialSummary } from "../../../components/financials";
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
-
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const CARD_WIDTH = SCREEN_WIDTH * 0.75;
 
 type QuoteSummary = {
   quoteCount: number;
@@ -55,13 +55,457 @@ type Job = {
 };
 
 type JobWithQuoteSummary = Job & { quoteSummary: QuoteSummary };
-
 type ProfileName = { id: string; full_name: string | null };
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function StatusBadge({ status, colors, withAlpha }: { status: string; colors: any; withAlpha: any }) {
+  const s = (status || "").toLowerCase();
+  
+  const config = useMemo(() => {
+    if (s === "accepted" || s === "work_in_progress" || s === "in_progress") {
+      return { label: s === "work_in_progress" || s === "in_progress" ? "In Progress" : "Accepted", color: colors.primary, icon: "flash" as const };
+    }
+    if (s === "completed") return { label: "Completed", color: colors.success, icon: "checkmark-circle" as const };
+    if (s === "quoted") return { label: "Quoted", color: colors.warning, icon: "pricetag" as const };
+    if (s === "canceled" || s === "cancelled") return { label: "Canceled", color: colors.error, icon: "close-circle" as const };
+    return { label: "Searching", color: colors.info, icon: "search" as const };
+  }, [s, colors]);
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: withAlpha(config.color, 0.12),
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 20,
+    }}>
+      <Ionicons name={config.icon} size={12} color={config.color} />
+      <Text style={{ fontSize: 11, fontWeight: "700", color: config.color }}>{config.label}</Text>
+    </View>
+  );
+}
+
+function StatCard({ 
+  icon, 
+  label, 
+  value, 
+  color,
+  isActive,
+}: { 
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: number;
+  color: string;
+  isActive?: boolean;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  
+  return (
+    <View style={{
+      flex: 1,
+      backgroundColor: isActive ? withAlpha(color, 0.15) : colors.surface,
+      borderRadius: radius.xl,
+      padding: spacing.md,
+      alignItems: "center",
+      borderWidth: isActive ? 2 : 1,
+      borderColor: isActive ? withAlpha(color, 0.3) : colors.border,
+    }}>
+      <View style={{
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: withAlpha(color, 0.15),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.xs,
+      }}>
+        <Ionicons name={icon} size={18} color={color} />
+      </View>
+      <Text style={{
+        fontSize: 24,
+        fontWeight: "800",
+        color: colors.textPrimary,
+        marginBottom: 2,
+      }}>{value}</Text>
+      <Text style={{
+        fontSize: 11,
+        fontWeight: "600",
+        color: colors.textMuted,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+      }}>{label}</Text>
+    </View>
+  );
+}
+
+function JobCard({ 
+  item, 
+  onPress,
+  onCancel,
+  canceling,
+  delay = 0,
+}: { 
+  item: JobWithQuoteSummary;
+  onPress: () => void;
+  onCancel: () => void;
+  canceling: boolean;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const qs = item.quoteSummary;
+  const s = (item.status || "").toLowerCase();
+  const isSearching = s === "searching" && !qs.hasQuotes;
+  const hasQuotes = qs.hasQuotes && qs.minQuote !== null;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const fmtDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Yesterday";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
+
+  const vehicleText = useMemo(() => {
+    if (!item.vehicle) return null;
+    const v = Array.isArray(item.vehicle) ? item.vehicle[0] : item.vehicle;
+    if (!v) return null;
+    return `${v.year} ${v.make} ${v.model}`;
+  }, [item.vehicle]);
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          marginBottom: spacing.md,
+          overflow: "hidden",
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{ padding: spacing.lg }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            marginBottom: spacing.sm,
+          }}>
+            <StatusBadge status={item.status || "searching"} colors={colors} withAlpha={withAlpha} />
+            <Text style={{
+              fontSize: 12,
+              color: colors.textMuted,
+            }}>{fmtDate(item.created_at)}</Text>
+          </View>
+
+          <Text style={{
+            fontSize: 17,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: spacing.xs,
+            lineHeight: 22,
+          }} numberOfLines={2}>{getDisplayTitle(item.title) || "Service Request"}</Text>
+
+          {vehicleText && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: spacing.sm,
+            }}>
+              <Ionicons name="car-sport" size={14} color={colors.textMuted} />
+              <Text style={{
+                fontSize: 13,
+                color: colors.textSecondary,
+              }}>{vehicleText}</Text>
+            </View>
+          )}
+
+          {qs.acceptedMechanicName && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              backgroundColor: withAlpha(colors.primary, 0.08),
+              padding: spacing.sm,
+              borderRadius: radius.md,
+              marginBottom: spacing.sm,
+            }}>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: withAlpha(colors.primary, 0.15),
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <Ionicons name="person" size={16} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  marginBottom: 1,
+                }}>Assigned Mechanic</Text>
+                <Text style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.textPrimary,
+                }}>{qs.acceptedMechanicName}</Text>
+              </View>
+            </View>
+          )}
+
+          {hasQuotes && !qs.acceptedMechanicName && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: colors.warningBg,
+              padding: spacing.md,
+              borderRadius: radius.lg,
+              marginBottom: spacing.sm,
+            }}>
+              <View>
+                <Text style={{
+                  fontSize: 11,
+                  color: colors.warning,
+                  fontWeight: "600",
+                  marginBottom: 2,
+                }}>{qs.quoteCount} {qs.quoteCount === 1 ? "QUOTE" : "QUOTES"} RECEIVED</Text>
+                <Text style={{
+                  fontSize: 20,
+                  fontWeight: "800",
+                  color: colors.warning,
+                }}>${(qs.minQuote! / 100).toFixed(0)}{qs.maxQuote !== qs.minQuote && ` - $${(qs.maxQuote! / 100).toFixed(0)}`}</Text>
+              </View>
+              <View style={{
+                backgroundColor: colors.warning,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                borderRadius: radius.md,
+              }}>
+                <Text style={{
+                  fontSize: 13,
+                  fontWeight: "700",
+                  color: colors.white,
+                }}>Review</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+              <Text style={{
+                fontSize: 13,
+                color: colors.textMuted,
+              }}>{item.preferred_time || "Flexible timing"}</Text>
+            </View>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+            }}>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: colors.primary,
+              }}>View Details</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </View>
+          </View>
+        </View>
+
+        {isSearching && (
+          <Pressable
+            onPress={(e) => {
+              e.stopPropagation();
+              onCancel();
+            }}
+            disabled={canceling}
+            style={({ pressed }) => ({
+              paddingVertical: spacing.md,
+              backgroundColor: pressed ? withAlpha(colors.error, 0.1) : withAlpha(colors.error, 0.05),
+              borderTopWidth: 1,
+              borderTopColor: withAlpha(colors.error, 0.1),
+              alignItems: "center",
+              opacity: canceling ? 0.5 : 1,
+            })}
+          >
+            <Text style={{
+              fontSize: 13,
+              fontWeight: "600",
+              color: colors.error,
+            }}>{canceling ? "Canceling..." : "Cancel Request"}</Text>
+          </Pressable>
+        )}
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function EmptyState({ onAction }: { onAction: () => void }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  
+  return (
+    <Animated.View 
+      entering={FadeIn.delay(200).duration(400)}
+      style={{
+        alignItems: "center",
+        paddingVertical: spacing.xxxl,
+        paddingHorizontal: spacing.xl,
+      }}
+    >
+      <View style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: withAlpha(colors.primary, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name="car-sport" size={36} color={colors.primary} />
+      </View>
+      
+      <Text style={{
+        fontSize: 20,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.xs,
+      }}>No jobs yet</Text>
+      
+      <Text style={{
+        fontSize: 15,
+        color: colors.textMuted,
+        textAlign: "center",
+        lineHeight: 22,
+        marginBottom: spacing.lg,
+      }}>Request a mechanic to get started with your first service</Text>
+      
+      <Pressable
+        onPress={onAction}
+        style={({ pressed }) => ({
+          backgroundColor: colors.accent,
+          paddingVertical: spacing.md,
+          paddingHorizontal: spacing.xl,
+          borderRadius: radius.xl,
+          opacity: pressed ? 0.9 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
+        })}
+      >
+        <Text style={{
+          fontSize: 15,
+          fontWeight: "700",
+          color: colors.buttonText,
+        }}>Request a Mechanic</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
+function SectionDivider({ title, count }: { title: string; count: number }) {
+  const { colors, spacing } = useTheme();
+  
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.md,
+    }}>
+      <Text style={{
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.textMuted,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+      }}>{title}</Text>
+      <View style={{
+        backgroundColor: colors.surface2,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+      }}>
+        <Text style={{
+          fontSize: 12,
+          fontWeight: "700",
+          color: colors.textMuted,
+        }}>{count}</Text>
+      </View>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+  
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ 
+        paddingTop: insets.top + spacing.lg, 
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.xl,
+      }}>
+        <View style={[shimmer, { width: 120, height: 32, marginBottom: spacing.xs }]} />
+        <View style={[shimmer, { width: 180, height: 16 }]} />
+      </View>
+      
+      <View style={{ 
+        flexDirection: "row", 
+        gap: spacing.sm, 
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.xl,
+      }}>
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+      </View>
+      
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl }]} />
+      </View>
+    </View>
+  );
+}
 
 export default function CustomerJobs() {
   const router = useRouter();
-  const { colors, text, spacing, radius } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -71,86 +515,6 @@ export default function CustomerJobs() {
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [showFinancials, setShowFinancials] = useState(false);
-
-  const statusColor = useCallback(
-    (status: string) => {
-      const s = (status || "").toLowerCase();
-      if (s === "accepted" || s === "work_in_progress") return colors.accent;
-      if (s === "completed") return colors.success;
-      if (s === "quoted") return colors.warning;
-      if (s === "canceled") return colors.error;
-      return colors.textMuted;
-    },
-    [colors]
-  );
-
-  const statusLabel = (status: string) => {
-    const s = (status || "").toLowerCase();
-    if (s === "work_in_progress") return "IN PROGRESS";
-    if (s === "quoted") return "QUOTED";
-    if (s === "searching") return "SEARCHING";
-    return (status || "unknown").toUpperCase();
-  };
-
-  const statusHint = (status: string) => {
-    const s = (status || "").toLowerCase();
-    if (s === "searching") return "Waiting for quotes…";
-    if (s === "quoted") return "Waiting for customer response";
-    if (s === "accepted") return "Mechanic assigned";
-    if (s === "work_in_progress") return "Work in progress";
-    if (s === "completed") return "Job completed";
-    if (s === "canceled") return "Canceled";
-    return "Tap to view";
-  };
-
-  const fmtShort = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    } catch {
-      return "";
-    }
-  };
-
-  const formatPrice = (cents: number) => `$${(cents / 100).toFixed(0)}`;
-
-  const StatusPill = ({ status }: { status: string }) => {
-    const c = statusColor(status);
-    return (
-      <View
-        style={{
-          paddingHorizontal: 10,
-          paddingVertical: 5,
-          borderRadius: 999,
-          backgroundColor: `${c}22`,
-          borderWidth: 1,
-          borderColor: `${c}55`,
-        }}
-      >
-        <Text style={{ fontSize: 11, fontWeight: "900", color: c }}>{statusLabel(status)}</Text>
-      </View>
-    );
-  };
-
-  const SectionHeader = ({ title, count, icon, color }: { title: string; count: number; icon: keyof typeof Ionicons.glyphMap; color: string }) => (
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: spacing.lg, marginBottom: spacing.sm, paddingHorizontal: spacing.md }}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-        <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: color + "15", alignItems: "center", justifyContent: "center" }}>
-          <Ionicons name={icon} size={16} color={color} />
-        </View>
-        <Text style={{ ...text.section, fontSize: 18 }}>{title}</Text>
-      </View>
-      <View
-        style={{
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          borderRadius: 999,
-          backgroundColor: color + "15",
-        }}
-      >
-        <Text style={{ fontWeight: "900", fontSize: 13, color }}>{count}</Text>
-      </View>
-    </View>
-  );
 
   const load = useCallback(async () => {
     try {
@@ -264,6 +628,7 @@ export default function CustomerJobs() {
       load();
       let jobsChannel: any;
       let quotesChannel: any;
+      let reviewsChannel: any;
 
       (async () => {
         const { data: userData } = await supabase.auth.getUser();
@@ -279,11 +644,17 @@ export default function CustomerJobs() {
           .channel("customer-quotes-" + userId)
           .on("postgres_changes", { event: "*", schema: "public", table: "quotes" }, () => load())
           .subscribe();
+
+        reviewsChannel = supabase
+          .channel("customer-reviews-" + userId)
+          .on("postgres_changes", { event: "*", schema: "public", table: "reviews", filter: `reviewer_id=eq.${userId}` }, () => load())
+          .subscribe();
       })();
 
       return () => {
         if (jobsChannel) supabase.removeChannel(jobsChannel);
         if (quotesChannel) supabase.removeChannel(quotesChannel);
+        if (reviewsChannel) supabase.removeChannel(reviewsChannel);
       };
     }, [load])
   );
@@ -324,187 +695,124 @@ export default function CustomerJobs() {
     );
   }, [load]);
 
-  const waitingForQuote = useMemo(
-    () => jobs.filter((j) => ["searching", "draft", "quoted"].includes((j.status || "").toLowerCase())),
-    [jobs]
-  );
-  const active = useMemo(
+  const activeJobs = useMemo(
     () => jobs.filter((j) => ["accepted", "work_in_progress", "in_progress", "scheduled"].includes((j.status || "").toLowerCase())),
     [jobs]
   );
-  const completed = useMemo(
+  const waitingJobs = useMemo(
+    () => jobs.filter((j) => ["searching", "draft", "quoted"].includes((j.status || "").toLowerCase())),
+    [jobs]
+  );
+  const completedJobs = useMemo(
     () => jobs.filter((j) => (j.status || "").toLowerCase() === "completed"),
     [jobs]
   );
 
-  const JobCard = ({ item, accentColor }: { item: JobWithQuoteSummary; accentColor: string }) => {
-    const qs = item.quoteSummary;
-    const s = (item.status || "").toLowerCase();
-    const isQuoted = s === "quoted" || s === "searching" && qs.hasQuotes;
-    const isSearching = s === "searching" && !qs.hasQuotes;
-
-    return (
-      <Pressable
-        onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
-        style={({ pressed }) => [
-          card,
-          pressed && cardPressed,
-          {
-            width: CARD_WIDTH,
-            padding: spacing.md,
-            borderRadius: radius.lg,
-            gap: spacing.sm,
-            borderWidth: 1,
-            borderColor: pressed ? accentColor : colors.border,
-            backgroundColor: colors.surface,
-            marginRight: spacing.sm,
-          },
-        ]}
-      >
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: accentColor }} />
-          <Text style={{ fontSize: 11, fontWeight: "700", color: accentColor }}>{statusLabel(item.status || "searching")}</Text>
-          <View style={{ flex: 1 }} />
-          <Text style={{ ...text.muted, fontSize: 12 }}>{fmtShort(item.created_at)}</Text>
-        </View>
-
-        <Text style={{ ...text.section, fontSize: 16 }} numberOfLines={2}>{getDisplayTitle(item.title) || "Job"}</Text>
-        <Text style={{ ...text.muted, fontSize: 13 }} numberOfLines={1}>{statusHint(item.status || "searching")}</Text>
-
-        {item.vehicle && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.bg, borderRadius: 8, padding: 8 }}>
-            <Ionicons name="car" size={14} color={colors.textMuted} />
-            <Text style={{ fontSize: 12, color: colors.textMuted }} numberOfLines={1}>
-              {Array.isArray(item.vehicle) ? (item.vehicle[0] ? `${item.vehicle[0].year} ${item.vehicle[0].make} ${item.vehicle[0].model}` : '') : `${item.vehicle.year} ${item.vehicle.make} ${item.vehicle.model}`}
-            </Text>
-          </View>
-        )}
-
-        {qs.acceptedMechanicName && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, backgroundColor: colors.accent + "10", borderRadius: 8, padding: 8 }}>
-            <Ionicons name="person" size={14} color={colors.accent} />
-            <Text style={{ fontSize: 12, fontWeight: "600", color: colors.accent }} numberOfLines={1}>{qs.acceptedMechanicName}</Text>
-          </View>
-        )}
-
-        {isQuoted && qs.minQuote !== null && (
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", backgroundColor: colors.warningBg, borderRadius: 8, padding: 10 }}>
-            <Text style={{ fontSize: 12, color: colors.warning }}>Quote</Text>
-            <Text style={{ fontSize: 16, fontWeight: "800", color: colors.warning }}>{formatPrice(qs.minQuote)}</Text>
-          </View>
-        )}
-
-        <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
-          <Text style={{ fontSize: 12, color: colors.textMuted }}>
-            {item.preferred_time ? item.preferred_time : "Flexible"}
-          </Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-            <Text style={{ fontSize: 13, fontWeight: "700", color: accentColor }}>View</Text>
-            <Ionicons name="chevron-forward" size={14} color={accentColor} />
-          </View>
-        </View>
-
-        {isSearching && (
-          <Pressable
-            onPress={(e) => {
-              e.stopPropagation();
-              handleCancelJob(item.id);
-            }}
-            disabled={canceling === item.id}
-            style={({ pressed }) => ({
-              marginTop: 4,
-              paddingVertical: 8,
-              borderRadius: radius.sm,
-              backgroundColor: pressed ? colors.error + "15" : "transparent",
-              alignItems: "center",
-              borderWidth: 1,
-              borderColor: colors.error + "30",
-              opacity: canceling === item.id ? 0.5 : 1,
-            })}
-          >
-            <Text style={{ color: colors.error, fontWeight: "600", fontSize: 12 }}>
-              {canceling === item.id ? "Canceling..." : "Cancel Request"}
-            </Text>
-          </Pressable>
-        )}
-      </Pressable>
-    );
-  };
-
-  const EmptySection = ({ message }: { message: string }) => (
-    <View style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.lg }}>
-      <Text style={{ ...text.muted, fontStyle: "italic" }}>{message}</Text>
-    </View>
-  );
-
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Loading jobs…</Text>
-      </View>
-    );
+    return <LoadingSkeleton />;
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_OFFERS_LIST} style={{ flex: 1 }}>
         <ScrollView
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor={colors.primary} 
+            />
+          }
         >
-          <LinearGradient
-            colors={['#6366F1', '#8B5CF6', '#A855F7']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl, paddingHorizontal: spacing.md }}
-          >
-            <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff' }}>My Jobs</Text>
-            <Text style={{ fontSize: 14, color: '#fff', opacity: 0.85, marginTop: 4 }}>Track your service requests</Text>
+          <View style={{
+            paddingTop: insets.top + spacing.md,
+            paddingHorizontal: spacing.lg,
+            paddingBottom: spacing.lg,
+          }}>
+            <Animated.View entering={FadeIn.duration(300)}>
+              <Text style={{
+                fontSize: 28,
+                fontWeight: "800",
+                color: colors.textPrimary,
+                letterSpacing: -0.5,
+                marginBottom: 4,
+              }}>My Jobs</Text>
+              <Text style={{
+                fontSize: 15,
+                color: colors.textMuted,
+              }}>Track your service requests</Text>
+            </Animated.View>
+          </View>
 
-            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
-              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="flash" size={14} color="#FBBF24" />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Active</Text>
-                </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{active.length}</Text>
-              </View>
-              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="time" size={14} color="#38BDF8" />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Waiting</Text>
-                </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{waitingForQuote.length}</Text>
-              </View>
-              <View style={{ flex: 1, backgroundColor: "rgba(255,255,255,0.15)", borderRadius: 16, padding: spacing.md, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="checkmark-circle" size={14} color="#4ADE80" />
-                  <Text style={{ fontSize: 11, fontWeight: "600", color: '#fff', opacity: 0.9 }}>Done</Text>
-                </View>
-                <Text style={{ fontSize: 28, fontWeight: "900", color: '#fff', marginTop: 4 }}>{completed.length}</Text>
-              </View>
-            </View>
-          </LinearGradient>
+          <View style={{
+            flexDirection: "row",
+            gap: spacing.sm,
+            paddingHorizontal: spacing.lg,
+            marginBottom: spacing.md,
+          }}>
+            <Animated.View entering={FadeInDown.delay(100).duration(300)} style={{ flex: 1 }}>
+              <StatCard
+                icon="flash"
+                label="Active"
+                value={activeJobs.length}
+                color={colors.primary}
+                isActive={activeJobs.length > 0}
+              />
+            </Animated.View>
+            <Animated.View entering={FadeInDown.delay(150).duration(300)} style={{ flex: 1 }}>
+              <StatCard
+                icon="time"
+                label="Waiting"
+                value={waitingJobs.length}
+                color={colors.warning}
+                isActive={waitingJobs.length > 0}
+              />
+            </Animated.View>
+            <Animated.View entering={FadeInDown.delay(200).duration(300)} style={{ flex: 1 }}>
+              <StatCard
+                icon="checkmark-circle"
+                label="Done"
+                value={completedJobs.length}
+                color={colors.success}
+              />
+            </Animated.View>
+          </View>
 
-          {customerId && completed.length > 0 && (
-            <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md }}>
+          {customerId && completedJobs.length > 0 && (
+            <Animated.View 
+              entering={FadeInDown.delay(250).duration(300)}
+              style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}
+            >
               <Pressable
                 onPress={() => setShowFinancials(!showFinancials)}
-                style={{
+                style={({ pressed }) => ({
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
                   backgroundColor: colors.surface,
-                  borderRadius: radius.md,
+                  borderRadius: radius.xl,
                   padding: spacing.md,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                }}
+                  ...shadows.sm,
+                  opacity: pressed ? 0.9 : 1,
+                })}
               >
                 <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                  <Ionicons name="card-outline" size={20} color={colors.accent} />
-                  <Text style={{ ...text.body, fontWeight: "600" }}>Spending Summary</Text>
+                  <View style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: withAlpha(colors.success, 0.15),
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    <Ionicons name="wallet" size={18} color={colors.success} />
+                  </View>
+                  <Text style={{
+                    fontSize: 15,
+                    fontWeight: "600",
+                    color: colors.textPrimary,
+                  }}>Spending Summary</Text>
                 </View>
                 <Ionicons
                   name={showFinancials ? "chevron-up" : "chevron-down"}
@@ -517,86 +825,97 @@ export default function CustomerJobs() {
                   <FinancialSummary userId={customerId} role="customer" />
                 </View>
               )}
+            </Animated.View>
+          )}
+
+          {jobs.length === 0 ? (
+            <EmptyState onAction={() => router.push("/explore")} />
+          ) : (
+            <View style={{ paddingHorizontal: spacing.lg }}>
+              {reviewPrompts.length > 0 && (
+                <>
+                  <SectionDivider title="Pending Reviews" count={reviewPrompts.length} />
+                  <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+                    {reviewPrompts.map((prompt, index) => (
+                      <Animated.View 
+                        key={prompt.id}
+                        entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                      >
+                        <ReviewPromptBanner
+                          jobId={prompt.job_id}
+                          targetName={prompt.target_name}
+                          expiresAt={prompt.expires_at}
+                          userRole="customer"
+                        />
+                      </Animated.View>
+                    ))}
+                  </View>
+                </>
+              )}
+
+              {activeJobs.length > 0 && (
+                <>
+                  <SectionDivider title="Active Jobs" count={activeJobs.length} />
+                  {activeJobs.map((item, index) => (
+                    <JobCard
+                      key={item.id}
+                      item={item}
+                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
+                      onCancel={() => handleCancelJob(item.id)}
+                      canceling={canceling === item.id}
+                      delay={350 + index * 50}
+                    />
+                  ))}
+                </>
+              )}
+
+              {waitingJobs.length > 0 && (
+                <>
+                  <SectionDivider title="Waiting for Quotes" count={waitingJobs.length} />
+                  {waitingJobs.map((item, index) => (
+                    <JobCard
+                      key={item.id}
+                      item={item}
+                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
+                      onCancel={() => handleCancelJob(item.id)}
+                      canceling={canceling === item.id}
+                      delay={400 + index * 50}
+                    />
+                  ))}
+                </>
+              )}
+
+              {completedJobs.length > 0 && (
+                <>
+                  <SectionDivider title="Completed" count={completedJobs.length} />
+                  {completedJobs.slice(0, 5).map((item, index) => (
+                    <JobCard
+                      key={item.id}
+                      item={item}
+                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
+                      onCancel={() => {}}
+                      canceling={false}
+                      delay={450 + index * 50}
+                    />
+                  ))}
+                  {completedJobs.length > 5 && (
+                    <Pressable
+                      onPress={() => {}}
+                      style={{ paddingVertical: spacing.md, alignItems: "center" }}
+                    >
+                      <Text style={{
+                        fontSize: 14,
+                        fontWeight: "600",
+                        color: colors.primary,
+                      }}>View all {completedJobs.length} completed jobs</Text>
+                    </Pressable>
+                  )}
+                </>
+              )}
             </View>
           )}
 
-          {jobs.length === 0 && (
-            <View style={{ marginTop: spacing.xl, alignItems: "center", gap: spacing.sm, paddingHorizontal: spacing.md }}>
-              <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.surface, alignItems: "center", justifyContent: "center", borderWidth: 1, borderColor: colors.border }}>
-                <Ionicons name="car-outline" size={36} color={colors.textMuted} />
-              </View>
-              <Text style={{ ...text.section, marginTop: spacing.sm }}>No jobs yet</Text>
-              <Text style={{ ...text.muted, textAlign: "center" }}>Request a mechanic from the Home tab to get started</Text>
-              <Pressable
-                onPress={() => router.push("/explore")}
-                style={{ marginTop: spacing.md, backgroundColor: colors.accent, paddingVertical: 16, paddingHorizontal: 32, borderRadius: 16 }}
-              >
-                <Text style={{ fontWeight: "900", fontSize: 15, color: colors.buttonText }}>REQUEST A MECHANIC</Text>
-              </Pressable>
-            </View>
-          )}
-
-          {reviewPrompts.length > 0 && (
-            <>
-              <SectionHeader title="Pending Reviews" count={reviewPrompts.length} icon="star" color={colors.warning} />
-              <View style={{ paddingHorizontal: spacing.md, gap: spacing.sm }}>
-                {reviewPrompts.map((prompt) => (
-                  <ReviewPromptBanner
-                    key={prompt.id}
-                    jobId={prompt.job_id}
-                    targetName={prompt.target_name}
-                    expiresAt={prompt.expires_at}
-                    userRole="customer"
-                  />
-                ))}
-              </View>
-            </>
-          )}
-
-          {jobs.length > 0 && (
-            <>
-              <SectionHeader title="Active" count={active.length} icon="flash" color={colors.accent} />
-              {active.length === 0 ? (
-                <EmptySection message="No active jobs right now" />
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
-                >
-                  {active.map((item) => <JobCard key={item.id} item={item} accentColor={colors.accent} />)}
-                </ScrollView>
-              )}
-
-              <SectionHeader title="Waiting for Quotes" count={waitingForQuote.length} icon="time" color={colors.warning} />
-              {waitingForQuote.length === 0 ? (
-                <EmptySection message="No pending quotes" />
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
-                >
-                  {waitingForQuote.map((item) => <JobCard key={item.id} item={item} accentColor={colors.warning} />)}
-                </ScrollView>
-              )}
-
-              <SectionHeader title="Completed" count={completed.length} icon="checkmark-circle" color={colors.success} />
-              {completed.length === 0 ? (
-                <EmptySection message="No completed jobs yet" />
-              ) : (
-                <ScrollView
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingHorizontal: spacing.md, paddingBottom: spacing.sm }}
-                >
-                  {completed.map((item) => <JobCard key={item.id} item={item} accentColor={colors.success} />)}
-                </ScrollView>
-              )}
-            </>
-          )}
-
-          <View style={{ height: spacing.xl * 2 }} />
+          <View style={{ height: spacing.xxxl }} />
         </ScrollView>
       </WalkthroughTarget>
     </View>

@@ -160,17 +160,26 @@ export async function getTrustScore(userId: string): Promise<TrustScore | null> 
   return data as TrustScore;
 }
 
-export async function recalculateTrustScore(userId: string): Promise<number | null> {
+export async function recalculateTrustScore(
+  userId: string,
+  reason: string = 'manual_recalc',
+  jobId?: string
+): Promise<{ success: boolean; overall_score?: number; error?: string }> {
   const { data, error } = await supabase.rpc('recalculate_trust_score', {
     p_user_id: userId,
+    p_reason: reason,
+    p_job_id: jobId || null,
   });
 
   if (error) {
     console.error('Error recalculating trust score:', error);
-    return null;
+    return { success: false, error: error.message };
   }
 
-  return data as number;
+  return {
+    success: true,
+    overall_score: (data as any)?.overall_score ?? null
+  };
 }
 
 // =====================================================

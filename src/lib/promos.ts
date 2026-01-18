@@ -17,7 +17,7 @@ export async function getOrCreateInviteCode(): Promise<string | null> {
 
 export async function acceptInvitation(inviteCode: string): Promise<{ success: boolean; error?: string }> {
   const { data, error } = await supabase.rpc('accept_invitation', {
-    p_invite_code: inviteCode,
+    p_code: inviteCode,
   });
   if (error) {
     console.error('Error accepting invitation:', error);
@@ -193,4 +193,46 @@ export async function retroactiveApplyPromo(jobId: string): Promise<{
     return { success: false, error: error.message };
   }
   return data;
+}
+
+export async function previewMechanicPromoDiscount(commissionCents: number): Promise<{
+  success: boolean;
+  has_discount: boolean;
+  credit_type?: string;
+  discount_cents?: number;
+  commission_after_cents?: number;
+  reason?: string;
+} | null> {
+  const { data, error } = await supabase.rpc('preview_mechanic_promo_discount', {
+    p_commission_cents: commissionCents,
+  });
+  if (error) {
+    console.error('Error previewing mechanic promo discount:', error);
+    return null;
+  }
+  return data;
+}
+
+export async function getContractMechanicPromoInfo(contractId: string): Promise<{
+  has_promo: boolean;
+  credit_type?: string;
+  commission_before_cents?: number;
+  discount_cents?: number;
+  commission_after_cents?: number;
+  discount_description?: string;
+} | null> {
+  const { data, error } = await supabase.rpc('get_contract_mechanic_promo_info', {
+    p_contract_id: contractId,
+  });
+  if (error) {
+    console.error('Error getting contract mechanic promo info:', error);
+    return null;
+  }
+  return data;
+}
+
+export function getMechanicPromoDiscountDescription(creditType: 'FEELESS' | 'FEELESS3'): string {
+  return creditType === 'FEELESS'
+    ? 'Free commission (referral credit)'
+    : '$3 off commission (referral credit)';
 }

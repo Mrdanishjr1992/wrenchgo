@@ -5,21 +5,32 @@ import {
   FlatList,
   TextInput,
   Pressable,
-  ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
   Platform,
-  StyleSheet,
   Image,
   Modal,
   Dimensions,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { decode } from "base64-arraybuffer";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeInUp,
+  SlideInRight,
+  SlideInLeft,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolation,
+} from "react-native-reanimated";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { scanMessageBeforeSend, getChatStatus, logMessageAudit } from "../../src/lib/chat-moderation";
@@ -29,6 +40,7 @@ import { ChatPolicyModal } from "./ChatPolicyModal";
 import type { ScanMessageResponse, ChatStatusResponse } from "../../src/types/chat-moderation";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Msg = {
   id: string;
@@ -83,9 +95,720 @@ const getInitials = (name: string | null) => {
   return name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2);
 };
 
+function ChatHeader({
+  name,
+  role,
+  onBack,
+}: {
+  name: string | null;
+  role: "customer" | "mechanic";
+  onBack: () => void;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+  const initials = getInitials(name);
+  const avatarColor = role === "customer" ? colors.primary : colors.accent;
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(300)}
+      style={{
+        paddingTop: insets.top + spacing.sm,
+        paddingBottom: spacing.md,
+        paddingHorizontal: spacing.md,
+        backgroundColor: colors.surface,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        ...shadows.sm,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <Pressable
+          onPress={onBack}
+          hitSlop={12}
+          style={({ pressed }) => ({
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: pressed ? withAlpha(colors.textMuted, 0.1) : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+        </Pressable>
+
+        <View style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: avatarColor,
+          alignItems: "center",
+          justifyContent: "center",
+          marginLeft: spacing.sm,
+        }}>
+          <Text style={{
+            color: colors.white,
+            fontWeight: "700",
+            fontSize: 16,
+          }}>{initials}</Text>
+        </View>
+
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <Text style={{
+            fontSize: 17,
+            fontWeight: "700",
+            color: colors.textPrimary,
+          }} numberOfLines={1}>
+            {name || (role === "customer" ? "Mechanic" : "Customer")}
+          </Text>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 2 }}>
+            <View style={{
+              width: 8,
+              height: 8,
+              borderRadius: 4,
+              backgroundColor: colors.success,
+            }} />
+            <Text style={{
+              fontSize: 13,
+              color: colors.textMuted,
+            }}>Online</Text>
+          </View>
+        </View>
+
+        <Pressable
+          hitSlop={12}
+          style={({ pressed }) => ({
+            width: 40,
+            height: 40,
+            borderRadius: 20,
+            backgroundColor: pressed ? withAlpha(colors.textMuted, 0.1) : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+          })}
+        >
+          <Ionicons name="ellipsis-vertical" size={20} color={colors.textMuted} />
+        </Pressable>
+      </View>
+    </Animated.View>
+  );
+}
+
+function DateSeparator({ date }: { date: string }) {
+  const { colors, spacing, radius } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeIn.delay(100).duration(300)}
+      style={{
+        alignItems: "center",
+        marginVertical: spacing.lg,
+      }}
+    >
+      <View style={{
+        backgroundColor: colors.surface2,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.xs,
+        borderRadius: radius.full,
+      }}>
+        <Text style={{
+          fontSize: 12,
+          fontWeight: "600",
+          color: colors.textMuted,
+        }}>{fmtDate(date)}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function MessageBubble({
+  message,
+  isMine,
+  isFirst,
+  isLast,
+  index,
+  onImagePress,
+}: {
+  message: Msg;
+  isMine: boolean;
+  isFirst: boolean;
+  isLast: boolean;
+  index: number;
+  onImagePress: (url: string) => void;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const hasImage = message.attachment_type === "image" && message.attachment_url;
+  const hasTextContent = message.body && message.body !== "📷 Image";
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const bubbleRadius = {
+    borderTopLeftRadius: isMine ? 20 : (isFirst ? 20 : 6),
+    borderTopRightRadius: isMine ? (isFirst ? 20 : 6) : 20,
+    borderBottomLeftRadius: isMine ? 20 : (isLast ? 20 : 6),
+    borderBottomRightRadius: isMine ? (isLast ? 20 : 6) : 20,
+  };
+
+  return (
+    <Animated.View
+      entering={isMine ? SlideInRight.delay(index * 30).duration(300).springify() : SlideInLeft.delay(index * 30).duration(300).springify()}
+      style={[animatedStyle, {
+        alignSelf: isMine ? "flex-end" : "flex-start",
+        maxWidth: "80%",
+        marginBottom: isLast ? spacing.sm : 2,
+      }]}
+    >
+      <AnimatedPressable
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[
+          {
+            paddingVertical: hasImage && !hasTextContent ? 4 : spacing.sm,
+            paddingHorizontal: hasImage && !hasTextContent ? 4 : spacing.md,
+            backgroundColor: isMine ? colors.primary : colors.surface,
+            borderWidth: isMine ? 0 : 1,
+            borderColor: colors.border,
+            overflow: "hidden",
+          },
+          bubbleRadius,
+        ]}
+      >
+        {hasImage && (
+          <Pressable onPress={() => onImagePress(message.attachment_url!)}>
+            <Image
+              source={{ uri: message.attachment_url! }}
+              style={{
+                width: 220,
+                height: 165,
+                borderRadius: radius.lg,
+                marginBottom: hasTextContent ? spacing.xs : 0,
+              }}
+              resizeMode="cover"
+            />
+          </Pressable>
+        )}
+
+        {hasTextContent && (
+          <Text style={{
+            fontSize: 15,
+            lineHeight: 21,
+            color: isMine ? colors.white : colors.textPrimary,
+          }}>{message.body}</Text>
+        )}
+
+        {isLast && (
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "flex-end",
+            gap: 4,
+            marginTop: 4,
+          }}>
+            <Text style={{
+              fontSize: 11,
+              color: isMine ? withAlpha(colors.white, 0.7) : colors.textMuted,
+            }}>{fmtTime(message.created_at)}</Text>
+            {isMine && (
+              <Ionicons
+                name="checkmark-done"
+                size={14}
+                color={withAlpha(colors.white, 0.7)}
+              />
+            )}
+          </View>
+        )}
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function EmptyChat() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInUp.delay(200).duration(400)}
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: spacing.xl,
+      }}
+    >
+      <View style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: withAlpha(colors.primary, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name="chatbubbles" size={36} color={colors.primary} />
+      </View>
+
+      <Text style={{
+        fontSize: 20,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.xs,
+      }}>Start the conversation</Text>
+
+      <Text style={{
+        fontSize: 15,
+        color: colors.textMuted,
+        textAlign: "center",
+        lineHeight: 22,
+      }}>Send a message to connect with your {"\n"}service provider</Text>
+    </Animated.View>
+  );
+}
+
+function ChatSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{
+        paddingTop: insets.top + spacing.sm,
+        paddingBottom: spacing.md,
+        paddingHorizontal: spacing.md,
+        backgroundColor: colors.surface,
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+      }}>
+        <View style={[shimmer, { width: 40, height: 40, borderRadius: 20 }]} />
+        <View style={[shimmer, { width: 44, height: 44, borderRadius: 22 }]} />
+        <View style={{ flex: 1 }}>
+          <View style={[shimmer, { width: 120, height: 18, borderRadius: radius.sm, marginBottom: 6 }]} />
+          <View style={[shimmer, { width: 60, height: 14, borderRadius: radius.sm }]} />
+        </View>
+      </View>
+
+      <View style={{ flex: 1, padding: spacing.lg }}>
+        <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+          <View style={[shimmer, { width: 80, height: 24, borderRadius: radius.full }]} />
+        </View>
+
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.sm }}>
+          <View style={[shimmer, { width: 200, height: 60, borderRadius: 20 }]} />
+        </View>
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.lg }}>
+          <View style={[shimmer, { width: 150, height: 40, borderRadius: 20 }]} />
+        </View>
+
+        <View style={{ alignSelf: "flex-end", marginBottom: spacing.sm }}>
+          <View style={[shimmer, { width: 180, height: 50, borderRadius: 20 }]} />
+        </View>
+        <View style={{ alignSelf: "flex-end", marginBottom: spacing.lg }}>
+          <View style={[shimmer, { width: 220, height: 70, borderRadius: 20 }]} />
+        </View>
+
+        <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+          <View style={[shimmer, { width: 80, height: 24, borderRadius: radius.full }]} />
+        </View>
+
+        <View style={{ alignSelf: "flex-start", marginBottom: spacing.sm }}>
+          <View style={[shimmer, { width: 160, height: 45, borderRadius: 20 }]} />
+        </View>
+      </View>
+
+      <View style={{
+        flexDirection: "row",
+        alignItems: "center",
+        padding: spacing.md,
+        paddingBottom: insets.bottom + spacing.md,
+        backgroundColor: colors.surface,
+        gap: spacing.sm,
+      }}>
+        <View style={[shimmer, { width: 44, height: 44, borderRadius: 22 }]} />
+        <View style={[shimmer, { flex: 1, height: 48, borderRadius: 24 }]} />
+        <View style={[shimmer, { width: 48, height: 48, borderRadius: 24 }]} />
+      </View>
+    </View>
+  );
+}
+
+function ComposerBar({
+  value,
+  onChangeText,
+  onSend,
+  onAttach,
+  canSend,
+  sending,
+  disabled,
+  selectedImage,
+  onRemoveImage,
+}: {
+  value: string;
+  onChangeText: (text: string) => void;
+  onSend: () => void;
+  onAttach: () => void;
+  canSend: boolean;
+  sending: boolean;
+  disabled: boolean;
+  selectedImage: string | null;
+  onRemoveImage: () => void;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+  const [focused, setFocused] = useState(false);
+  const sendScale = useSharedValue(1);
+
+  const sendAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: sendScale.value }],
+  }));
+
+  return (
+    <Animated.View
+      entering={FadeInUp.duration(300)}
+      style={{
+        backgroundColor: colors.surface,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        paddingTop: spacing.sm,
+        paddingBottom: insets.bottom + spacing.sm,
+        paddingHorizontal: spacing.md,
+      }}
+    >
+      {selectedImage && (
+        <View style={{
+          marginBottom: spacing.sm,
+          position: "relative",
+          alignSelf: "flex-start",
+        }}>
+          <Image
+            source={{ uri: selectedImage }}
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: radius.lg,
+            }}
+            resizeMode="cover"
+          />
+          <Pressable
+            onPress={onRemoveImage}
+            style={{
+              position: "absolute",
+              top: -8,
+              right: -8,
+              width: 24,
+              height: 24,
+              borderRadius: 12,
+              backgroundColor: colors.error,
+              alignItems: "center",
+              justifyContent: "center",
+              ...shadows.sm,
+            }}
+          >
+            <Ionicons name="close" size={14} color={colors.white} />
+          </Pressable>
+        </View>
+      )}
+
+      <View style={{ flexDirection: "row", alignItems: "flex-end", gap: spacing.sm }}>
+        <Pressable
+          onPress={onAttach}
+          disabled={disabled}
+          style={({ pressed }) => ({
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: pressed ? withAlpha(colors.primary, 0.1) : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+            opacity: disabled ? 0.4 : 1,
+          })}
+        >
+          <Ionicons name="add-circle" size={28} color={colors.primary} />
+        </Pressable>
+
+        <View style={{
+          flex: 1,
+          backgroundColor: colors.bg,
+          borderRadius: radius.xl,
+          borderWidth: 2,
+          borderColor: focused ? colors.primary : colors.border,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+          minHeight: 48,
+          justifyContent: "center",
+        }}>
+          <TextInput
+            value={value}
+            onChangeText={onChangeText}
+            placeholder={disabled ? "Chat is restricted" : "Type a message..."}
+            placeholderTextColor={colors.textMuted}
+            style={{
+              fontSize: 16,
+              color: colors.textPrimary,
+              maxHeight: 100,
+              minHeight: 24,
+            }}
+            multiline
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            editable={!disabled}
+          />
+        </View>
+
+        <AnimatedPressable
+          onPress={onSend}
+          disabled={!canSend}
+          onPressIn={() => { sendScale.value = withSpring(0.9, { damping: 15 }); }}
+          onPressOut={() => { sendScale.value = withSpring(1, { damping: 15 }); }}
+          style={[sendAnimatedStyle, {
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            backgroundColor: canSend ? colors.primary : withAlpha(colors.primary, 0.3),
+            alignItems: "center",
+            justifyContent: "center",
+            ...shadows.sm,
+          }]}
+        >
+          {sending ? (
+            <Animated.View
+              entering={FadeIn.duration(200)}
+              style={{
+                width: 20,
+                height: 20,
+                borderRadius: 10,
+                borderWidth: 2,
+                borderColor: colors.white,
+                borderTopColor: "transparent",
+              }}
+            />
+          ) : (
+            <Ionicons name="arrow-up" size={22} color={colors.white} />
+          )}
+        </AnimatedPressable>
+      </View>
+    </Animated.View>
+  );
+}
+
+function AttachmentModal({
+  visible,
+  onClose,
+  onPickCamera,
+  onPickLibrary,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onPickCamera: () => void;
+  onPickLibrary: () => void;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <Pressable
+        style={{
+          flex: 1,
+          backgroundColor: withAlpha(colors.black, 0.5),
+          justifyContent: "flex-end",
+        }}
+        onPress={onClose}
+      >
+        <Animated.View
+          entering={FadeInUp.duration(300)}
+          style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: radius.xxl,
+            borderTopRightRadius: radius.xxl,
+            paddingTop: spacing.sm,
+            paddingBottom: insets.bottom + spacing.lg,
+            paddingHorizontal: spacing.lg,
+          }}
+        >
+          <View style={{
+            width: 40,
+            height: 4,
+            backgroundColor: colors.border,
+            borderRadius: 2,
+            alignSelf: "center",
+            marginBottom: spacing.lg,
+          }} />
+
+          <Text style={{
+            fontSize: 18,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: spacing.lg,
+          }}>Add Attachment</Text>
+
+          <Pressable
+            onPress={onPickCamera}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingVertical: spacing.md,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <View style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: withAlpha(colors.primary, 0.1),
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <Ionicons name="camera" size={24} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: colors.textPrimary,
+              }}>Take Photo</Text>
+              <Text style={{
+                fontSize: 14,
+                color: colors.textMuted,
+                marginTop: 2,
+              }}>Use your camera</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </Pressable>
+
+          <View style={{
+            height: 1,
+            backgroundColor: colors.border,
+            marginVertical: spacing.xs,
+          }} />
+
+          <Pressable
+            onPress={onPickLibrary}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.md,
+              paddingVertical: spacing.md,
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <View style={{
+              width: 52,
+              height: 52,
+              borderRadius: 26,
+              backgroundColor: withAlpha(colors.info, 0.1),
+              alignItems: "center",
+              justifyContent: "center",
+            }}>
+              <Ionicons name="images" size={24} color={colors.info} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{
+                fontSize: 16,
+                fontWeight: "600",
+                color: colors.textPrimary,
+              }}>Photo Library</Text>
+              <Text style={{
+                fontSize: 14,
+                color: colors.textMuted,
+                marginTop: 2,
+              }}>Choose from gallery</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+          </Pressable>
+
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => ({
+              marginTop: spacing.lg,
+              paddingVertical: spacing.md,
+              borderRadius: radius.lg,
+              backgroundColor: colors.bg,
+              alignItems: "center",
+              opacity: pressed ? 0.7 : 1,
+            })}
+          >
+            <Text style={{
+              fontSize: 16,
+              fontWeight: "600",
+              color: colors.textPrimary,
+            }}>Cancel</Text>
+          </Pressable>
+        </Animated.View>
+      </Pressable>
+    </Modal>
+  );
+}
+
+function ImagePreviewModal({
+  imageUrl,
+  onClose,
+}: {
+  imageUrl: string | null;
+  onClose: () => void;
+}) {
+  const { colors, withAlpha } = useTheme();
+
+  return (
+    <Modal
+      visible={!!imageUrl}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <View style={{
+        flex: 1,
+        backgroundColor: withAlpha(colors.black, 0.95),
+        justifyContent: "center",
+        alignItems: "center",
+      }}>
+        <Pressable
+          onPress={onClose}
+          style={{
+            position: "absolute",
+            top: 60,
+            right: 20,
+            zIndex: 10,
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            backgroundColor: withAlpha(colors.white, 0.2),
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Ionicons name="close" size={28} color={colors.white} />
+        </Pressable>
+        {imageUrl && (
+          <Image
+            source={{ uri: imageUrl }}
+            style={{
+              width: SCREEN_WIDTH,
+              height: SCREEN_WIDTH,
+            }}
+            resizeMode="contain"
+          />
+        )}
+      </View>
+    </Modal>
+  );
+}
+
 export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, backRoute }: ChatRoomProps) {
   const router = useRouter();
-  const { colors, text, spacing } = useTheme();
+  const { colors, spacing, radius, withAlpha } = useTheme();
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -95,7 +818,6 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
   const [otherPartyName, setOtherPartyName] = useState<string | null>(null);
 
   const [input, setInput] = useState("");
-  const [focused, setFocused] = useState(false);
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -107,7 +829,7 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
 
   const listRef = useRef<FlatList<MessageGroup>>(null);
   const canSend = useMemo(
-    () => (input.trim().length > 0 || selectedImage) && !sending && !!me && !!jobId && !!recipientId && chatStatus?.can_send !== false,
+    () => (input.trim().length > 0 || !!selectedImage) && !sending && !!me && !!jobId && !!recipientId && chatStatus?.can_send !== false,
     [input, sending, me, jobId, recipientId, chatStatus, selectedImage]
   );
 
@@ -366,16 +1088,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
     return groups;
   }, [items]);
 
-  const initials = getInitials(otherPartyName);
-  const avatarColors = role === "customer" ? "#14b8a6" : "#3b82f6";
-
   if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.bg }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={[text.muted, { marginTop: 12 }]}>Loading chat...</Text>
-      </View>
-    );
+    return <ChatSkeleton />;
   }
 
   return (
@@ -383,133 +1097,44 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
       style={{ flex: 1, backgroundColor: colors.bg }}
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: colors.surface, borderBottomColor: colors.border }]}>
-        <Pressable onPress={handleBack} hitSlop={12} style={styles.backButton}>
-          <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
-        </Pressable>
+      <ChatHeader
+        name={otherPartyName}
+        role={role}
+        onBack={handleBack}
+      />
 
-        <View style={[styles.headerAvatar, { backgroundColor: avatarColors }]}>
-          <Text style={styles.headerAvatarText}>{initials}</Text>
-        </View>
-
-        <View style={styles.headerInfo}>
-          <Text style={[text.body, { fontWeight: "700", fontSize: 17 }]} numberOfLines={1}>
-            {otherPartyName || (role === "customer" ? "Mechanic" : "Customer")}
-          </Text>
-          <View style={styles.onlineStatus}>
-            <View style={styles.onlineDot} />
-            <Text style={[text.muted, { fontSize: 13 }]}>Online</Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Messages */}
       <FlatList<MessageGroup>
         ref={listRef}
-        contentContainerStyle={styles.messageList}
+        contentContainerStyle={{
+          padding: spacing.md,
+          paddingBottom: spacing.lg,
+          flexGrow: items.length === 0 ? 1 : undefined,
+        }}
         data={groupedMessages}
         keyExtractor={(item) => item.date}
-        renderItem={({ item: group }) => (
+        renderItem={({ item: group, index: groupIndex }) => (
           <View>
-            <View style={styles.dateSeparator}>
-              <View style={[styles.dateLine, { backgroundColor: colors.border }]} />
-              <Text style={[styles.dateText, { color: colors.textMuted, backgroundColor: colors.bg }]}>
-                {fmtDate(group.date)}
-              </Text>
-              <View style={[styles.dateLine, { backgroundColor: colors.border }]} />
-            </View>
-
+            <DateSeparator date={group.date} />
             {group.messages.map((msg, idx) => {
               const mine = msg.sender_id === me;
               const isFirst = idx === 0 || group.messages[idx - 1].sender_id !== msg.sender_id;
               const isLast = idx === group.messages.length - 1 || group.messages[idx + 1].sender_id !== msg.sender_id;
-              const hasImage = msg.attachment_type === "image" && msg.attachment_url;
-              const hasTextContent = msg.body && msg.body !== "📷 Image";
 
               return (
-                <View
+                <MessageBubble
                   key={msg.id}
-                  style={[
-                    styles.bubbleContainer,
-                    { alignSelf: mine ? "flex-end" : "flex-start" },
-                    !isLast && { marginBottom: 2 },
-                  ]}
-                >
-                  {mine ? (
-                    <LinearGradient
-                      colors={[colors.accent, colors.accent + "dd"]}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 1 }}
-                      style={[
-                        styles.bubble,
-                        styles.bubbleMine,
-                        isFirst && styles.bubbleFirstMine,
-                        isLast && styles.bubbleLastMine,
-                        hasImage && styles.bubbleWithImage,
-                      ]}
-                    >
-                      {hasImage && (
-                        <Pressable onPress={() => setPreviewImage(msg.attachment_url!)}>
-                          <Image
-                            source={{ uri: msg.attachment_url! }}
-                            style={styles.messageImage}
-                            resizeMode="cover"
-                          />
-                        </Pressable>
-                      )}
-                      {hasTextContent && <Text style={styles.bubbleTextMine}>{msg.body}</Text>}
-                      {isLast && (
-                        <View style={styles.bubbleMeta}>
-                          <Text style={styles.bubbleTimeMine}>{fmtTime(msg.created_at)}</Text>
-                          <Ionicons name="checkmark-done" size={14} color="rgba(255,255,255,0.7)" />
-                        </View>
-                      )}
-                    </LinearGradient>
-                  ) : (
-                    <View
-                      style={[
-                        styles.bubble,
-                        styles.bubbleTheirs,
-                        { backgroundColor: colors.surface, borderColor: colors.border },
-                        isFirst && styles.bubbleFirstTheirs,
-                        isLast && styles.bubbleLastTheirs,
-                        hasImage && styles.bubbleWithImage,
-                      ]}
-                    >
-                      {hasImage && (
-                        <Pressable onPress={() => setPreviewImage(msg.attachment_url!)}>
-                          <Image
-                            source={{ uri: msg.attachment_url! }}
-                            style={styles.messageImage}
-                            resizeMode="cover"
-                          />
-                        </Pressable>
-                      )}
-                      {hasTextContent && <Text style={[styles.bubbleText, { color: colors.textPrimary }]}>{msg.body}</Text>}
-                      {isLast && (
-                        <Text style={[styles.bubbleTime, { color: colors.textMuted }]}>
-                          {fmtTime(msg.created_at)}
-                        </Text>
-                      )}
-                    </View>
-                  )}
-                </View>
+                  message={msg}
+                  isMine={mine}
+                  isFirst={isFirst}
+                  isLast={isLast}
+                  index={groupIndex * 10 + idx}
+                  onImagePress={setPreviewImage}
+                />
               );
             })}
           </View>
         )}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <View style={[styles.emptyIcon, { backgroundColor: colors.accent + "15" }]}>
-              <Ionicons name="chatbubble-outline" size={32} color={colors.accent} />
-            </View>
-            <Text style={[text.body, { fontWeight: "600", marginTop: 12 }]}>Start the conversation</Text>
-            <Text style={[text.muted, { textAlign: "center", marginTop: 4 }]}>
-              Send a message to get started
-            </Text>
-          </View>
-        }
+        ListEmptyComponent={<EmptyChat />}
       />
 
       {chatStatus && chatStatus.chat_state !== 'open' && (
@@ -536,401 +1161,31 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
         />
       )}
 
-      {/* Selected Image Preview */}
-      {selectedImage && (
-        <View style={[styles.selectedImageContainer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-          <Image source={{ uri: selectedImage }} style={styles.selectedImagePreview} resizeMode="cover" />
-          <Pressable
-            onPress={() => setSelectedImage(null)}
-            style={[styles.removeImageButton, { backgroundColor: colors.bg }]}
-          >
-            <Ionicons name="close" size={16} color={colors.textPrimary} />
-          </Pressable>
-        </View>
-      )}
+      <ComposerBar
+        value={input}
+        onChangeText={setInput}
+        onSend={send}
+        onAttach={() => setShowAttachmentOptions(true)}
+        canSend={canSend}
+        sending={sending || uploadingImage}
+        disabled={chatStatus?.can_send === false}
+        selectedImage={selectedImage}
+        onRemoveImage={() => setSelectedImage(null)}
+      />
 
-      {/* Composer */}
-      <View style={[styles.composer, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <Pressable
-          onPress={() => setShowAttachmentOptions(true)}
-          disabled={chatStatus?.can_send === false}
-          style={({ pressed }) => [
-            styles.attachButton,
-            { opacity: chatStatus?.can_send === false ? 0.4 : pressed ? 0.6 : 1 },
-          ]}
-        >
-          <Ionicons name="add-circle-outline" size={28} color={colors.accent} />
-        </Pressable>
-
-        <View
-          style={[
-            styles.inputWrapper,
-            { backgroundColor: colors.bg, borderColor: focused ? colors.accent : colors.border },
-          ]}
-        >
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder={chatStatus?.can_send === false ? "Chat is restricted" : "Type a message..."}
-            placeholderTextColor={colors.textMuted}
-            style={[styles.input, { color: colors.textPrimary }]}
-            multiline
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            editable={chatStatus?.can_send !== false}
-          />
-        </View>
-
-        <Pressable
-          onPress={send}
-          disabled={!canSend}
-          style={({ pressed }) => [
-            styles.sendButton,
-            { backgroundColor: colors.accent, opacity: !canSend ? 0.4 : pressed ? 0.8 : 1 },
-          ]}
-        >
-          {sending || uploadingImage ? (
-            <ActivityIndicator color="#000" size="small" />
-          ) : (
-            <Ionicons name="arrow-up" size={22} color="#000" />
-          )}
-        </Pressable>
-      </View>
-
-      {/* Attachment Options Modal */}
-      <Modal
+      <AttachmentModal
         visible={showAttachmentOptions}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowAttachmentOptions(false)}
-      >
-        <Pressable style={styles.modalOverlay} onPress={() => setShowAttachmentOptions(false)}>
-          <View style={[styles.attachmentSheet, { backgroundColor: colors.surface }]}>
-            <View style={[styles.sheetHandle, { backgroundColor: colors.border }]} />
-            <Text style={[text.section, { marginBottom: 16 }]}>Add Attachment</Text>
+        onClose={() => setShowAttachmentOptions(false)}
+        onPickCamera={() => pickImage("camera")}
+        onPickLibrary={() => pickImage("library")}
+      />
 
-            <Pressable
-              onPress={() => pickImage("camera")}
-              style={({ pressed }) => [styles.attachmentOption, pressed && { opacity: 0.7 }]}
-            >
-              <View style={[styles.attachmentIconContainer, { backgroundColor: colors.accent + "20" }]}>
-                <Ionicons name="camera" size={24} color={colors.accent} />
-              </View>
-              <View style={styles.attachmentOptionText}>
-                <Text style={[text.body, { fontWeight: "600" }]}>Take Photo</Text>
-                <Text style={text.muted}>Use your camera</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => pickImage("library")}
-              style={({ pressed }) => [styles.attachmentOption, pressed && { opacity: 0.7 }]}
-            >
-              <View style={[styles.attachmentIconContainer, { backgroundColor: "#8B5CF620" }]}>
-                <Ionicons name="images" size={24} color="#8B5CF6" />
-              </View>
-              <View style={styles.attachmentOptionText}>
-                <Text style={[text.body, { fontWeight: "600" }]}>Photo Library</Text>
-                <Text style={text.muted}>Choose from gallery</Text>
-              </View>
-            </Pressable>
-
-            <Pressable
-              onPress={() => setShowAttachmentOptions(false)}
-              style={({ pressed }) => [
-                styles.cancelButton,
-                { backgroundColor: colors.bg, opacity: pressed ? 0.7 : 1 },
-              ]}
-            >
-              <Text style={[text.body, { fontWeight: "600" }]}>Cancel</Text>
-            </Pressable>
-          </View>
-        </Pressable>
-      </Modal>
-
-      {/* Image Preview Modal */}
-      <Modal
-        visible={!!previewImage}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setPreviewImage(null)}
-      >
-        <View style={styles.previewOverlay}>
-          <Pressable style={styles.previewCloseButton} onPress={() => setPreviewImage(null)}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </Pressable>
-          {previewImage && (
-            <Image
-              source={{ uri: previewImage }}
-              style={styles.previewImage}
-              resizeMode="contain"
-            />
-          )}
-        </View>
-      </Modal>
+      <ImagePreviewModal
+        imageUrl={previewImage}
+        onClose={() => setPreviewImage(null)}
+      />
 
       <ChatPolicyModal visible={showPolicyModal} onClose={() => setShowPolicyModal(false)} />
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 54,
-    paddingBottom: 12,
-    paddingHorizontal: 12,
-    borderBottomWidth: 1,
-  },
-  backButton: {
-    padding: 4,
-  },
-  headerAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    marginLeft: 8,
-  },
-  headerAvatarText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 15,
-  },
-  headerInfo: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  onlineStatus: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    marginTop: 2,
-  },
-  onlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#22c55e",
-  },
-  messageList: {
-    padding: 16,
-    paddingBottom: 20,
-  },
-  dateSeparator: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginVertical: 16,
-  },
-  dateLine: {
-    flex: 1,
-    height: 1,
-  },
-  dateText: {
-    fontSize: 12,
-    fontWeight: "600",
-    paddingHorizontal: 12,
-  },
-  bubbleContainer: {
-    maxWidth: "80%",
-    marginBottom: 8,
-  },
-  bubble: {
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 20,
-  },
-  bubbleMine: {
-    borderTopRightRadius: 20,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  bubbleFirstMine: {
-    borderTopRightRadius: 20,
-  },
-  bubbleLastMine: {
-    borderBottomRightRadius: 6,
-  },
-  bubbleTheirs: {
-    borderWidth: 1,
-    borderTopRightRadius: 20,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  bubbleFirstTheirs: {
-    borderTopLeftRadius: 20,
-  },
-  bubbleLastTheirs: {
-    borderBottomLeftRadius: 6,
-  },
-  bubbleText: {
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  bubbleTextMine: {
-    color: "#000",
-    fontSize: 15,
-    lineHeight: 21,
-  },
-  bubbleMeta: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    gap: 4,
-    marginTop: 4,
-  },
-  bubbleTime: {
-    fontSize: 11,
-    marginTop: 4,
-    textAlign: "right",
-  },
-  bubbleTimeMine: {
-    fontSize: 11,
-    color: "rgba(0,0,0,0.6)",
-  },
-  emptyContainer: {
-    alignItems: "center",
-    paddingTop: 60,
-  },
-  emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
-    padding: 12,
-    paddingBottom: 24,
-    borderTopWidth: 1,
-    gap: 8,
-  },
-  attachButton: {
-    padding: 4,
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 24,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    minHeight: 48,
-    justifyContent: "center",
-  },
-  input: {
-    fontSize: 16,
-    maxHeight: 100,
-    minHeight: 24,
-  },
-  sendButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  bubbleWithImage: {
-    padding: 4,
-    overflow: "hidden",
-  },
-  messageImage: {
-    width: 200,
-    height: 150,
-    borderRadius: 16,
-    marginBottom: 4,
-  },
-  selectedImageContainer: {
-    padding: 12,
-    borderTopWidth: 1,
-    position: "relative",
-  },
-  selectedImagePreview: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
-  },
-  removeImageButton: {
-    position: "absolute",
-    top: 8,
-    left: 76,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  attachmentSheet: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 20,
-    paddingBottom: 40,
-  },
-  sheetHandle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    alignSelf: "center",
-    marginBottom: 16,
-  },
-  attachmentOption: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-    gap: 16,
-  },
-  attachmentIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  attachmentOptionText: {
-    flex: 1,
-  },
-  cancelButton: {
-    marginTop: 16,
-    paddingVertical: 14,
-    borderRadius: 12,
-    alignItems: "center",
-  },
-  previewOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.95)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  previewCloseButton: {
-    position: "absolute",
-    top: 60,
-    right: 20,
-    zIndex: 10,
-    padding: 8,
-  },
-  previewImage: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH,
-  },
-});

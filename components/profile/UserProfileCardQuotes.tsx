@@ -10,6 +10,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
 import { usePublicProfileCard } from '@/src/hooks/use-public-profile-card';
+import { getTrustLabel, getTrustColor } from '@/src/hooks/useTrustScore';
 import type {
   PublicProfileCard,
   ProfileCardVariant,
@@ -69,19 +70,42 @@ export function UserProfileCard({
   );
 }
 
-function getTrustColor(score: number): string {
-  if (score >= 80) return '#10b981';
-  if (score >= 60) return '#3B82F6';
-  if (score >= 40) return '#F59E0B';
-  return '#9CA3AF';
+function getTierColor(tier: string): string {
+  switch (tier) {
+    case 'platinum': return '#E5E4E2';
+    case 'gold': return '#FFD700';
+    case 'silver': return '#C0C0C0';
+    case 'bronze': return '#CD7F32';
+    default: return '#CD7F32';
+  }
 }
 
-function getTrustLabel(score: number): string {
-  if (score >= 80) return 'Excellent';
-  if (score >= 60) return 'Trusted';
-  if (score >= 40) return 'Established';
-  if (score >= 20) return 'Building';
-  return 'New';
+function getTierLabel(tier: string): string {
+  switch (tier) {
+    case 'platinum': return 'Platinum';
+    case 'gold': return 'Gold';
+    case 'silver': return 'Silver';
+    case 'bronze': return 'Bronze';
+    default: return 'Bronze';
+  }
+}
+
+function getVerificationColor(status: string): string {
+  switch (status) {
+    case 'verified': return '#10b981';
+    case 'pending': return '#F59E0B';
+    case 'suspended': return '#EF4444';
+    default: return '#9CA3AF';
+  }
+}
+
+function getVerificationIcon(status: string): string {
+  switch (status) {
+    case 'verified': return 'checkmark-circle';
+    case 'pending': return 'time';
+    case 'suspended': return 'close-circle';
+    default: return 'ellipse-outline';
+  }
 }
 
 function MiniProfileCard({
@@ -94,6 +118,8 @@ function MiniProfileCard({
   const { colors } = useTheme();
   const hasRatings = profile.ratings.review_count > 0;
   const trustScore = profile.trust_score?.overall_score ?? 50;
+  const verificationStatus = profile.verification_status || 'unverified';
+  const mechanicTier = profile.mechanic_tier || 'bronze';
 
   const content = (
     <View style={[styles.miniCard, { backgroundColor: 'transparent', borderColor: 'transparent' }]}>
@@ -117,12 +143,30 @@ function MiniProfileCard({
           <Text style={[styles.miniName, { color: colors.textPrimary }]} numberOfLines={1}>
             {profile.display_name}
           </Text>
-          {profile.role === 'mechanic' && (
-            <View style={[styles.roleBadge, { backgroundColor: colors.accent + '22' }]}>
-              <Ionicons name="construct" size={12} color={colors.accent} />
+          {profile.role === 'mechanic' && verificationStatus === 'verified' && (
+            <View style={[styles.verifiedBadge, { backgroundColor: getVerificationColor('verified') }]}>
+              <Ionicons name="checkmark-circle" size={12} color="#fff" />
             </View>
           )}
         </View>
+
+        {/* Verification & Tier for mechanics */}
+        {profile.role === 'mechanic' && (
+          <View style={styles.mechanicStatusRow}>
+            <View style={[styles.tierBadge, { backgroundColor: getTierColor(mechanicTier) + '20', borderColor: getTierColor(mechanicTier) }]}>
+              <Ionicons name="trophy" size={10} color={getTierColor(mechanicTier)} />
+              <Text style={[styles.tierText, { color: getTierColor(mechanicTier) }]}>
+                {getTierLabel(mechanicTier)}
+              </Text>
+            </View>
+            {verificationStatus === 'verified' && (
+              <View style={[styles.verifiedChip, { backgroundColor: getVerificationColor('verified') + '15' }]}>
+                <Ionicons name="shield-checkmark" size={10} color={getVerificationColor('verified')} />
+                <Text style={[styles.verifiedText, { color: getVerificationColor('verified') }]}>Verified</Text>
+              </View>
+            )}
+          </View>
+        )}
 
         <View style={styles.miniRating}>
           <Ionicons name="star" size={14} color={hasRatings ? '#FFD700' : colors.textMuted} />
@@ -186,6 +230,8 @@ function FullProfileCard({
   const hasContent = profile.badges.length > 0 || (profile.role === 'mechanic' && profile.skills.length > 0);
   const trustScore = profile.trust_score?.overall_score ?? 50;
   const verifiedSkills = profile.skills.filter(s => s.is_verified);
+  const verificationStatus = profile.verification_status || 'unverified';
+  const mechanicTier = profile.mechanic_tier || 'bronze';
 
   return (
     <View style={[styles.fullCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -217,6 +263,36 @@ function FullProfileCard({
           </Text>
         </View>
       </View>
+
+      {/* Mechanic Verification & Tier */}
+      {profile.role === 'mechanic' && (
+        <View style={[styles.mechanicStatusSection, { borderColor: colors.border }]}>
+          <View style={[styles.tierBadgeLarge, { backgroundColor: getTierColor(mechanicTier) + '20', borderColor: getTierColor(mechanicTier) }]}>
+            <Ionicons name="trophy" size={16} color={getTierColor(mechanicTier)} />
+            <Text style={[styles.tierTextLarge, { color: getTierColor(mechanicTier) }]}>
+              {getTierLabel(mechanicTier)} Tier
+            </Text>
+          </View>
+          <View style={[
+            styles.verificationBadgeLarge,
+            {
+              backgroundColor: getVerificationColor(verificationStatus) + '15',
+              borderColor: getVerificationColor(verificationStatus) + '40'
+            }
+          ]}>
+            <Ionicons
+              name={getVerificationIcon(verificationStatus) as any}
+              size={16}
+              color={getVerificationColor(verificationStatus)}
+            />
+            <Text style={[styles.verificationTextLarge, { color: getVerificationColor(verificationStatus) }]}>
+              {verificationStatus === 'verified' ? 'Verified Mechanic' :
+               verificationStatus === 'pending' ? 'Verification Pending' :
+               verificationStatus === 'suspended' ? 'Suspended' : 'Unverified'}
+            </Text>
+          </View>
+        </View>
+      )}
 
       {profile.trust_score && (
         <View style={[styles.trustSection, { backgroundColor: getTrustColor(trustScore) + '15', borderColor: getTrustColor(trustScore) + '40' }]}>
@@ -491,6 +567,65 @@ const styles = StyleSheet.create({
   skillsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   skillItem: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1 },
   skillLabel: { fontSize: 13, fontWeight: '500' },
-  verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  verifiedBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 4,
+  },
   verifiedText: { fontSize: 11, fontWeight: '600' },
+  mechanicStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 4,
+  },
+  tierBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+    borderWidth: 1,
+  },
+  tierText: { fontSize: 10, fontWeight: '700' },
+  verifiedChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 4,
+  },
+  mechanicStatusSection: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+  },
+  tierBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  tierTextLarge: { fontSize: 13, fontWeight: '700' },
+  verificationBadgeLarge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  verificationTextLarge: { fontSize: 13, fontWeight: '600' },
 });

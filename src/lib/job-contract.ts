@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { clearProfileCardCache } from './profile-card';
 import type {
   JobContract,
   JobProgress,
@@ -268,21 +269,36 @@ export async function customerConfirmArrival(jobId: string): Promise<JobActionRe
 export async function customerConfirmComplete(jobId: string): Promise<JobActionResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const customerId = userData.user?.id;
-  
+
   if (!customerId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('customer_confirm_complete', {
     p_job_id: jobId,
     p_customer_id: customerId,
   });
-  
+
   if (error) {
     console.error('Confirm complete error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('accepted_mechanic_id')
+      .eq('id', jobId)
+      .single();
+
+    clearProfileCardCache(customerId);
+    if (jobData?.accepted_mechanic_id) {
+      clearProfileCardCache(jobData.accepted_mechanic_id);
+    }
+  } catch (e) {
+    console.error('Failed to clear profile cache:', e);
+  }
+
   return data as JobActionResponse;
 }
 
@@ -297,23 +313,40 @@ export async function cancelJob(
 ): Promise<CancelJobResponse> {
   const { data: userData } = await supabase.auth.getUser();
   const userId = userData.user?.id;
-  
+
   if (!userId) {
     return { success: false, error: 'Not authenticated' };
   }
-  
+
   const { data, error } = await supabase.rpc('cancel_job', {
     p_job_id: jobId,
     p_cancelled_by: userId,
     p_reason: reason,
     p_note: note ?? null,
   });
-  
+
   if (error) {
     console.error('Cancel job error:', error);
     return { success: false, error: error.message };
   }
-  
+
+  try {
+    const { data: jobData } = await supabase
+      .from('jobs')
+      .select('customer_id, accepted_mechanic_id')
+      .eq('id', jobId)
+      .single();
+
+    if (jobData?.customer_id) {
+      clearProfileCardCache(jobData.customer_id);
+    }
+    if (jobData?.accepted_mechanic_id) {
+      clearProfileCardCache(jobData.accepted_mechanic_id);
+    }
+  } catch (e) {
+    console.error('Failed to clear profile cache:', e);
+  }
+
   return data as CancelJobResponse;
 }
 

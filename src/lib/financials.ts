@@ -254,6 +254,10 @@ export type JobFinancialBreakdown = {
   total_customer_cents: number;
   mechanic_commission_cents: number;
   mechanic_payout_cents: number;
+  // Mechanic promo
+  mechanic_promo_discount_cents: number;
+  original_mechanic_commission_cents: number | null;
+  mechanic_promo_credit_type: string | null;
   // Payment status
   payment_authorized_at: string | null;
   payment_captured_at: string | null;
@@ -347,6 +351,11 @@ export async function getJobFinancialBreakdown(
       total_customer_cents: contract.total_customer_cents,
       mechanic_commission_cents: contract.mechanic_commission_cents,
       mechanic_payout_cents: contract.mechanic_payout_cents,
+      // Mechanic promo
+      mechanic_promo_discount_cents: contract.mechanic_promo_discount_cents || 0,
+      original_mechanic_commission_cents: contract.original_mechanic_commission_cents || null,
+      mechanic_promo_credit_type: contract.applied_mechanic_promo_credit_id ?
+        (contract.mechanic_promo_discount_cents >= 1500 ? 'FEELESS' : 'FEELESS3') : null,
       payment_authorized_at: contract.payment_authorized_at,
       payment_captured_at: contract.payment_captured_at,
       payment_status: paymentStatus,

@@ -17,12 +17,17 @@ import {
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { LinearGradient } from "expo-linear-gradient";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import * as ImagePicker from "expo-image-picker";
@@ -30,6 +35,9 @@ import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useStripe } from "@stripe/stripe-react-native";
 import { acceptInvitation, hasUsedReferral } from "../../../src/lib/promos";
 import { checkIsAdmin } from "../../../src/lib/verification";
+import { LinearGradient } from "expo-linear-gradient";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -56,12 +64,144 @@ function toTitleCase(str: string): string {
     .join(" ");
 }
 
+function SectionCard({
+  children,
+  title,
+  icon,
+  iconColor,
+  action,
+  onAction,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  action?: string;
+  onAction?: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(delay).duration(300)}
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: radius.xl,
+        padding: spacing.lg,
+        ...shadows.sm,
+      }}
+    >
+      <View style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: spacing.md,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{
+            width: 36,
+            height: 36,
+            borderRadius: radius.lg,
+            backgroundColor: withAlpha(iconColor, 0.12),
+            alignItems: "center",
+            justifyContent: "center"
+          }}>
+            <Ionicons name={icon} size={18} color={iconColor} />
+          </View>
+          <Text style={{
+            fontSize: 16,
+            fontWeight: "700",
+            color: colors.textPrimary,
+          }}>{title}</Text>
+        </View>
+        {action && onAction && (
+          <Pressable onPress={onAction} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.primary }}>{action}</Text>
+          </Pressable>
+        )}
+      </View>
+      {children}
+    </Animated.View>
+  );
+}
+
+function InfoRow({
+  icon,
+  label,
+  value,
+  isLast = false
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  const { colors, spacing, withAlpha } = useTheme();
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: spacing.sm,
+      borderBottomWidth: isLast ? 0 : 1,
+      borderBottomColor: withAlpha(colors.border, 0.5),
+    }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        <Ionicons name={icon} size={16} color={colors.textMuted} />
+        <Text style={{ fontSize: 14, color: colors.textMuted }}>{label}</Text>
+      </View>
+      <Text style={{
+        fontSize: 14,
+        fontWeight: "600",
+        color: value && value !== "Not set" ? colors.textPrimary : colors.textMuted
+      }}>{value || "Not set"}</Text>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg }}>
+      <View style={{ paddingTop: insets.top + spacing.lg, marginBottom: spacing.xl }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={[shimmer, { width: 80, height: 80, borderRadius: 28 }]} />
+          <View style={{ flex: 1 }}>
+            <View style={[shimmer, { width: 150, height: 24, marginBottom: 8 }]} />
+            <View style={[shimmer, { width: 100, height: 16 }]} />
+          </View>
+        </View>
+      </View>
+
+      <View style={[shimmer, { height: 100, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 150, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 120, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 80, borderRadius: radius.xl }]} />
+    </View>
+  );
+}
+
 export default function CustomerAccount() {
   const router = useRouter();
-  const { mode, toggle, colors, spacing, radius, text } = useTheme();
+  const { mode, toggle, colors, spacing, radius, shadows, withAlpha, text } = useTheme();
   const insets = useSafeAreaInsets();
-  const card = useMemo(() => createCard(colors), [colors]);
   const { initPaymentSheet, presentPaymentSheet } = useStripe();
+
+  const card = useMemo(() => ({
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    ...shadows.sm,
+  }), [colors, radius, shadows]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -552,12 +692,7 @@ export default function CustomerAccount() {
   }, [displayName]);
 
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Loading…</Text>
-      </View>
-    );
+    return <LoadingSkeleton />;
   }
 
   return (
@@ -624,14 +759,14 @@ export default function CustomerAccount() {
                   borderRadius: 24,
                   overflow: "hidden",
                   borderWidth: 2,
-                  borderColor: colors.accent + "40",
+                  borderColor: withAlpha(colors.accent, 0.25),
                   backgroundColor: colors.surface,
                 }}
               >
                 {profile?.avatar_url ? (
                   <Image key={profile.avatar_url} source={avatarSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.accent + "20" }}>
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: withAlpha(colors.accent, 0.2) }}>
                     <Text style={{ fontSize: 24, fontWeight: "700", color: colors.accent }}>{initials}</Text>
                   </View>
                 )}
@@ -641,12 +776,12 @@ export default function CustomerAccount() {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    backgroundColor: "rgba(0,0,0,0.6)",
+                    backgroundColor: withAlpha(colors.black, 0.6),
                     alignItems: "center",
                     paddingVertical: 3,
                   }}
                 >
-                  <Ionicons name="camera" size={12} color="#fff" />
+                  <Ionicons name="camera" size={12} color={colors.white} />
                 </View>
               </Pressable>
 
@@ -662,7 +797,7 @@ export default function CustomerAccount() {
                       paddingHorizontal: 10,
                       paddingVertical: 5,
                       borderRadius: 999,
-                      backgroundColor: colors.accent + "20",
+                      backgroundColor: withAlpha(colors.accent, 0.2),
                       gap: 4,
                     }}
                   >
@@ -682,25 +817,25 @@ export default function CustomerAccount() {
                 gap: spacing.md,
                 paddingTop: spacing.sm,
                 borderTopWidth: 1,
-                borderTopColor: colors.border + "40",
+                borderTopColor: withAlpha(colors.border, 0.4),
               }}>
                 <View style={{ alignItems: "center", flex: 1 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                    <Ionicons name="star" size={16} color="#FFB800" />
+                    <Ionicons name="star" size={16} color={colors.warning} />
                     <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textPrimary }}>
                       {ratingStats.avg > 0 ? ratingStats.avg.toFixed(1) : "—"}
                     </Text>
                   </View>
                   <Text style={{ ...text.muted, fontSize: 11 }}>Rating ({ratingStats.count})</Text>
                 </View>
-                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ width: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ alignItems: "center", flex: 1 }}>
                   <Text style={{ fontSize: 20, fontWeight: "800", color: colors.accent }}>{jobStats.active}</Text>
                   <Text style={{ ...text.muted, fontSize: 11 }}>Active Jobs</Text>
                 </View>
-                <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ width: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ alignItems: "center", flex: 1 }}>
-                  <Text style={{ fontSize: 20, fontWeight: "800", color: "#10b981" }}>{jobStats.completed}</Text>
+                  <Text style={{ fontSize: 20, fontWeight: "800", color: colors.success }}>{jobStats.completed}</Text>
                   <Text style={{ ...text.muted, fontSize: 11 }}>Completed</Text>
                 </View>
               </View>
@@ -727,9 +862,9 @@ export default function CustomerAccount() {
               <Ionicons
                 name={editing ? "close-outline" : "create-outline"}
                 size={18}
-                color={editing ? colors.black : colors.textPrimary}
+                color={editing ? colors.buttonText : colors.textPrimary}
               />
-              <Text style={{ fontWeight: "800", color: editing ? colors.black : colors.textPrimary }}>
+              <Text style={{ fontWeight: "800", color: editing ? colors.buttonText : colors.textPrimary }}>
                 {editing ? "CANCEL EDITING" : "EDIT PROFILE"}
               </Text>
             </Pressable>
@@ -740,7 +875,7 @@ export default function CustomerAccount() {
           <>
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.accent, 0.2), alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="person-outline" size={16} color={colors.accent} />
                 </View>
                 <Text style={text.section}>Contact Information</Text>
@@ -753,7 +888,7 @@ export default function CustomerAccount() {
                   </View>
                   <Text style={{ ...text.body, fontWeight: "600" }}>{profile?.email || "Not set"}</Text>
                 </View>
-                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name="call-outline" size={16} color={colors.textMuted} />
@@ -763,7 +898,7 @@ export default function CustomerAccount() {
                     {phone || "Not set"}
                   </Text>
                 </View>
-                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name="location-outline" size={16} color={colors.textMuted} />
@@ -779,8 +914,8 @@ export default function CustomerAccount() {
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#3b82f6" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="car-sport-outline" size={16} color="#3b82f6" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.info, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="car-sport-outline" size={16} color={colors.info} />
                   </View>
                   <Text style={text.section}>My Vehicles</Text>
                 </View>
@@ -859,8 +994,8 @@ export default function CustomerAccount() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#8b5cf6" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color="#8b5cf6" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.primary, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color={colors.primary} />
                 </View>
                 <Text style={text.section}>Appearance</Text>
               </View>
@@ -889,8 +1024,8 @@ export default function CustomerAccount() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.xs }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#10b981" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="card-outline" size={16} color="#10b981" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.success, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="card-outline" size={16} color={colors.success} />
                 </View>
                 <Text style={text.section}>Payment Method</Text>
               </View>
@@ -919,8 +1054,8 @@ export default function CustomerAccount() {
                         Expires {paymentMethod.card_exp_month}/{paymentMethod.card_exp_year}
                       </Text>
                     </View>
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "#10b981" + "20", borderRadius: 6 }}>
-                      <Text style={{ fontSize: 10, fontWeight: "800", color: "#10b981" }}>DEFAULT</Text>
+                    <View style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: withAlpha(colors.success, 0.2), borderRadius: 6 }}>
+                      <Text style={{ fontSize: 10, fontWeight: "800", color: colors.success }}>DEFAULT</Text>
                     </View>
                   </View>
                   <Pressable
@@ -1059,10 +1194,10 @@ export default function CustomerAccount() {
                       justifyContent: "center",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: "#f59e0b" + "15",
+                      backgroundColor: withAlpha(colors.warning, 0.15),
                     }}
                   >
-                    <Ionicons name="gift-outline" size={18} color="#f59e0b" />
+                    <Ionicons name="gift-outline" size={18} color={colors.warning} />
                   </View>
 
                   <View style={{ flex: 1 }}>
@@ -1082,8 +1217,8 @@ export default function CustomerAccount() {
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#FFB800" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="star-outline" size={16} color="#FFB800" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.warning, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="star-outline" size={16} color={colors.warning} />
                   </View>
                   <Text style={text.section}>My Reviews ({ratingStats.count})</Text>
                 </View>
@@ -1105,11 +1240,10 @@ export default function CustomerAccount() {
                 </View>
               ) : (
                 <View style={{ gap: spacing.md, marginTop: spacing.xs }}>
-                  {/* Average ratings summary */}
                   <View style={{ flexDirection: "row", justifyContent: "space-around", paddingVertical: spacing.sm, backgroundColor: colors.bg, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border }}>
                     <View style={{ alignItems: "center" }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                        <Ionicons name="star" size={16} color="#FFB800" />
+                        <Ionicons name="star" size={16} color={colors.warning} />
                         <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 16 }}>{ratingStats.avg.toFixed(1)}</Text>
                       </View>
                       <Text style={{ fontSize: 11, color: colors.textMuted }}>Overall</Text>
@@ -1155,7 +1289,7 @@ export default function CustomerAccount() {
                               style={{ width: 28, height: 28, borderRadius: 14 }}
                             />
                           ) : (
-                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(colors.accent, 0.2), alignItems: "center", justifyContent: "center" }}>
                               <Text style={{ fontSize: 12, fontWeight: "700", color: colors.accent }}>
                                 {(review.reviewer?.full_name || "M").charAt(0).toUpperCase()}
                               </Text>
@@ -1166,13 +1300,12 @@ export default function CustomerAccount() {
                           </Text>
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Ionicons name="star" size={14} color="#FFB800" />
+                          <Ionicons name="star" size={14} color={colors.warning} />
                           <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
                             {review.overall_rating}
                           </Text>
                         </View>
                       </View>
-                      {/* Customer sub-ratings */}
                       <View style={{ flexDirection: "row", gap: 12, marginTop: 8 }}>
                         {review.communication_rating > 0 && (
                           <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
@@ -1254,8 +1387,8 @@ export default function CustomerAccount() {
 
             <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="location-outline" size={16} color="#f59e0b" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.warning, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="location-outline" size={16} color={colors.warning} />
                 </View>
                 <Text style={{ ...text.muted, fontSize: 13, fontWeight: "600" }}>Home Location</Text>
               </View>
@@ -1264,7 +1397,7 @@ export default function CustomerAccount() {
               </Text>
               {homeLat && homeLng && (
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
-                  <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                  <Ionicons name="checkmark-circle" size={16} color={colors.success} />
                   <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
                     {locationDisplay}
                   </Text>
@@ -1433,7 +1566,7 @@ export default function CustomerAccount() {
                 paddingVertical: 16,
                 paddingHorizontal: 16,
                 borderRadius: radius.lg,
-                backgroundColor: '#8B5CF6',
+                backgroundColor: colors.primary,
                 opacity: pressed ? 0.9 : 1,
                 flexDirection: "row",
                 alignItems: "center",
@@ -1443,8 +1576,8 @@ export default function CustomerAccount() {
               },
             ]}
           >
-            <Ionicons name="shield-checkmark" size={18} color="#fff" />
-            <Text style={{ fontWeight: "900", color: "#fff" }}>ADMIN PANEL</Text>
+            <Ionicons name="shield-checkmark" size={18} color={colors.white} />
+            <Text style={{ fontWeight: "900", color: colors.white }}>ADMIN PANEL</Text>
           </Pressable>
         )}
 
@@ -1465,8 +1598,8 @@ export default function CustomerAccount() {
             },
           ]}
         >
-          <Ionicons name="log-out-outline" size={18} color={colors.black} />
-          <Text style={{ fontWeight: "900", color: colors.black }}>SIGN OUT</Text>
+          <Ionicons name="log-out-outline" size={18} color={colors.buttonText} />
+          <Text style={{ fontWeight: "900", color: colors.buttonText }}>SIGN OUT</Text>
         </Pressable>
 
         <View style={{ marginTop: spacing.sm }}>
@@ -1487,7 +1620,7 @@ export default function CustomerAccount() {
         <Pressable
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            backgroundColor: withAlpha(colors.black, 0.5),
             justifyContent: "flex-end",
           }}
           onPress={() => setPhotoModalVisible(false)}

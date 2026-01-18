@@ -5,12 +5,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import { adminGetJobDetail, AdminJobDetail, formatCents, formatDateTime } from '../../../src/lib/admin';
+import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 
 export default function AdminJobDetailScreen() {
   const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [detail, setDetail] = useState<AdminJobDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [messageRecipient, setMessageRecipient] = useState<{ id: string; name: string; role: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -91,6 +93,24 @@ export default function AdminJobDetailScreen() {
           <View style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}>
             <InfoRow label="Name" value={job.customer_name} />
             <InfoRow label="Email" value={job.customer_email} />
+            {job.customer_id && (
+              <TouchableOpacity
+                onPress={() => setMessageRecipient({ id: job.customer_id!, name: job.customer_name || 'Customer', role: 'Customer' })}
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: spacing.sm,
+                  backgroundColor: '#8B5CF6',
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 6,
+                  borderRadius: 6,
+                  alignSelf: 'flex-start',
+                }}
+              >
+                <Ionicons name="chatbubble-outline" size={14} color="#fff" />
+                <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', marginLeft: 4 }}>Message Customer</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </Section>
 
@@ -105,6 +125,24 @@ export default function AdminJobDetailScreen() {
               <InfoRow label="Mechanic Payout" value={formatCents(contract.mechanic_payout_cents || 0)} />
               {contract.accepted_at && <InfoRow label="Accepted" value={formatDateTime(contract.accepted_at)} />}
               {contract.completed_at && <InfoRow label="Completed" value={formatDateTime(contract.completed_at)} />}
+              {contract.mechanic_id && (
+                <TouchableOpacity
+                  onPress={() => setMessageRecipient({ id: contract.mechanic_id, name: contract.mechanic_name || 'Mechanic', role: 'Mechanic' })}
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: spacing.sm,
+                    backgroundColor: '#8B5CF6',
+                    paddingHorizontal: spacing.sm,
+                    paddingVertical: 6,
+                    borderRadius: 6,
+                    alignSelf: 'flex-start',
+                  }}
+                >
+                  <Ionicons name="chatbubble-outline" size={14} color="#fff" />
+                  <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600', marginLeft: 4 }}>Message Mechanic</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </Section>
         )}
@@ -181,6 +219,16 @@ export default function AdminJobDetailScreen() {
           ))}
         </Section>
       </ScrollView>
+
+      {messageRecipient && (
+        <AdminMessageModal
+          visible={!!messageRecipient}
+          onClose={() => setMessageRecipient(null)}
+          recipient={messageRecipient}
+          relatedJobId={id}
+          relatedJobTitle={job.title}
+        />
+      )}
     </View>
   );
 }

@@ -113,3 +113,12 @@ export function preloadProfileCards(userIds: string[]): void {
     console.error('Error preloading profile cards:', err);
   });
 }
+
+/**
+ * Invalidate cache and refetch profile card after trust score change
+ * Call this after events that affect trust score (job completion, review, etc.)
+ */
+export async function refreshProfileCardAfterTrustChange(userId: string): Promise<PublicProfileCard | null> {
+  clearProfileCardCache(userId);
+  return getPublicProfileCard(userId, { forceRefresh: true });
+}

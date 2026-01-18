@@ -148,14 +148,45 @@ export default function PayoutDetailsScreen() {
           )}
 
           <Row label="Subtotal" value={formatCents(breakdown.subtotal_cents)} colors={colors} text={text} spacing={spacing} />
-          <Row
-            label="Platform Commission (12%, max $50)"
-            value={`-${formatCents(breakdown.mechanic_commission_cents)}`}
-            valueColor="#ef4444"
-            colors={colors}
-            text={text}
-            spacing={spacing}
-          />
+
+          {breakdown.mechanic_promo_discount_cents > 0 ? (
+            <>
+              <Row
+                label="Platform Commission (12%, max $50)"
+                value={`-${formatCents(breakdown.original_mechanic_commission_cents || breakdown.mechanic_commission_cents + breakdown.mechanic_promo_discount_cents)}`}
+                valueColor="#6b7280"
+                colors={colors}
+                text={text}
+                spacing={spacing}
+              />
+              <Row
+                label={breakdown.mechanic_promo_credit_type === 'FEELESS' ? 'Promo: Free commission' : 'Promo: $3 off commission'}
+                value={`+${formatCents(breakdown.mechanic_promo_discount_cents)}`}
+                valueColor="#10b981"
+                colors={colors}
+                text={text}
+                spacing={spacing}
+              />
+              <Row
+                label="Net Commission"
+                value={`-${formatCents(breakdown.mechanic_commission_cents)}`}
+                valueColor="#ef4444"
+                colors={colors}
+                text={text}
+                spacing={spacing}
+              />
+            </>
+          ) : (
+            <Row
+              label="Platform Commission (12%, max $50)"
+              value={`-${formatCents(breakdown.mechanic_commission_cents)}`}
+              valueColor="#ef4444"
+              colors={colors}
+              text={text}
+              spacing={spacing}
+            />
+          )}
+
           <View style={{ height: 1, backgroundColor: colors.border, marginVertical: spacing.sm }} />
           <Row
             label="Your Net Payout"

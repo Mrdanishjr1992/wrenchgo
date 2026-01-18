@@ -5,7 +5,6 @@ import {
   ScrollView,
   Pressable,
   Image,
-  ActivityIndicator,
   Alert,
   Switch,
   KeyboardAvoidingView,
@@ -20,9 +19,15 @@ import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard } from "../../../src/ui/styles";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
 import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import { VerificationSection } from "@/components/verification/VerificationSection";
@@ -31,6 +36,148 @@ import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
 
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function ProfileSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.md }}>
+      <View style={{
+        backgroundColor: colors.surface,
+        borderRadius: radius.xl,
+        padding: spacing.lg,
+        marginBottom: spacing.md,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+          <View style={[shimmer, { width: 80, height: 80, borderRadius: 28 }]} />
+          <View style={{ flex: 1 }}>
+            <View style={[shimmer, { width: 150, height: 24, marginBottom: 8 }]} />
+            <View style={[shimmer, { width: 120, height: 16, marginBottom: 8 }]} />
+            <View style={[shimmer, { width: 80, height: 20, borderRadius: radius.full }]} />
+          </View>
+        </View>
+        <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.lg }}>
+          <View style={[shimmer, { flex: 1, height: 60, borderRadius: radius.lg }]} />
+          <View style={[shimmer, { flex: 1, height: 60, borderRadius: radius.lg }]} />
+          <View style={[shimmer, { flex: 1, height: 60, borderRadius: radius.lg }]} />
+        </View>
+      </View>
+
+      <View style={[shimmer, { height: 120, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 150, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 100, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+      <View style={[shimmer, { height: 80, borderRadius: radius.xl }]} />
+    </View>
+  );
+}
+
+function SectionCard({
+  children,
+  title,
+  icon,
+  iconColor,
+  action,
+  onAction,
+  delay = 0,
+}: {
+  children: React.ReactNode;
+  title: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  iconColor: string;
+  action?: string;
+  onAction?: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(delay).duration(300)}
+      style={{
+        backgroundColor: colors.surface,
+        borderRadius: radius.xl,
+        padding: spacing.lg,
+        ...shadows.sm,
+      }}
+    >
+      <View style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: spacing.md,
+      }}>
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          <View style={{
+            width: 36,
+            height: 36,
+            borderRadius: radius.lg,
+            backgroundColor: withAlpha(iconColor, 0.12),
+            alignItems: "center",
+            justifyContent: "center",
+          }}>
+            <Ionicons name={icon} size={18} color={iconColor} />
+          </View>
+          <Text style={{
+            fontSize: 16,
+            fontWeight: "700",
+            color: colors.textPrimary,
+          }}>{title}</Text>
+        </View>
+        {action && onAction && (
+          <Pressable onPress={onAction} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.primary }}>{action}</Text>
+          </Pressable>
+        )}
+      </View>
+      {children}
+    </Animated.View>
+  );
+}
+
+function StatBadge({
+  icon,
+  value,
+  label,
+  color,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string | number;
+  label: string;
+  color: string;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <View style={{
+      flex: 1,
+      backgroundColor: withAlpha(color, 0.1),
+      borderRadius: radius.lg,
+      padding: spacing.sm,
+      alignItems: "center",
+    }}>
+      <Ionicons name={icon} size={18} color={color} />
+      <Text style={{
+        fontSize: 18,
+        fontWeight: "800",
+        color: colors.textPrimary,
+        marginTop: 4,
+      }}>{value}</Text>
+      <Text style={{
+        fontSize: 11,
+        color: colors.textMuted,
+        fontWeight: "500",
+      }}>{label}</Text>
+    </View>
+  );
+}
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -59,9 +206,14 @@ function toTitleCase(str: string): string {
 
 export default function MechanicProfile() {
   const router = useRouter();
-  const { mode, toggle, colors, spacing, radius, text } = useTheme();
+  const { mode, toggle, colors, spacing, radius, shadows, withAlpha, text } = useTheme();
   const insets = useSafeAreaInsets();
-  const card = useMemo(() => createCard(colors), [colors]);
+
+  const card = useMemo(() => ({
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    ...shadows.sm,
+  }), [colors, radius, shadows]);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -634,19 +786,7 @@ export default function MechanicProfile() {
   }, [allSafety, selectedSafety]);
 
   if (loading) {
-    return (
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: colors.bg,
-          alignItems: "center",
-          justifyContent: "center",
-        }}
-      >
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Loading…</Text>
-      </View>
-    );
+    return <ProfileSkeleton />;
   }
 
   return (

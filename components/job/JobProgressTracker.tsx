@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
   useSharedValue,
@@ -10,6 +10,8 @@ import Animated, {
   withDelay,
   interpolate,
   Easing,
+  FadeIn,
+  FadeInDown,
 } from 'react-native-reanimated';
 import { useTheme } from '../../src/ui/theme-context';
 import type { JobProgress } from '../../src/types/job-lifecycle';
@@ -30,17 +32,32 @@ interface JobProgressTrackerProps {
   role: 'customer' | 'mechanic';
 }
 
+function formatTime(timestamp: string): string {
+  try {
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+
+    if (isToday) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
+           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return '';
+  }
+}
+
 function AnimatedStep({
   step,
   index,
   isLast,
-  colors
 }: {
   step: ProgressStep;
   index: number;
   isLast: boolean;
-  colors: any;
 }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0.3);
   const glowOpacity = useSharedValue(0);
@@ -92,41 +109,65 @@ function AnimatedStep({
     height: `${interpolate(lineProgress.value, [0, 1], [0, 100])}%`,
   }));
 
+  const stepColor = step.completed ? colors.success : step.active ? colors.primary : colors.textMuted;
+
   return (
-    <View style={styles.stepRow}>
-      <View style={styles.stepIndicatorColumn}>
-        <View style={styles.circleContainer}>
+    <Animated.View 
+      entering={FadeInDown.delay(index * 80).duration(300)}
+      style={{
+        flexDirection: 'row',
+        minHeight: 90,
+      }}
+    >
+      <View style={{
+        width: 48,
+        alignItems: 'center',
+      }}>
+        <View style={{
+          width: 40,
+          height: 40,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
           {step.active && (
             <Animated.View
               style={[
-                styles.pulseRing,
-                { backgroundColor: colors.accent },
+                {
+                  position: 'absolute',
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: colors.primary,
+                },
                 pulseStyle,
               ]}
             />
           )}
 
           <View
-            style={[
-              styles.stepCircle,
-              {
-                backgroundColor: step.completed
-                  ? colors.accent
-                  : step.active
-                  ? colors.bg
-                  : colors.surface,
-                borderColor: step.completed || step.active ? colors.accent : colors.border,
-                borderWidth: step.active ? 3 : 2,
-              },
-            ]}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 18,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: step.completed
+                ? colors.success
+                : step.active
+                ? colors.bg
+                : colors.surface,
+              borderWidth: step.active ? 3 : 2,
+              borderColor: step.completed ? colors.success : step.active ? colors.primary : colors.border,
+              zIndex: 1,
+            }}
           >
             {step.completed ? (
-              <Ionicons name="checkmark" size={16} color="#000" />
+              <Ionicons name="checkmark" size={18} color={colors.white} />
             ) : (
               <Ionicons
                 name={step.icon}
-                size={14}
-                color={step.active ? colors.accent : colors.textMuted}
+                size={16}
+                color={step.active ? colors.primary : colors.textMuted}
               />
             )}
           </View>
@@ -134,8 +175,14 @@ function AnimatedStep({
           {step.active && (
             <Animated.View
               style={[
-                styles.glowEffect,
-                { backgroundColor: colors.accent },
+                {
+                  position: 'absolute',
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor: colors.primary,
+                  opacity: 0.15,
+                },
                 glowStyle,
               ]}
             />
@@ -143,11 +190,21 @@ function AnimatedStep({
         </View>
 
         {!isLast && (
-          <View style={[styles.lineContainer, { backgroundColor: colors.border }]}>
+          <View style={{
+            flex: 1,
+            width: 3,
+            borderRadius: 1.5,
+            marginVertical: 4,
+            backgroundColor: colors.border,
+            overflow: 'hidden',
+          }}>
             <Animated.View
               style={[
-                styles.lineProgress,
-                { backgroundColor: colors.accent },
+                {
+                  width: '100%',
+                  borderRadius: 1.5,
+                  backgroundColor: colors.success,
+                },
                 lineStyle,
               ]}
             />
@@ -155,60 +212,157 @@ function AnimatedStep({
         )}
       </View>
 
-      <View style={styles.stepContent}>
-        <View style={styles.stepHeader}>
-          <Text
-            style={[
-              styles.stepLabel,
-              {
-                color: step.completed || step.active ? colors.textPrimary : colors.textMuted,
-                fontWeight: step.active ? '800' : step.completed ? '700' : '500',
-              },
-            ]}
-          >
+      <View style={{
+        flex: 1,
+        paddingLeft: spacing.sm,
+        paddingBottom: spacing.lg,
+      }}>
+        <View style={{
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.sm,
+          marginBottom: 4,
+        }}>
+          <Text style={{
+            fontSize: 15,
+            fontWeight: step.active ? '700' : step.completed ? '600' : '500',
+            color: step.completed || step.active ? colors.textPrimary : colors.textMuted,
+          }}>
             {step.label}
           </Text>
           {step.active && (
-            <View style={[styles.liveBadge, { backgroundColor: colors.accent }]}>
-              <View style={[styles.liveDot, { backgroundColor: '#000' }]} />
-              <Text style={styles.liveText}>LIVE</Text>
+            <View style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 4,
+              backgroundColor: colors.primary,
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: radius.full,
+            }}>
+              <View style={{
+                width: 6,
+                height: 6,
+                borderRadius: 3,
+                backgroundColor: colors.white,
+              }} />
+              <Text style={{
+                fontSize: 10,
+                fontWeight: '800',
+                color: colors.white,
+              }}>LIVE</Text>
             </View>
           )}
         </View>
 
-        <Text
-          style={[
-            styles.stepDescription,
-            { color: colors.textMuted },
-          ]}
-        >
+        <Text style={{
+          fontSize: 13,
+          lineHeight: 18,
+          color: colors.textMuted,
+        }}>
           {step.description}
         </Text>
 
         {step.timestamp && step.completed && (
-          <View style={styles.timestampRow}>
-            <Ionicons name="time-outline" size={12} color={colors.textMuted} />
-            <Text style={[styles.stepTime, { color: colors.textMuted }]}>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            marginTop: spacing.xs,
+          }}>
+            <Ionicons name="time-outline" size={12} color={colors.success} />
+            <Text style={{
+              fontSize: 12,
+              color: colors.success,
+              fontWeight: '500',
+            }}>
               {formatTime(step.timestamp)}
             </Text>
           </View>
         )}
 
         {step.active && (
-          <View style={[styles.activeHint, { backgroundColor: colors.accent + '15' }]}>
-            <Ionicons name="hourglass-outline" size={14} color={colors.accent} />
-            <Text style={[styles.activeHintText, { color: colors.accent }]}>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginTop: spacing.sm,
+            paddingHorizontal: spacing.sm,
+            paddingVertical: spacing.xs,
+            borderRadius: radius.md,
+            backgroundColor: withAlpha(colors.primary, 0.1),
+            alignSelf: 'flex-start',
+          }}>
+            <Ionicons name="hourglass-outline" size={14} color={colors.primary} />
+            <Text style={{
+              fontSize: 12,
+              fontWeight: '600',
+              color: colors.primary,
+            }}>
               In progress...
             </Text>
           </View>
         )}
       </View>
-    </View>
+    </Animated.View>
+  );
+}
+
+function StatusBanner({
+  type,
+  title,
+  subtitle,
+}: {
+  type: 'cancelled' | 'disputed';
+  title: string;
+  subtitle: string;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const config = type === 'cancelled'
+    ? { bg: colors.errorBg, color: colors.error, icon: 'close-circle' as const }
+    : { bg: colors.warningBg, color: colors.warning, icon: 'warning' as const };
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(300)}
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: spacing.md,
+        padding: spacing.lg,
+        backgroundColor: config.bg,
+        borderRadius: radius.xl,
+        ...shadows.sm,
+      }}
+    >
+      <View style={{
+        width: 52,
+        height: 52,
+        borderRadius: 26,
+        backgroundColor: config.color,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+        <Ionicons name={config.icon} size={28} color={colors.white} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{
+          fontSize: 17,
+          fontWeight: '700',
+          color: config.color,
+          marginBottom: 2,
+        }}>{title}</Text>
+        <Text style={{
+          fontSize: 14,
+          color: withAlpha(config.color, 0.8),
+        }}>{subtitle}</Text>
+      </View>
+    </Animated.View>
   );
 }
 
 export function JobProgressTracker({ progress, status, role }: JobProgressTrackerProps) {
-  const { colors } = useTheme();
+  const { colors, spacing, radius, withAlpha } = useTheme();
 
   const getSteps = (): ProgressStep[] => {
     const steps: ProgressStep[] = [
@@ -281,248 +435,106 @@ export function JobProgressTracker({ progress, status, role }: JobProgressTracke
 
   if (status === 'cancelled' || status === 'canceled') {
     return (
-      <View style={[styles.statusContainer, { backgroundColor: '#FEE2E2' }]}>
-        <View style={[styles.statusIconCircle, { backgroundColor: '#EF4444' }]}>
-          <Ionicons name="close" size={24} color="#fff" />
-        </View>
-        <View style={styles.statusTextContainer}>
-          <Text style={[styles.statusTitle, { color: '#991B1B' }]}>Job Cancelled</Text>
-          <Text style={[styles.statusSubtitle, { color: '#B91C1C' }]}>This job has been cancelled</Text>
-        </View>
-      </View>
+      <StatusBanner
+        type="cancelled"
+        title="Job Cancelled"
+        subtitle="This job has been cancelled"
+      />
     );
   }
 
   if (status === 'disputed') {
     return (
-      <View style={[styles.statusContainer, { backgroundColor: '#FEF3C7' }]}>
-        <View style={[styles.statusIconCircle, { backgroundColor: '#F59E0B' }]}>
-          <Ionicons name="warning" size={24} color="#fff" />
-        </View>
-        <View style={styles.statusTextContainer}>
-          <Text style={[styles.statusTitle, { color: '#92400E' }]}>Under Dispute</Text>
-          <Text style={[styles.statusSubtitle, { color: '#B45309' }]}>This job is being reviewed</Text>
-        </View>
-      </View>
+      <StatusBanner
+        type="disputed"
+        title="Under Dispute"
+        subtitle="This job is being reviewed"
+      />
     );
   }
 
   return (
-    <View style={styles.container}>
-      <View style={[styles.progressHeader, { borderBottomColor: colors.border }]}>
-        <View style={styles.progressInfo}>
-          <Text style={[styles.progressLabel, { color: colors.textMuted }]}>Overall Progress</Text>
-          <Text style={[styles.progressPercent, { color: colors.accent }]}>{progressPercent}%</Text>
+    <View style={{ gap: spacing.lg }}>
+      <Animated.View 
+        entering={FadeIn.duration(300)}
+        style={{
+          paddingBottom: spacing.md,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.border,
+        }}
+      >
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: spacing.sm,
+        }}>
+          <Text style={{
+            fontSize: 13,
+            fontWeight: '600',
+            color: colors.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}>Overall Progress</Text>
+          <View style={{
+            flexDirection: 'row',
+            alignItems: 'baseline',
+            gap: 2,
+          }}>
+            <Text style={{
+              fontSize: 24,
+              fontWeight: '800',
+              color: colors.primary,
+            }}>{progressPercent}</Text>
+            <Text style={{
+              fontSize: 14,
+              fontWeight: '600',
+              color: colors.textMuted,
+            }}>%</Text>
+          </View>
         </View>
-        <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
+        <View style={{
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: withAlpha(colors.primary, 0.15),
+          overflow: 'hidden',
+        }}>
           <Animated.View
-            style={[
-              styles.progressBarFill,
-              {
-                backgroundColor: colors.accent,
-                width: `${progressPercent}%`,
-              }
-            ]}
+            style={{
+              height: '100%',
+              borderRadius: 4,
+              backgroundColor: colors.primary,
+              width: `${progressPercent}%`,
+            }}
           />
         </View>
-      </View>
+        <View style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          marginTop: spacing.xs,
+        }}>
+          <Text style={{
+            fontSize: 12,
+            color: colors.textMuted,
+          }}>{completedCount} of {steps.length} steps</Text>
+          <Text style={{
+            fontSize: 12,
+            color: colors.success,
+            fontWeight: '500',
+          }}>{completedCount === steps.length ? 'Complete!' : `${steps.length - completedCount} remaining`}</Text>
+        </View>
+      </Animated.View>
 
-      <View style={styles.stepsContainer}>
+      <View>
         {steps.map((step, index) => (
           <AnimatedStep
             key={step.key}
             step={step}
             index={index}
             isLast={index === steps.length - 1}
-            colors={colors}
           />
         ))}
       </View>
     </View>
   );
 }
-
-function formatTime(timestamp: string): string {
-  try {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const isToday = date.toDateString() === now.toDateString();
-
-    if (isToday) {
-      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' +
-           date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  } catch {
-    return '';
-  }
-}
-
-const styles = StyleSheet.create({
-  container: {
-    gap: 16,
-  },
-  progressHeader: {
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    marginBottom: 8,
-  },
-  progressInfo: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  progressLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-  },
-  progressPercent: {
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  progressBarBg: {
-    height: 6,
-    borderRadius: 3,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  stepsContainer: {
-    gap: 0,
-  },
-  stepRow: {
-    flexDirection: 'row',
-    minHeight: 80,
-  },
-  stepIndicatorColumn: {
-    width: 40,
-    alignItems: 'center',
-  },
-  circleContainer: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  pulseRing: {
-    position: 'absolute',
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-  },
-  glowEffect: {
-    position: 'absolute',
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    opacity: 0.2,
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1,
-  },
-  lineContainer: {
-    flex: 1,
-    width: 3,
-    borderRadius: 1.5,
-    marginVertical: 4,
-    overflow: 'hidden',
-  },
-  lineProgress: {
-    width: '100%',
-    borderRadius: 1.5,
-  },
-  stepContent: {
-    flex: 1,
-    paddingLeft: 12,
-    paddingBottom: 20,
-  },
-  stepHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
-  },
-  stepLabel: {
-    fontSize: 15,
-  },
-  liveBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-  },
-  liveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  liveText: {
-    fontSize: 10,
-    fontWeight: '900',
-    color: '#000',
-  },
-  stepDescription: {
-    fontSize: 13,
-    lineHeight: 18,
-  },
-  timestampRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 6,
-  },
-  stepTime: {
-    fontSize: 12,
-  },
-  activeHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  activeHintText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 12,
-  },
-  statusIconCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusTextContainer: {
-    flex: 1,
-  },
-  statusTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  statusSubtitle: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-});
-
-export default JobProgressTracker;

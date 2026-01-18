@@ -208,6 +208,26 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
   // Filter out platform_fee items - shown separately in summary
   const filteredApprovedItems = approved_items.filter(item => item.item_type !== 'platform_fee');
 
+  // Compute dynamic totals based on current line item states
+  const dynamicApprovedSubtotal = approved_items
+    .filter(item => item.item_type !== 'platform_fee')
+    .reduce((sum, item) => sum + item.total_cents, 0);
+
+  const dynamicPendingSubtotal = pending_items.reduce((sum, item) => sum + item.total_cents, 0);
+
+  // Platform fee from approved items or fallback to contract
+  const platformFeeItem = approved_items.find(item => item.item_type === 'platform_fee');
+  const dynamicPlatformFee = platformFeeItem?.total_cents ?? contract.platform_fee_cents;
+
+  // Promo discount
+  const promoDiscount = contract.promo_discount_cents || 0;
+
+  // Dynamic total due (approved subtotal + platform fee - promo discount)
+  const dynamicTotalDue = dynamicApprovedSubtotal + dynamicPlatformFee - promoDiscount;
+
+  // Dynamic total including pending (for display purposes)
+  const dynamicTotalWithPending = dynamicTotalDue + dynamicPendingSubtotal;
+
   return (
     <View style={styles.container}>
       {/* Pending Items Alert */}
@@ -255,7 +275,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
             {role === 'mechanic' ? 'Quoted Amount' : 'Labor & Parts'}
           </Text>
           <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
-            {formatCents(contract.subtotal_cents)}
+            {formatCents(dynamicApprovedSubtotal)}
           </Text>
         </View>
 
@@ -265,7 +285,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
               + Pending Approval
             </Text>
             <Text style={[styles.totalValue, { color: colors.accent }]}>
-              {formatCents(invoice.pending_subtotal_cents)}
+              {formatCents(dynamicPendingSubtotal)}
             </Text>
           </View>
         )}
@@ -281,7 +301,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                 </Text>
               </View>
               <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
-                {formatCents(contract.original_platform_fee_cents || contract.platform_fee_cents)}
+                {formatCents(contract.original_platform_fee_cents || dynamicPlatformFee)}
               </Text>
             </View>
 
@@ -297,7 +317,7 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                   </Text>
                 </View>
                 <Text style={[styles.totalValue, { color: '#10B981' }]}>
-                  -{formatCents(contract.promo_discount_cents!)}
+                  -{formatCents(promoDiscount)}
                 </Text>
               </View>
             )}
@@ -337,38 +357,95 @@ export function InvoiceView({ invoice, role, onRefresh, showPendingActions = tru
                 Total Due
               </Text>
               <Text style={[styles.grandTotalValue, { color: colors.accent }]}>
-                {formatCents(contract.total_customer_cents - (contract.promo_discount_cents || 0))}
+                {formatCents(dynamicTotalDue)}
               </Text>
             </View>
           </>
         )}
 
         {/* Mechanic earnings breakdown */}
-        {role === 'mechanic' && (
-          <>
-            <View style={[styles.totalRow, { marginTop: 4 }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
-                  Service Fee (12%, max $50)
+        {role === 'mechanic' && (() => {
+          // Compute dynamic service fee: 12% of labor (excluding parts), max $50
+          const laborItems = approved_items.filter(i =>
+            i.item_type !== 'platform_fee' && i.item_type !== 'parts'
+          );
+          const laborTotal = laborItems.reduce((sum, i) => sum + i.total_cents, 0);
+          const partsTotal = approved_items
+            .filter(i => i.item_type === 'parts')
+            .reduce((sum, i) => sum + i.total_cents, 0);
+
+          // 12% of labor, max $50 (5000 cents)
+          const dynamicServiceFee = Math.min(Math.round(laborTotal * 0.12), 5000);
+          const dynamicEarnings = dynamicApprovedSubtotal - dynamicServiceFee;
+
+          // Pending labor for projection
+          const pendingLaborTotal = pending_items
+            .filter(i => i.item_type !== 'parts')
+            .reduce((sum, i) => sum + i.total_cents, 0);
+
+          return (
+            <>
+              {contract.mechanic_promo_discount_cents && contract.mechanic_promo_discount_cents > 0 ? (
+                <>
+                  <View style={[styles.totalRow, { marginTop: 4 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                        Service Fee (12%, max $50)
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                        On labor only, parts excluded
+                      </Text>
+                    </View>
+                    <Text style={[styles.totalValue, { color: colors.textMuted, textDecorationLine: 'line-through' }]}>
+                      -{formatCents(dynamicServiceFee)}
+                    </Text>
+                  </View>
+                  <View style={[styles.totalRow, { backgroundColor: `${colors.success}15`, borderRadius: 6, padding: 8, marginTop: 4 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="gift" size={16} color={colors.success} />
+                      <Text style={{ fontSize: 13, color: colors.success, fontWeight: '600' }}>
+                        Token Applied
+                      </Text>
+                    </View>
+                    <Text style={[styles.totalValue, { color: colors.success }]}>
+                      +{formatCents(contract.mechanic_promo_discount_cents)}
+                    </Text>
+                  </View>
+                  <View style={[styles.totalRow, { marginTop: 4 }]}>
+                    <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                      Net Service Fee
+                    </Text>
+                    <Text style={[styles.totalValue, { color: colors.error }]}>
+                      -{formatCents(Math.max(0, dynamicServiceFee - (contract.mechanic_promo_discount_cents || 0)))}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <View style={[styles.totalRow, { marginTop: 4 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                      Service Fee (12%, max $50)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                      On labor only, parts excluded
+                    </Text>
+                  </View>
+                  <Text style={[styles.totalValue, { color: colors.error }]}>
+                    -{formatCents(dynamicServiceFee)}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.totalRow, styles.grandTotalRow]}>
+                <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
+                  Your Earnings
                 </Text>
-                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                  On labor only, parts excluded
+                <Text style={[styles.grandTotalValue, { color: colors.success }]}>
+                  {formatCents(dynamicEarnings + (contract.mechanic_promo_discount_cents || 0))}
                 </Text>
               </View>
-              <Text style={[styles.totalValue, { color: colors.error }]}>
-                -{formatCents(contract.mechanic_commission_cents)}
-              </Text>
-            </View>
-            <View style={[styles.totalRow, styles.grandTotalRow]}>
-              <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
-                Your Earnings
-              </Text>
-              <Text style={[styles.grandTotalValue, { color: colors.success }]}>
-                {formatCents(contract.mechanic_payout_cents)}
-              </Text>
-            </View>
-          </>
-        )}
+            </>
+          );
+        })()}
       </View>
     </View>
   );

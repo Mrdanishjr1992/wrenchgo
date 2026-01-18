@@ -113,23 +113,45 @@ export function PreJobPhotoPicker({
         return;
       }
 
+      const remaining = maxPhotos - photos.length;
+      if (remaining <= 0) return;
+
       const result = await ImagePicker.launchImageLibraryAsync({
         allowsMultipleSelection: true,
-        selectionLimit: maxPhotos - photos.length,
+        selectionLimit: remaining,
         quality: 0.9,
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
       });
 
-      if (!result.canceled && result.assets) {
-        for (const asset of result.assets) {
-          if (photos.length >= maxPhotos) break;
-          await addPhoto(asset.uri);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setProcessing(true);
+        try {
+          const newPhotos: PendingPhoto[] = [];
+          for (const asset of result.assets) {
+            if (newPhotos.length >= remaining) break;
+            const compressed = await compressImage(asset.uri);
+            newPhotos.push({
+              id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+              uri: compressed.uri,
+              width: compressed.width,
+              height: compressed.height,
+            });
+          }
+          if (newPhotos.length > 0) {
+            setPhotos(prev => {
+              const updated = [...prev, ...newPhotos];
+              onPhotosChanged?.(updated);
+              return updated;
+            });
+          }
+        } finally {
+          setProcessing(false);
         }
       }
     } catch (e: any) {
       Alert.alert("Library Error", e?.message || "Failed to select photos");
     }
-  }, [addPhoto, maxPhotos, photos.length]);
+  }, [maxPhotos, photos.length, onPhotosChanged]);
 
   const canAddMore = photos.length < maxPhotos;
 

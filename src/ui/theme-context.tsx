@@ -3,16 +3,42 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { Appearance } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "../lib/supabase";
-import { lightColors, darkColors, spacing, radius, createText } from "./theme";
+import { 
+  lightColors, 
+  darkColors, 
+  spacing, 
+  radius, 
+  shadows,
+  fontSize,
+  fontWeight,
+  lineHeight,
+  animation,
+  hitSlop,
+  createText,
+  withAlpha,
+  normalize,
+  palette,
+  type Colors,
+} from "./theme";
 
 type ThemeMode = "light" | "dark";
 
 type ThemeContextType = {
   mode: ThemeMode;
-  colors: typeof lightColors;
+  isDark: boolean;
+  colors: Colors;
   text: ReturnType<typeof createText>;
   spacing: typeof spacing;
   radius: typeof radius;
+  shadows: typeof shadows;
+  fontSize: typeof fontSize;
+  fontWeight: typeof fontWeight;
+  lineHeight: typeof lineHeight;
+  animation: typeof animation;
+  hitSlop: typeof hitSlop;
+  palette: typeof palette;
+  withAlpha: typeof withAlpha;
+  normalize: typeof normalize;
   toggle: () => Promise<void>;
   setMode: (m: ThemeMode) => Promise<void>;
   loadUserTheme: (userId: string) => Promise<void>;
@@ -31,9 +57,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
 
-  /**
-   * Apply mode to local state immediately, then persist best-effort.
-   */
   const applyMode = useCallback(
     async (newMode: ThemeMode, userId?: string | null) => {
       setModeState(newMode);
@@ -41,14 +64,12 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const uid = userId ?? currentUserId;
       if (!uid) return;
 
-      // Persist locally (best effort)
       try {
         await AsyncStorage.setItem(storageKey(uid), newMode);
       } catch (err) {
         console.warn("Failed to save theme to AsyncStorage:", err);
       }
 
-      // Persist remotely (best effort)
       try {
         await supabase.from("profiles").update({ theme_preference: newMode }).eq("id", uid);
       } catch (err) {
@@ -58,13 +79,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     [currentUserId]
   );
 
-  /**
-   * Load theme for a given user:
-   * 1) Supabase profiles.theme_preference
-   * 2) AsyncStorage theme:<userId>
-   * 3) System theme
-   * 4) light
-   */
   const loadUserTheme = useCallback(async (userId: string) => {
     if (!userId) {
       setCurrentUserId(null);
@@ -74,7 +88,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
     setCurrentUserId(userId);
 
-    // 1) Supabase
     try {
       const { data, error } = await supabase
         .from("profiles")
@@ -85,7 +98,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const pref = data?.theme_preference;
       if (!error && isThemeMode(pref)) {
         setModeState(pref);
-        // cache for next boot
         try {
           await AsyncStorage.setItem(storageKey(userId), pref);
         } catch {}
@@ -95,7 +107,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.warn("Failed to load theme from Supabase:", err);
     }
 
-    // 2) AsyncStorage
     try {
       const stored = await AsyncStorage.getItem(storageKey(userId));
       if (isThemeMode(stored)) {
@@ -106,13 +117,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       console.warn("Failed to load theme from AsyncStorage:", err);
     }
 
-    // 3) System fallback
     setModeState(getSystemMode());
   }, []);
 
-  /**
-   * Init: load from current session. Also listen to auth changes.
-   */
   useEffect(() => {
     let mounted = true;
 
@@ -120,7 +127,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         const { data: { session }, error } = await supabase.auth.getSession();
 
-        // Handle invalid refresh token - sign out silently
         if (error?.message?.includes("Refresh Token")) {
           await supabase.auth.signOut();
           if (mounted) {
@@ -183,19 +189,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 
   const colors = mode === "dark" ? darkColors : lightColors;
+  const isDark = mode === "dark";
 
   const value = useMemo<ThemeContextType>(
     () => ({
       mode,
+      isDark,
       colors,
       text: createText(colors),
       spacing,
       radius,
+      shadows,
+      fontSize,
+      fontWeight,
+      lineHeight,
+      animation,
+      hitSlop,
+      palette,
+      withAlpha,
+      normalize,
       toggle,
       setMode,
       loadUserTheme,
     }),
-    [mode, colors, toggle, setMode, loadUserTheme]
+    [mode, isDark, colors, toggle, setMode, loadUserTheme]
   );
 
   if (!isInitialized) return null;
@@ -203,8 +220,10 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 
-export function useTheme() {
+export function useTheme(): ThemeContextType {
   const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error("useTheme must be used inside ThemeProvider");
+  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
   return ctx;
 }
+
+export { lightColors, darkColors, spacing, radius, shadows, fontSize, fontWeight, animation, palette };

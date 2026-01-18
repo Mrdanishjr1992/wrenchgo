@@ -3,18 +3,23 @@ import {
   View,
   Text,
   FlatList,
-  StyleSheet,
   RefreshControl,
-  TouchableOpacity,
+  Pressable,
   Alert,
-  ActivityIndicator,
   ScrollView,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { useTheme } from '@/src/ui/theme-context';
 import { supabase } from '@/src/lib/supabase';
 import { useMechanicLeads } from '@/src/hooks/use-mechanic-leads';
@@ -26,9 +31,339 @@ import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from '@/src/onboarding';
 import { getVerificationStatus, type VerificationStatus } from '@/src/lib/verification';
 import { VERIFICATION_STATUS, VERIFICATION_STATUS_LABELS } from '@/src/constants/verification';
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function FilterTab({
+  label,
+  icon,
+  isActive,
+  onPress,
+  count,
+}: {
+  label: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  isActive: boolean;
+  onPress: () => void;
+  count?: number;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onPress}
+      onPressIn={() => { scale.value = withSpring(0.95, { damping: 15 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+      style={[animatedStyle, {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.lg,
+        backgroundColor: isActive ? colors.primary : 'transparent',
+      }]}
+    >
+      <Ionicons
+        name={isActive ? icon : `${icon}-outline` as any}
+        size={16}
+        color={isActive ? colors.white : colors.textMuted}
+      />
+      <Text style={{
+        fontSize: 13,
+        fontWeight: '600',
+        color: isActive ? colors.white : colors.textMuted,
+      }}>{label}</Text>
+      {count !== undefined && count > 0 && (
+        <View style={{
+          backgroundColor: isActive ? withAlpha(colors.white, 0.3) : colors.surface2,
+          paddingHorizontal: 6,
+          paddingVertical: 2,
+          borderRadius: 10,
+          minWidth: 20,
+          alignItems: 'center',
+        }}>
+          <Text style={{
+            fontSize: 10,
+            fontWeight: '700',
+            color: isActive ? colors.white : colors.textMuted,
+          }}>{count}</Text>
+        </View>
+      )}
+    </AnimatedPressable>
+  );
+}
+
+function StatBadge({
+  icon,
+  value,
+  label,
+  color,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  value: string | number;
+  label: string;
+  color: string;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <View style={{
+      flex: 1,
+      backgroundColor: withAlpha(color, 0.1),
+      borderRadius: radius.lg,
+      padding: spacing.md,
+      alignItems: 'center',
+    }}>
+      <Ionicons name={icon} size={20} color={color} />
+      <Text style={{
+        fontSize: 20,
+        fontWeight: '800',
+        color: colors.textPrimary,
+        marginTop: 4,
+      }}>{value}</Text>
+      <Text style={{
+        fontSize: 11,
+        color: colors.textMuted,
+        fontWeight: '500',
+      }}>{label}</Text>
+    </View>
+  );
+}
+
+function VerificationRequired({ 
+  statusLabel, 
+  onComplete 
+}: { 
+  statusLabel: string;
+  onComplete: () => void;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{
+        paddingTop: insets.top + spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.md,
+      }}>
+        <Animated.View entering={FadeIn.duration(300)}>
+          <Text style={{
+            fontSize: 28,
+            fontWeight: '800',
+            color: colors.textPrimary,
+            letterSpacing: -0.5,
+          }}>Leads</Text>
+        </Animated.View>
+      </View>
+
+      <ScrollView
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          paddingHorizontal: spacing.xl,
+          paddingBottom: spacing.xxxl,
+        }}
+        showsVerticalScrollIndicator={false}
+      >
+        <Animated.View 
+          entering={FadeInDown.delay(100).duration(400)}
+          style={{ alignItems: 'center' }}
+        >
+          <View style={{
+            width: 100,
+            height: 100,
+            borderRadius: 50,
+            backgroundColor: withAlpha(colors.warning, 0.15),
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: spacing.lg,
+          }}>
+            <Ionicons name="shield-checkmark" size={48} color={colors.warning} />
+          </View>
+
+          <Text style={{
+            fontSize: 24,
+            fontWeight: '800',
+            color: colors.textPrimary,
+            textAlign: 'center',
+            marginBottom: spacing.sm,
+          }}>Verification Required</Text>
+
+          <Text style={{
+            fontSize: 15,
+            color: colors.textMuted,
+            textAlign: 'center',
+            lineHeight: 22,
+            marginBottom: spacing.lg,
+          }}>
+            Complete your profile verification to access leads and start quoting jobs.
+          </Text>
+
+          <View style={{
+            backgroundColor: withAlpha(colors.warning, 0.12),
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            borderRadius: radius.full,
+            marginBottom: spacing.xl,
+          }}>
+            <Text style={{
+              fontSize: 13,
+              fontWeight: '700',
+              color: colors.warning,
+            }}>Status: {statusLabel}</Text>
+          </View>
+
+          <Pressable
+            onPress={onComplete}
+            style={({ pressed }) => ({
+              backgroundColor: colors.accent,
+              paddingVertical: spacing.md,
+              paddingHorizontal: spacing.xl,
+              borderRadius: radius.xl,
+              opacity: pressed ? 0.9 : 1,
+              transform: [{ scale: pressed ? 0.98 : 1 }],
+            })}
+          >
+            <Text style={{
+              fontSize: 16,
+              fontWeight: '700',
+              color: colors.buttonText,
+            }}>Complete Verification</Text>
+          </Pressable>
+
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+            textAlign: 'center',
+            marginTop: spacing.md,
+            lineHeight: 20,
+          }}>
+            Go to your profile to upload required documents and complete the vetting questionnaire.
+          </Text>
+        </Animated.View>
+      </ScrollView>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{
+        paddingTop: insets.top + spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.md,
+      }}>
+        <View style={[shimmer, { width: 100, height: 32 }]} />
+      </View>
+
+      <View style={{
+        flexDirection: 'row',
+        gap: spacing.sm,
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.md,
+      }}>
+        <View style={[shimmer, { flex: 1, height: 44, borderRadius: radius.lg }]} />
+        <View style={[shimmer, { flex: 1, height: 44, borderRadius: radius.lg }]} />
+        <View style={[shimmer, { flex: 1, height: 44, borderRadius: radius.lg }]} />
+      </View>
+
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <View style={[shimmer, { height: 160, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 160, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 160, borderRadius: radius.xl }]} />
+      </View>
+    </View>
+  );
+}
+
+function LocationBanner({
+  type,
+  onSetLocation,
+  loading,
+}: {
+  type: 'no-location' | 'not-in-area';
+  onSetLocation?: () => void;
+  loading?: boolean;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const isNoLocation = type === 'no-location';
+
+  return (
+    <Animated.View entering={FadeInDown.delay(200).duration(300)}>
+      <Pressable
+        onPress={isNoLocation ? onSetLocation : undefined}
+        disabled={loading || !isNoLocation}
+        style={({ pressed }) => ({
+          flexDirection: 'row',
+          alignItems: 'center',
+          gap: spacing.md,
+          backgroundColor: isNoLocation ? colors.warningBg : colors.infoBg,
+          padding: spacing.md,
+          borderRadius: radius.xl,
+          marginHorizontal: spacing.lg,
+          marginBottom: spacing.md,
+          opacity: pressed && isNoLocation ? 0.9 : 1,
+        })}
+      >
+        <View style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: isNoLocation ? withAlpha(colors.warning, 0.2) : withAlpha(colors.info, 0.2),
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+          <Ionicons
+            name={isNoLocation ? 'location' : 'information-circle'}
+            size={22}
+            color={isNoLocation ? colors.warning : colors.info}
+          />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{
+            fontSize: 14,
+            fontWeight: '700',
+            color: colors.textPrimary,
+            marginBottom: 2,
+          }}>
+            {isNoLocation ? 'Set your service location' : 'Service expanding soon'}
+          </Text>
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+          }}>
+            {isNoLocation
+              ? 'Tap to use your current location'
+              : "We'll notify you when service opens in your area"}
+          </Text>
+        </View>
+        {isNoLocation && (
+          <Ionicons name="chevron-forward" size={20} color={colors.warning} />
+        )}
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export default function MechanicLeadsPage() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [mechanicId, setMechanicId] = useState<string | null>(null);
@@ -78,7 +413,6 @@ export default function MechanicLeadsPage() {
   useEffect(() => {
     const requestLocationPermission = async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-
       if (status === 'granted') {
         try {
           const currentLocation = await Location.getCurrentPositionAsync({});
@@ -91,7 +425,6 @@ export default function MechanicLeadsPage() {
         }
       }
     };
-
     requestLocationPermission();
   }, []);
 
@@ -105,27 +438,6 @@ export default function MechanicLeadsPage() {
 
   const handleQuoteJob = (jobId: string) => {
     router.push(`/(mechanic)/quote-composer/${jobId}` as any);
-  };
-
-  const handleEnableLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status === 'granted') {
-      try {
-        const currentLocation = await Location.getCurrentPositionAsync({});
-        setLocation({
-          latitude: currentLocation.coords.latitude,
-          longitude: currentLocation.coords.longitude,
-        });
-        refetch();
-      } catch (err) {
-        Alert.alert('Error', 'Failed to get your location. Please try again.');
-      }
-    } else {
-      Alert.alert(
-        'Location Permission Required',
-        'Please enable location services in your device settings to see nearby leads.'
-      );
-    }
   };
 
   const handleSetHomeLocation = async () => {
@@ -163,70 +475,6 @@ export default function MechanicLeadsPage() {
     }
   };
 
-  const renderLeadCard = ({ item }: { item: any }) => (
-    <LeadCard lead={item} onPressView={handleViewJob} onPressQuote={handleQuoteJob} />
-  );
-
-  const renderSkeletons = () => (
-    <>
-      <LeadCardSkeleton />
-      <LeadCardSkeleton />
-      <LeadCardSkeleton />
-    </>
-  );
-
-  const renderEmptyState = () => {
-    if (loading) return null;
-    
-    if (profileStatus && !profileStatus.hasLocation) {
-      return (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.surface2 }]}>
-            <Ionicons name="location-outline" size={48} color={colors.warning || '#D97706'} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Set your service location</Text>
-          <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
-            Use your current location to see available leads in your area.
-          </Text>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: colors.accent }]}
-            onPress={handleSetHomeLocation}
-          >
-            <Text style={styles.actionButtonText}>Use Current Location</Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-    
-    if (profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea) {
-      return (
-        <View style={styles.emptyContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: colors.warningBg || colors.surface2 }]}>
-            <Ionicons name="map-outline" size={48} color={colors.warning || colors.textMuted} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>Service coming soon</Text>
-          <Text style={[styles.emptyMessage, { color: colors.textMuted }]}>
-            WrenchGo isn't available in your area yet, but we're expanding! We'll notify you when service opens near you.
-          </Text>
-        </View>
-      );
-    }
-    
-    return <LeadsEmptyState filter={filter} onEnableLocation={handleEnableLocation} />;
-  };
-
-  const renderFooter = () => {
-    if (!hasMore || loading) return null;
-    return (
-      <TouchableOpacity
-        style={[styles.loadMoreButton, { backgroundColor: colors.surface2 }]}
-        onPress={loadMore}
-      >
-        <Text style={[styles.loadMoreText, { color: colors.accent }]}>Load More</Text>
-      </TouchableOpacity>
-    );
-  };
-
   const handleEndReached = useCallback(() => {
     if (endReachedLockRef.current) return;
     if (hasMore && !loading) {
@@ -237,30 +485,10 @@ export default function MechanicLeadsPage() {
 
   const showLocationBanner = profileStatus && !profileStatus.hasLocation;
   const showServiceAreaBanner = profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea;
-
   const isVerified = verificationStatus?.status === VERIFICATION_STATUS.ACTIVE;
 
   if (verificationLoading) {
-    return (
-      <View style={[styles.container, { backgroundColor: colors.bg }]}>
-        <LinearGradient
-          colors={[colors.accent, colors.accent + '28']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top }]}
-        >
-          <View style={styles.headerContent}>
-            <View style={styles.headerTitleRow}>
-              <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
-              <Text style={styles.headerTitle}>Leads</Text>
-            </View>
-          </View>
-        </LinearGradient>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={colors.accent} />
-        </View>
-      </View>
-    );
+    return <LoadingSkeleton />;
   }
 
   if (!isVerified) {
@@ -268,228 +496,269 @@ export default function MechanicLeadsPage() {
       ? VERIFICATION_STATUS_LABELS[verificationStatus.status as keyof typeof VERIFICATION_STATUS_LABELS]
       : 'Pending Verification';
     return (
-      <View style={[styles.container, { backgroundColor: colors.bg }]}>
-        <LinearGradient
-          colors={[colors.accent, colors.accent + '28']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={[styles.header, { paddingTop: insets.top }]}
-        >
-          <View style={styles.headerContent}>
-            <View style={styles.headerTitleRow}>
-              <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
-              <Text style={styles.headerTitle}>Leads</Text>
-            </View>
-          </View>
-        </LinearGradient>
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', padding: 24 }}
-          showsVerticalScrollIndicator={false}
-        >
-          <View style={{ alignItems: 'center', gap: 16 }}>
-            <View style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: colors.warning + '20',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}>
-              <Ionicons name="shield-checkmark-outline" size={40} color={colors.warning || '#D97706'} />
-            </View>
-            <Text style={{
-              fontSize: 22,
-              fontWeight: '800',
-              color: colors.textPrimary,
-              textAlign: 'center',
-            }}>
-              Verification Required
-            </Text>
-            <Text style={{
-              fontSize: 15,
-              color: colors.textMuted,
-              textAlign: 'center',
-              lineHeight: 22,
-            }}>
-              Complete your profile verification to access leads and start quoting jobs.
-            </Text>
-            <View style={{
-              paddingHorizontal: 16,
-              paddingVertical: 8,
-              borderRadius: 20,
-              backgroundColor: colors.warning + '20',
-              marginTop: 8,
-            }}>
-              <Text style={{ fontSize: 14, fontWeight: '700', color: colors.warning || '#D97706' }}>
-                Status: {statusLabel}
-              </Text>
-            </View>
-            <TouchableOpacity
-              onPress={() => router.push('/(mechanic)/(tabs)/profile')}
-              style={{
-                backgroundColor: colors.accent,
-                paddingVertical: 14,
-                paddingHorizontal: 28,
-                borderRadius: 12,
-                marginTop: 16,
-              }}
-            >
-              <Text style={{ fontSize: 16, fontWeight: '700', color: colors.black }}>
-                Complete Verification
-              </Text>
-            </TouchableOpacity>
-            <Text style={{
-              fontSize: 13,
-              color: colors.textMuted,
-              textAlign: 'center',
-              marginTop: 8,
-            }}>
-              Go to your profile to upload required documents and complete the vetting questionnaire.
-            </Text>
-          </View>
-        </ScrollView>
-      </View>
+      <VerificationRequired
+        statusLabel={statusLabel}
+        onComplete={() => router.push('/(mechanic)/(tabs)/profile')}
+      />
     );
   }
 
-  return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <LinearGradient
-        colors={[colors.accent, colors.accent + '28']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[styles.header, { paddingTop: insets.top }]}
-      >
-        <View style={styles.headerContent}>
-          <View style={styles.headerTitleRow}>
-            <Ionicons name="briefcase" size={24} color={colors.textPrimary} />
-            <Text style={styles.headerTitle}>Leads</Text>
+  const renderLeadCard = ({ item, index }: { item: any; index: number }) => (
+    <Animated.View entering={FadeInDown.delay(100 + index * 50).duration(300)}>
+      <LeadCard lead={item} onPressView={handleViewJob} onPressQuote={handleQuoteJob} />
+    </Animated.View>
+  );
+
+  const renderEmptyState = () => {
+    if (loading) return null;
+
+    if (profileStatus && !profileStatus.hasLocation) {
+      return (
+        <Animated.View 
+          entering={FadeIn.delay(200).duration(400)}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: spacing.xl,
+          }}
+        >
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: withAlpha(colors.warning, 0.15),
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: spacing.lg,
+          }}>
+            <Ionicons name="location" size={36} color={colors.warning} />
           </View>
-        </View>
-      </LinearGradient>
-
-      <View style={[styles.filterTabs, { backgroundColor: colors.surface, borderBottomColor: colors.gray }]}>
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filter === 'all' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
-          ]}
-          onPress={() => setFilter('all')}
-        >
-          <Ionicons
-            name="list"
-            size={18}
-            color={filter === 'all' ? colors.primary : colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === 'all' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
-            ]}
+          <Text style={{
+            fontSize: 18,
+            fontWeight: '700',
+            color: colors.textPrimary,
+            marginBottom: spacing.xs,
+          }}>Set your service location</Text>
+          <Text style={{
+            fontSize: 14,
+            color: colors.textMuted,
+            textAlign: 'center',
+            marginBottom: spacing.lg,
+          }}>Use your current location to see available leads in your area.</Text>
+          <Pressable
+            onPress={handleSetHomeLocation}
+            style={({ pressed }) => ({
+              backgroundColor: colors.accent,
+              paddingVertical: spacing.md,
+              paddingHorizontal: spacing.xl,
+              borderRadius: radius.xl,
+              opacity: pressed ? 0.9 : 1,
+            })}
           >
-            All
-          </Text>
-        </TouchableOpacity>
+            <Text style={{
+              fontSize: 15,
+              fontWeight: '700',
+              color: colors.buttonText,
+            }}>Use Current Location</Text>
+          </Pressable>
+        </Animated.View>
+      );
+    }
 
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filter === 'nearby' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
-          ]}
-          onPress={() => setFilter('nearby')}
+    if (profileStatus && profileStatus.hasLocation && !profileStatus.isInServiceArea) {
+      return (
+        <Animated.View 
+          entering={FadeIn.delay(200).duration(400)}
+          style={{
+            flex: 1,
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingHorizontal: spacing.xl,
+          }}
         >
-          <Ionicons
-            name="location"
-            size={18}
-            color={filter === 'nearby' ? colors.primary : colors.textMuted}
-          />
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === 'nearby' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
-            ]}
-          >
-            Nearby
-          </Text>
-        </TouchableOpacity>
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: withAlpha(colors.info, 0.15),
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: spacing.lg,
+          }}>
+            <Ionicons name="map" size={36} color={colors.info} />
+          </View>
+          <Text style={{
+            fontSize: 18,
+            fontWeight: '700',
+            color: colors.textPrimary,
+            marginBottom: spacing.xs,
+          }}>Service coming soon</Text>
+          <Text style={{
+            fontSize: 14,
+            color: colors.textMuted,
+            textAlign: 'center',
+            lineHeight: 20,
+          }}>WrenchGo isn't available in your area yet, but we're expanding! We'll notify you when service opens near you.</Text>
+        </Animated.View>
+      );
+    }
 
-        <TouchableOpacity
-          style={[
-            styles.filterTab,
-            filter === 'quoted' && { backgroundColor: colors.primaryBg, borderBottomColor: colors.primary, borderBottomWidth: 3 },
-          ]}
-          onPress={() => setFilter('quoted')}
+    return <LeadsEmptyState filter={filter} onEnableLocation={handleSetHomeLocation} />;
+  };
+
+  const renderFooter = () => {
+    if (!hasMore || loading) return null;
+    return (
+      <Pressable
+        onPress={loadMore}
+        style={({ pressed }) => ({
+          backgroundColor: colors.surface,
+          paddingVertical: spacing.md,
+          marginHorizontal: spacing.lg,
+          marginBottom: spacing.lg,
+          borderRadius: radius.xl,
+          alignItems: 'center',
+          ...shadows.sm,
+          opacity: pressed ? 0.9 : 1,
+        })}
+      >
+        <Text style={{
+          fontSize: 14,
+          fontWeight: '600',
+          color: colors.primary,
+        }}>Load More</Text>
+      </Pressable>
+    );
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{
+        paddingTop: insets.top + spacing.md,
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.md,
+        backgroundColor: colors.bg,
+      }}>
+        <Animated.View entering={FadeIn.duration(300)}>
+          <Text style={{
+            fontSize: 28,
+            fontWeight: '800',
+            color: colors.textPrimary,
+            letterSpacing: -0.5,
+            marginBottom: spacing.md,
+          }}>Leads</Text>
+        </Animated.View>
+
+        <Animated.View 
+          entering={FadeInDown.delay(100).duration(300)}
+          style={{
+            flexDirection: 'row',
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+            padding: 4,
+            ...shadows.sm,
+          }}
         >
-          <Ionicons
-            name="document-text"
-            size={18}
-            color={filter === 'quoted' ? colors.primary : colors.textMuted}
+          <FilterTab
+            label="All"
+            icon="list"
+            isActive={filter === 'all'}
+            onPress={() => setFilter('all')}
+            count={summary?.all_count}
           />
-          <Text
-            style={[
-              styles.filterTabText,
-              filter === 'quoted' ? { color: colors.primary, fontWeight: '600' } : { color: colors.textMuted },
-            ]}
-          >
-            Quoted
-          </Text>
-        </TouchableOpacity>
+          <FilterTab
+            label="Nearby"
+            icon="location"
+            isActive={filter === 'nearby'}
+            onPress={() => setFilter('nearby')}
+            count={summary?.nearby_count}
+          />
+          <FilterTab
+            label="Quoted"
+            icon="document-text"
+            isActive={filter === 'quoted'}
+            onPress={() => setFilter('quoted')}
+            count={summary?.quoted_count}
+          />
+        </Animated.View>
       </View>
 
-      <LeadsHeader summary={summary} sortBy={sortBy} onChangeSortBy={changeSortBy} />
+      {summary && (
+        <Animated.View
+          entering={FadeInDown.delay(150).duration(300)}
+          style={{
+            flexDirection: 'row',
+            gap: spacing.sm,
+            paddingHorizontal: spacing.lg,
+            marginBottom: spacing.md,
+          }}
+        >
+          <StatBadge
+            icon="briefcase"
+            value={summary.all_count || 0}
+            label="Available"
+            color={colors.primary}
+          />
+          <StatBadge
+            icon="location"
+            value={summary.nearby_count || 0}
+            label="Nearby"
+            color={colors.success}
+          />
+          <StatBadge
+            icon="document-text"
+            value={summary.quoted_count || 0}
+            label="Quoted"
+            color={colors.warning}
+          />
+        </Animated.View>
+      )}
 
       {showLocationBanner && (
-        <TouchableOpacity
-          style={[styles.setLocationBanner, { backgroundColor: colors.warningBg || colors.surface2 }]}
-          onPress={handleSetHomeLocation}
-          disabled={settingLocation}
-        >
-          {settingLocation ? (
-            <>
-              <ActivityIndicator size="small" color={colors.warning || colors.textMuted} />
-              <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
-                Setting your location...
-              </Text>
-            </>
-          ) : (
-            <>
-              <Ionicons name="location-outline" size={20} color={colors.warning || colors.textMuted} />
-              <Text style={[styles.setLocationText, { color: colors.warning || colors.textPrimary }]}>
-                Tap to set your service location
-              </Text>
-              <Ionicons name="chevron-forward" size={20} color={colors.warning || colors.textMuted} />
-            </>
-          )}
-        </TouchableOpacity>
+        <LocationBanner
+          type="no-location"
+          onSetLocation={handleSetHomeLocation}
+          loading={settingLocation}
+        />
       )}
 
       {showServiceAreaBanner && (
-        <View style={[styles.setLocationBanner, { backgroundColor: colors.infoBg || colors.surface2 }]}>
-          <Ionicons name="information-circle-outline" size={20} color={colors.info || colors.textMuted} />
-          <Text style={[styles.setLocationText, { color: colors.info || colors.textPrimary }]}>
-            WrenchGo service is expanding to your area soon
-          </Text>
-        </View>
+        <LocationBanner type="not-in-area" />
       )}
 
       {error && (
-        <View style={[styles.errorBanner, { backgroundColor: colors.errorBg || colors.surface2 }]}>
-          <Text style={[styles.errorText, { color: colors.error || colors.textPrimary }]}>{error}</Text>
-        </View>
+        <Animated.View 
+          entering={FadeIn.duration(200)}
+          style={{
+            backgroundColor: colors.errorBg,
+            padding: spacing.md,
+            marginHorizontal: spacing.lg,
+            marginBottom: spacing.md,
+            borderRadius: radius.lg,
+          }}
+        >
+          <Text style={{ color: colors.error, fontSize: 14 }}>{error}</Text>
+        </Animated.View>
       )}
 
       {loading && leads.length === 0 ? (
-        <View style={styles.content}>{renderSkeletons()}</View>
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <LeadCardSkeleton />
+          <LeadCardSkeleton />
+          <LeadCardSkeleton />
+        </View>
       ) : (
         <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.MECHANIC_LEADS_LIST} style={{ flex: 1 }}>
           <FlatList
             data={leads}
             renderItem={renderLeadCard}
             keyExtractor={(item) => item.job_id}
-            contentContainerStyle={[
-              styles.listContent,
-              leads.length === 0 && styles.emptyListContent,
-            ]}
+            contentContainerStyle={{
+              paddingHorizontal: spacing.lg,
+              paddingBottom: spacing.xxxl,
+              flexGrow: leads.length === 0 ? 1 : undefined,
+            }}
             ListEmptyComponent={renderEmptyState}
             ListFooterComponent={renderFooter}
             refreshControl={
@@ -499,149 +768,15 @@ export default function MechanicLeadsPage() {
                   endReachedLockRef.current = false;
                   refetch();
                 }}
-                tintColor={colors.accent}
-                colors={[colors.accent]}
+                tintColor={colors.primary}
               />
             }
             onEndReached={handleEndReached}
-            onMomentumScrollBegin={() => {
-              endReachedLockRef.current = false;
-            }}
-            onEndReachedThreshold={0.5}
+            onEndReachedThreshold={0.3}
+            showsVerticalScrollIndicator={false}
           />
         </WalkthroughTarget>
       )}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    shadowColor: 'transparent',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  headerContent: {
-    paddingTop: 8,
-  },
-  headerTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: '#fff',
-  },
-  headerSubtitle: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 2,
-    marginLeft: 34,
-  },
-  filterTabs: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-  },
-  filterTab: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 10,
-    gap: 6,
-  },
-  filterTabText: {
-    fontSize: 14,
-  },
-  setLocationBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 10,
-    gap: 10,
-  },
-  setLocationText: {
-    flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  errorBanner: {
-    padding: 12,
-    marginHorizontal: 16,
-    marginTop: 12,
-    borderRadius: 10,
-  },
-  errorText: {
-    fontSize: 14,
-  },
-  content: {
-    flex: 1,
-    padding: 12,
-  },
-  listContent: {
-    padding: 12,
-    paddingBottom: 100,
-  },
-  emptyListContent: {
-    flexGrow: 1,
-  },
-  loadMoreButton: {
-    padding: 14,
-    borderRadius: 10,
-    alignItems: 'center',
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  loadMoreText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 32,
-    paddingVertical: 64,
-  },
-  iconCircle: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 20,
-  },
-  emptyTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptyMessage: {
-    fontSize: 15,
-    lineHeight: 22,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  actionButton: {
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: 12,
-  },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-});

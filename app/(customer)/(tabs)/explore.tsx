@@ -1,18 +1,26 @@
 import React, { useCallback, useMemo, useState, useEffect } from "react";
-import { View, Text, Pressable, ScrollView, Image, ActivityIndicator, RefreshControl } from "react-native";
+import { View, Text, Pressable, ScrollView, Image, RefreshControl } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
 import * as Location from "expo-location";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { spacing } from "../../../src/ui/theme";
-import { createCard, cardPressed } from "../../../src/ui/styles";
 import { VehicleChip } from "../../../src/components/VehicleChip";
 import { VehiclePickerDrawer } from "../../../src/components/VehiclePickerDrawer";
 import { RiskBadge } from "../../../src/components/RiskBadge";
 import { useSymptoms } from "../../../src/hooks/use-symptoms";
 import { useServiceAreaByCoords } from "../../../src/hooks/useServiceArea";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Vehicle = {
   id: string;
@@ -50,7 +58,6 @@ function getHighestRiskLevel(symptoms: { risk_level: string }[]): "high" | "medi
   return "low";
 }
 
-// If DB doesn't return icon (common when symptoms/icon isn't joined), this keeps UI pretty.
 function fallbackSymptomIcon(symptomKey: string): string {
   const map: Record<string, string> = {
     wont_start: "🚨",
@@ -65,11 +72,488 @@ function fallbackSymptomIcon(symptomKey: string): string {
   return map[symptomKey] ?? "🛠️";
 }
 
+function ServiceAreaBanner({
+  allowed,
+  message,
+  hubName,
+  boundaryStatus,
+}: {
+  allowed: boolean;
+  message?: string;
+  hubName?: string;
+  boundaryStatus?: string;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  if (allowed) {
+    return (
+      <Animated.View
+        entering={FadeInDown.duration(300)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          padding: spacing.md,
+          borderRadius: radius.xl,
+          backgroundColor: withAlpha(colors.success, 0.1),
+        }}
+      >
+        <View style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: withAlpha(colors.success, 0.2),
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Ionicons name="checkmark-circle" size={22} color={colors.success} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{
+            fontSize: 14,
+            fontWeight: "700",
+            color: colors.success,
+          }}>{message || `You're in our ${hubName || "service"} area!`}</Text>
+        </View>
+      </Animated.View>
+    );
+  }
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(300)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.md,
+        padding: spacing.md,
+        borderRadius: radius.xl,
+        backgroundColor: withAlpha(colors.warning, 0.1),
+      }}
+    >
+      <View style={{
+        width: 40,
+        height: 40,
+        borderRadius: 20,
+        backgroundColor: withAlpha(colors.warning, 0.2),
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <Ionicons name="location" size={22} color={colors.warning} />
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{
+          fontSize: 14,
+          fontWeight: "700",
+          color: colors.warning,
+          marginBottom: 2,
+        }}>
+          {boundaryStatus === "future_ring" ? "Expanding to your area soon!" : "Not in service area yet"}
+        </Text>
+        <Text style={{
+          fontSize: 13,
+          color: colors.textMuted,
+        }}>{message}</Text>
+      </View>
+    </Animated.View>
+  );
+}
+
+function StepIndicator({ step, label }: { step: number; label: string }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+    }}>
+      <View style={{
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        backgroundColor: colors.primary,
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        <Text style={{
+          fontSize: 14,
+          fontWeight: "800",
+          color: colors.white,
+        }}>{step}</Text>
+      </View>
+      <Text style={{
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.textMuted,
+        textTransform: "uppercase",
+        letterSpacing: 0.5,
+      }}>{label}</Text>
+    </View>
+  );
+}
+
+function VehicleSelector({
+  vehicle,
+  vehicles,
+  loading,
+  onPress,
+}: {
+  vehicle: Vehicle | null;
+  vehicles: Vehicle[];
+  loading: boolean;
+  onPress: () => void;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  if (vehicle) {
+    return (
+      <VehicleChip
+        year={String(vehicle.year)}
+        make={vehicle.make}
+        model={vehicle.model}
+        nickname={vehicle.nickname || undefined}
+        onPress={onPress}
+      />
+    );
+  }
+
+  return (
+    <Animated.View entering={FadeInDown.delay(100).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          padding: spacing.lg,
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          borderWidth: 2,
+          borderColor: colors.primary,
+          borderStyle: "dashed",
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{
+          width: 56,
+          height: 56,
+          borderRadius: radius.xl,
+          backgroundColor: withAlpha(colors.primary, 0.1),
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Ionicons name="car" size={28} color={colors.primary} />
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <Text style={{
+            fontSize: 17,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: 2,
+          }}>Select your vehicle</Text>
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+          }}>Choose which car needs service</Text>
+          {vehicles.length === 0 && !loading && (
+            <Text style={{
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: "600",
+              color: colors.primary,
+            }}>No vehicles yet — tap to add one</Text>
+          )}
+        </View>
+
+        <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function WrenchIntro() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(150).duration(300)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        padding: spacing.lg,
+        backgroundColor: withAlpha(colors.primary, 0.06),
+        borderRadius: radius.xl,
+        borderWidth: 1,
+        borderColor: withAlpha(colors.primary, 0.15),
+      }}
+    >
+      <View style={{ flex: 1, paddingRight: spacing.md }}>
+        <Text style={{
+          fontSize: 16,
+          fontWeight: "700",
+          color: colors.textPrimary,
+          marginBottom: spacing.xs,
+        }}>Hey there! I'm Wrench.</Text>
+        <Text style={{
+          fontSize: 14,
+          color: colors.textMuted,
+          lineHeight: 20,
+        }}>Pick the symptom that best matches what you're experiencing — we'll ask a couple quick questions next.</Text>
+      </View>
+      <Image
+        source={require("../../../assets/wrench.png")}
+        style={{ width: 64, height: 64 }}
+        resizeMode="contain"
+      />
+    </Animated.View>
+  );
+}
+
+function CategoryHeader({
+  category,
+  count,
+  isCollapsed,
+  onToggle,
+}: {
+  category: string;
+  count: number;
+  isCollapsed: boolean;
+  onToggle: () => void;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <AnimatedPressable
+      onPress={onToggle}
+      onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+      onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+      style={[animatedStyle, {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: spacing.sm,
+        paddingHorizontal: spacing.sm,
+        marginBottom: isCollapsed ? 0 : spacing.sm,
+        borderRadius: radius.lg,
+      }]}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <Text style={{
+          fontSize: 16,
+          fontWeight: "700",
+          color: colors.textPrimary,
+        }}>{category}</Text>
+        <View style={{
+          backgroundColor: withAlpha(colors.primary, 0.1),
+          paddingHorizontal: 8,
+          paddingVertical: 3,
+          borderRadius: radius.full,
+        }}>
+          <Text style={{
+            fontSize: 12,
+            fontWeight: "700",
+            color: colors.primary,
+          }}>{count}</Text>
+        </View>
+      </View>
+      <Ionicons
+        name={isCollapsed ? "chevron-forward" : "chevron-down"}
+        size={18}
+        color={colors.textMuted}
+      />
+    </AnimatedPressable>
+  );
+}
+
+function SymptomCard({
+  symptom,
+  disabled,
+  onPress,
+  index,
+}: {
+  symptom: SymptomItem;
+  disabled: boolean;
+  onPress: () => void;
+  index: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const risk = normalizeRiskLevel(symptom.risk_level);
+  const icon = symptom.icon || fallbackSymptomIcon(symptom.symptom_key);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        disabled={disabled}
+        onPressIn={() => { if (!disabled) scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          padding: spacing.md,
+          marginBottom: spacing.sm,
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          opacity: disabled ? 0.6 : 1,
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{
+          width: 48,
+          height: 48,
+          borderRadius: radius.lg,
+          backgroundColor: withAlpha(colors.primary, 0.1),
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Text style={{ fontSize: 24 }}>{icon}</Text>
+        </View>
+
+        <View style={{ flex: 1 }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.xs,
+            marginBottom: 2,
+          }}>
+            <Text style={{
+              fontSize: 15,
+              fontWeight: "700",
+              color: colors.textPrimary,
+              flex: 1,
+            }} numberOfLines={1}>
+              {symptom.symptom_label}
+            </Text>
+            {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}
+          </View>
+
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+            lineHeight: 18,
+          }} numberOfLines={2}>
+            {symptom.customer_explainer ?? ""}
+          </Text>
+
+          {disabled && (
+            <Text style={{
+              marginTop: 4,
+              fontSize: 12,
+              fontWeight: "600",
+              color: colors.primary,
+            }}>Select a vehicle first</Text>
+          )}
+        </View>
+
+        <Ionicons name="chevron-forward" size={18} color={colors.primary} />
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ gap: spacing.md }}>
+      <View style={[shimmer, { height: 60, borderRadius: radius.xl }]} />
+      <View style={[shimmer, { height: 100, borderRadius: radius.xl }]} />
+      <View style={[shimmer, { height: 80, borderRadius: radius.xl }]} />
+      <View style={[shimmer, { height: 80, borderRadius: radius.xl }]} />
+      <View style={[shimmer, { height: 80, borderRadius: radius.xl }]} />
+    </View>
+  );
+}
+
+function EmptyState({ onRetry }: { onRetry?: () => void }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeIn.delay(200).duration(400)}
+      style={{
+        alignItems: "center",
+        padding: spacing.xl,
+      }}
+    >
+      <View style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: withAlpha(colors.warning, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name="search" size={36} color={colors.warning} />
+      </View>
+
+      <Text style={{
+        fontSize: 18,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.xs,
+      }}>No symptoms available</Text>
+
+      <Text style={{
+        fontSize: 14,
+        color: colors.textMuted,
+        textAlign: "center",
+        marginBottom: spacing.lg,
+      }}>Please try again later or contact support.</Text>
+
+      {onRetry && (
+        <Pressable
+          onPress={onRetry}
+          style={({ pressed }) => ({
+            backgroundColor: colors.primary,
+            paddingVertical: spacing.md,
+            paddingHorizontal: spacing.xl,
+            borderRadius: radius.xl,
+            opacity: pressed ? 0.9 : 1,
+          })}
+        >
+          <Text style={{
+            fontSize: 15,
+            fontWeight: "700",
+            color: colors.white,
+          }}>Retry</Text>
+        </Pressable>
+      )}
+    </Animated.View>
+  );
+}
+
 export default function Explore() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
-  const card = useMemo(() => createCard(colors), [colors]);
 
   const [selectedVehicleId, setSelectedVehicleId] = useState<string | null>(null);
   const [selectedVehicle, setSelectedVehicle] = useState<Vehicle | null>(null);
@@ -81,6 +565,7 @@ export default function Explore() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
   const serviceArea = useServiceAreaByCoords(userLocation?.lat ?? null, userLocation?.lng ?? null);
+  const { symptoms, loading: loadingSymptoms, error: symptomsError, refetch } = useSymptoms();
 
   useEffect(() => {
     (async () => {
@@ -91,8 +576,6 @@ export default function Explore() {
       }
     })();
   }, []);
-
-  const { symptoms, loading: loadingSymptoms, error: symptomsError, refetch } = useSymptoms();
 
   const toggleCategory = useCallback((category: string) => {
     setCollapsedCategories((prev) => {
@@ -161,13 +644,11 @@ export default function Explore() {
       const list = (data as Vehicle[]) ?? [];
       setVehicles(list);
 
-      // Auto-select if exactly one vehicle and none selected yet
       if (list.length === 1 && !selectedVehicleId) {
         setSelectedVehicleId(list[0].id);
         setSelectedVehicle(list[0]);
       }
 
-      // If previously selected vehicle no longer exists
       if (selectedVehicleId && !list.some((v) => v.id === selectedVehicleId)) {
         setSelectedVehicleId(null);
         setSelectedVehicle(null);
@@ -224,28 +705,12 @@ export default function Explore() {
     [router, selectedVehicle, selectedVehicleId]
   );
 
-  const stepPill = (label: string) => (
-    <View
-      style={{
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: 999,
-        backgroundColor: colors.surface2,
-        borderWidth: 1,
-        borderColor: colors.border,
-        alignSelf: "flex-start",
-      }}
-    >
-      <Text style={{ fontSize: 12, fontWeight: "800", color: colors.textMuted }}>{label}</Text>
-    </View>
-  );
-
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Stack.Screen
         options={{
           title: "Explore",
-          headerStyle: { backgroundColor: colors.surface },
+          headerStyle: { backgroundColor: colors.bg },
           headerTintColor: colors.textPrimary,
           headerShadowVisible: false,
         }}
@@ -263,313 +728,88 @@ export default function Explore() {
       />
 
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
         contentContainerStyle={{
           padding: spacing.lg,
           paddingLeft: spacing.lg + insets.left,
           paddingRight: spacing.lg + insets.right,
-          paddingBottom: spacing.lg + insets.bottom,
-          gap: spacing.md,
+          paddingBottom: spacing.xxxl + insets.bottom,
+          gap: spacing.lg,
         }}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Service Area Banner */}
         {!serviceArea.loading && userLocation && (
-          serviceArea.allowed ? (
-            <View
-              style={{
-                padding: spacing.md,
-                borderRadius: 12,
-                backgroundColor: colors.success + "15",
-                borderWidth: 1,
-                borderColor: colors.success,
-              }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.success }}>
-                {serviceArea.message || `You're in our ${serviceArea.hubName || "service"} area!`}
-              </Text>
-            </View>
-          ) : (
-            <View
-              style={{
-                padding: spacing.md,
-                borderRadius: 12,
-                backgroundColor: colors.warning + "15",
-                borderWidth: 1,
-                borderColor: colors.warning,
-              }}
-            >
-              <Text style={{ fontSize: 14, fontWeight: "700", color: colors.warning, marginBottom: 4 }}>
-                {serviceArea.boundaryStatus === "future_ring" ? "Expanding to your area soon!" : "Not in service area yet"}
-              </Text>
-              <Text style={{ fontSize: 13, fontWeight: "500", color: colors.textMuted }}>
-                {serviceArea.message}
-              </Text>
-            </View>
-          )
-        )}
-
-        {/* Step 1: Vehicle */}
-        {stepPill("STEP 1")}
-        {selectedVehicle ? (
-          <VehicleChip
-            year={String(selectedVehicle.year)}
-            make={selectedVehicle.make}
-            model={selectedVehicle.model}
-            nickname={selectedVehicle.nickname || undefined}
-            onPress={handleChangeVehicle}
+          <ServiceAreaBanner
+            allowed={serviceArea.allowed}
+            message={serviceArea.message}
+            hubName={serviceArea.hubName}
+            boundaryStatus={serviceArea.boundaryStatus}
           />
-        ) : (
-          <Pressable
-            onPress={handleChangeVehicle}
-            style={({ pressed }) => [
-              card,
-              pressed && cardPressed,
-              {
-                padding: spacing.lg,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: spacing.md,
-                backgroundColor: colors.surface,
-                borderColor: colors.border,
-              },
-            ]}
-          >
-            <View
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: 16,
-                backgroundColor: colors.accent + "25",
-                justifyContent: "center",
-                alignItems: "center",
-              }}
-            >
-              <Text style={{ fontSize: 32 }}>🚗</Text>
-            </View>
-
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 18, fontWeight: "900", color: colors.textPrimary, marginBottom: 2 }}>
-                Select your vehicle
-              </Text>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-                Choose which car needs service
-              </Text>
-              {vehicles.length === 0 && !loadingVehicles && (
-                <Text style={{ marginTop: 6, fontSize: 12, fontWeight: "800", color: colors.accent }}>
-                  No vehicles yet — tap to add one
-                </Text>
-              )}
-            </View>
-
-            <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
-          </Pressable>
         )}
 
-        {/* Wrench Intro */}
-        <View
-          style={{
-            padding: spacing.lg,
-            paddingRight: 80,
-            borderRadius: 14,
-            backgroundColor: colors.accent + "08",
-            borderWidth: 1,
-            borderColor: colors.accent + "80",
-            position: "relative",
-          }}
-        >
-          <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.xs }}>
-            Hey there! I&apos;m Wrench.
-          </Text>
-          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, lineHeight: 20 }}>
-            Pick the symptom that best matches what you’re experiencing — we’ll ask a couple quick questions next.
-          </Text>
-          <Image
-            source={require("../../../assets/wrench.png")}
-            style={{ width: 64, height: 64, position: "absolute", right: 8, top: "50%", marginTop: -32 }}
-            resizeMode="contain"
+        <View>
+          <StepIndicator step={1} label="Select Vehicle" />
+          <VehicleSelector
+            vehicle={selectedVehicle}
+            vehicles={vehicles}
+            loading={loadingVehicles}
+            onPress={handleChangeVehicle}
           />
         </View>
 
-        {/* Step 2: Symptom */}
-        {stepPill("STEP 2")}
+        <WrenchIntro />
 
-        {loadingSymptoms ? (
-          <View style={{ padding: spacing.xl, alignItems: "center" }}>
-            <ActivityIndicator size="large" color={colors.accent} />
-            <Text style={{ marginTop: spacing.md, color: colors.textMuted, fontWeight: "700" }}>
-              Loading symptoms...
-            </Text>
-          </View>
-        ) : symptomsError ? (
-          <View style={[card, { padding: spacing.xl, alignItems: "center", backgroundColor: colors.surface }]}>
-            <Text style={{ fontSize: 32, marginBottom: spacing.md }}>⚠️</Text>
-            <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary, marginBottom: spacing.xs }}>
-              Couldn’t load symptoms
-            </Text>
-            <Text
-              style={{
-                fontSize: 14,
-                fontWeight: "600",
-                color: colors.textMuted,
-                textAlign: "center",
-                marginBottom: spacing.md,
-              }}
-            >
-              {String(symptomsError)}
-            </Text>
-            <Pressable
-              onPress={refetch}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.accent,
-                  paddingHorizontal: spacing.lg,
-                  paddingVertical: spacing.md,
-                  borderRadius: 10,
-                  opacity: pressed ? 0.85 : 1,
-                },
-              ]}
-            >
-              <Text style={{ color: "#fff", fontSize: 14, fontWeight: "900" }}>Retry</Text>
-            </Pressable>
-          </View>
-        ) : !symptoms || symptoms.length === 0 ? (
-          <View style={[card, { padding: spacing.xl, alignItems: "center", backgroundColor: colors.surface }]}>
-            <Text style={{ fontSize: 32, marginBottom: spacing.md }}>❓</Text>
-            <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary, marginBottom: spacing.xs }}>
-              No symptoms available
-            </Text>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, textAlign: "center" }}>
-              Please contact support if this keeps happening.
-            </Text>
-          </View>
-        ) : categoryGroups.length === 0 ? (
-          <View style={[card, { padding: spacing.xl, alignItems: "center", backgroundColor: colors.surface }]}>
-            <Text style={{ fontSize: 32, marginBottom: spacing.md }}>🔍</Text>
-            <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary, marginBottom: spacing.xs }}>
-              No symptoms found
-            </Text>
-            <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textMuted, textAlign: "center" }}>
-              Please try again later or contact support.
-            </Text>
-          </View>
-        ) : (
-          <>
-            {categoryGroups.map((group) => {
-              const isCollapsed = collapsedCategories.has(group.category);
+        <View>
+          <StepIndicator step={2} label="Choose Symptom" />
 
-              return (
-                <View key={group.category} style={{ marginBottom: spacing.lg }}>
-                  <Pressable
-                    onPress={() => toggleCategory(group.category)}
-                    style={({ pressed }) => [
-                      {
-                        flexDirection: "row",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        marginBottom: isCollapsed ? 0 : spacing.sm,
-                        padding: spacing.sm,
-                        borderRadius: 10,
-                        backgroundColor: pressed ? colors.surface2 : "transparent",
-                      },
-                    ]}
+          {loadingSymptoms ? (
+            <LoadingSkeleton />
+          ) : symptomsError ? (
+            <EmptyState onRetry={refetch} />
+          ) : !symptoms || symptoms.length === 0 || categoryGroups.length === 0 ? (
+            <EmptyState onRetry={refetch} />
+          ) : (
+            <View style={{ gap: spacing.md }}>
+              {categoryGroups.map((group, groupIndex) => {
+                const isCollapsed = collapsedCategories.has(group.category);
+
+                return (
+                  <Animated.View
+                    key={group.category}
+                    entering={FadeInDown.delay(groupIndex * 50).duration(300)}
                   >
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                      <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary }}>
-                        {group.category}
-                      </Text>
-                      <View
-                        style={{
-                          paddingHorizontal: 6,
-                          paddingVertical: 2,
-                          borderRadius: 6,
-                          backgroundColor: colors.accent + "15",
-                        }}
-                      >
-                        <Text style={{ fontSize: 11, fontWeight: "800", color: colors.accent }}>
-                          {(group.symptoms ?? []).length}
-                        </Text>
-                      </View>
-                    </View>
-                    <Text
-                      style={{
-                        fontSize: 18,
-                        color: colors.textMuted,
-                        transform: [{ rotate: isCollapsed ? "0deg" : "90deg" }],
-                      }}
-                    >
-                      ›
-                    </Text>
-                  </Pressable>
+                    <CategoryHeader
+                      category={group.category}
+                      count={group.symptoms.length}
+                      isCollapsed={isCollapsed}
+                      onToggle={() => toggleCategory(group.category)}
+                    />
 
-                  {!isCollapsed && (
-                    <>
-                      {(group.symptoms ?? []).map((symptom) => {
-                        const risk = normalizeRiskLevel(symptom.risk_level);
-                        const icon = symptom.icon || fallbackSymptomIcon(symptom.symptom_key);
-
-                        const disabled = !selectedVehicleId || !selectedVehicle;
-
-                        return (
-                          <Pressable
+                    {!isCollapsed && (
+                      <View>
+                        {group.symptoms.map((symptom, index) => (
+                          <SymptomCard
                             key={symptom.symptom_key}
+                            symptom={symptom}
+                            disabled={!selectedVehicleId || !selectedVehicle}
                             onPress={() => handleSymptomSelect(symptom.symptom_key)}
-                            disabled={disabled}
-                            style={({ pressed }) => [
-                              card,
-                              pressed && !disabled && cardPressed,
-                              {
-                                padding: spacing.md,
-                                flexDirection: "row",
-                                alignItems: "center",
-                                gap: spacing.md,
-                                marginBottom: spacing.sm,
-                                opacity: disabled ? 0.6 : 1,
-                              },
-                            ]}
-                          >
-                            <View
-                              style={{
-                                width: 46,
-                                height: 46,
-                                borderRadius: 14,
-                                backgroundColor: colors.accent + "12",
-                                alignItems: "center",
-                                justifyContent: "center",
-                              }}
-                            >
-                              <Text style={{ fontSize: 22 }}>{icon}</Text>
-                            </View>
-
-                            <View style={{ flex: 1 }}>
-                              <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: 2 }}>
-                                <Text style={{ fontSize: 16, fontWeight: "900", color: colors.textPrimary, flex: 1 }} numberOfLines={1}>
-                                  {symptom.symptom_label}
-                                </Text>
-                                {(risk === "high" || risk === "medium") && <RiskBadge riskLevel={risk} size="small" />}
-                              </View>
-
-                              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }} numberOfLines={2}>
-                                {symptom.customer_explainer ?? ""}
-                              </Text>
-
-                              {disabled && (
-                                <Text style={{ marginTop: 6, fontSize: 12, fontWeight: "800", color: colors.accent }}>
-                                  Select a vehicle first
-                                </Text>
-                              )}
-                            </View>
-
-                            <Text style={{ fontSize: 20, color: colors.accent }}>›</Text>
-                          </Pressable>
-                        );
-                      })}
-                    </>
-                  )}
-                </View>
-              );
-            })}
-          </>
-        )}
+                            index={index}
+                          />
+                        ))}
+                      </View>
+                    )}
+                  </Animated.View>
+                );
+              })}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </View>
   );

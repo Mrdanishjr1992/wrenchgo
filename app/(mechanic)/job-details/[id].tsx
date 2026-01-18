@@ -753,14 +753,36 @@ export default function MechanicJobDetails() {
                   <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
                 </View>
 
-                {!invoiceExpanded && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
-                    <Text style={text.muted}>Your earnings</Text>
-                    <Text style={{ ...text.body, color: "#10B981", fontWeight: "900" }}>
-                      ${((invoice.approved_subtotal_cents + invoice.pending_subtotal_cents) / 100).toFixed(2)}
-                    </Text>
-                  </View>
-                )}
+                {!invoiceExpanded && (() => {
+                  const laborTotal = invoice.approved_items
+                    .filter(i => i.item_type !== 'platform_fee' && i.item_type !== 'parts')
+                    .reduce((sum, i) => sum + i.total_cents, 0);
+                  const partsTotal = invoice.approved_items
+                    .filter(i => i.item_type === 'parts')
+                    .reduce((sum, i) => sum + i.total_cents, 0);
+                  const approvedTotal = laborTotal + partsTotal;
+
+                  // 12% of labor only, max $50
+                  const serviceFee = Math.min(Math.round(laborTotal * 0.12), 5000);
+                  const promoCredit = invoice.contract.mechanic_promo_discount_cents || 0;
+                  const earnings = approvedTotal - serviceFee + promoCredit;
+
+                  const pendingTotal = invoice.pending_items.reduce((sum, i) => sum + i.total_cents, 0);
+
+                  return (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
+                      <Text style={text.muted}>Your earnings</Text>
+                      <Text style={{ ...text.body, color: "#10B981", fontWeight: "900" }}>
+                        ${(earnings / 100).toFixed(2)}
+                        {pendingTotal > 0 && (
+                          <Text style={{ color: colors.textMuted, fontWeight: "500" }}>
+                            {" "}(+${(pendingTotal / 100).toFixed(2)} pending)
+                          </Text>
+                        )}
+                      </Text>
+                    </View>
+                  );
+                })()}
               </Pressable>
 
               {invoiceExpanded && (

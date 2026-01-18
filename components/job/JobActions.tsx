@@ -332,6 +332,27 @@ export function JobActions({
           </View>
         )}
 
+        {/* Pending invoice items need approval */}
+        {hasPendingItems && phase !== 'awaiting_arrival_confirmation' && !(phase === 'awaiting_completion' && progress?.mechanic_completed_at && !progress?.customer_completed_at) && (
+          <View style={styles.actionCard}>
+            <View style={[styles.actionHeader, { backgroundColor: '#f59e0b20' }]}>
+              <Ionicons name="receipt-outline" size={24} color="#f59e0b" />
+              <Text style={[styles.actionTitle, { color: '#f59e0b' }]}>
+                Approval Needed
+              </Text>
+            </View>
+            <Text style={[styles.actionDescription, { color: colors.textSecondary }]}>
+              The mechanic has added additional items to your invoice that require your approval. Please review and approve or decline in the Invoice section below.
+            </Text>
+            <View style={[styles.statusCard, { backgroundColor: '#f59e0b10', borderColor: '#f59e0b', marginTop: 12 }]}>
+              <Ionicons name="arrow-down-circle" size={18} color="#f59e0b" />
+              <Text style={[styles.statusText, { color: '#f59e0b' }]}>
+                Scroll down to Invoice section to review
+              </Text>
+            </View>
+          </View>
+        )}
+
         {/* Cancel button removed - it's in the mechanic card section */}
       </View>
     );

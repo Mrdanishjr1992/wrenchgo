@@ -7,14 +7,20 @@ import {
   Pressable,
   Alert,
   Image,
-  ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  FadeInDown,
+  FadeIn,
+} from "react-native-reanimated";
 import { useTheme } from "../../../src/ui/theme-context";
 import { supabase } from "../../../src/lib/supabase";
-import { createCard } from "../../../src/ui/styles";
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 
 type Job = {
@@ -33,11 +39,426 @@ type Vehicle = {
   nickname: string | null;
 };
 
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+function SectionHeader({ 
+  overline, 
+  title, 
+  action, 
+  onAction 
+}: { 
+  overline?: string; 
+  title: string; 
+  action?: string; 
+  onAction?: () => void;
+}) {
+  const { colors, spacing } = useTheme();
+  
+  return (
+    <View style={{ 
+      flexDirection: "row", 
+      alignItems: "flex-end", 
+      justifyContent: "space-between",
+      marginBottom: spacing.md,
+    }}>
+      <View>
+        {overline && (
+          <Text style={{
+            fontSize: 11,
+            fontWeight: "700",
+            color: colors.textMuted,
+            letterSpacing: 1,
+            textTransform: "uppercase",
+            marginBottom: 4,
+          }}>{overline}</Text>
+        )}
+        <Text style={{
+          fontSize: 20,
+          fontWeight: "800",
+          color: colors.textPrimary,
+          letterSpacing: -0.3,
+        }}>{title}</Text>
+      </View>
+      {action && onAction && (
+        <Pressable 
+          onPress={onAction}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={{ 
+            fontSize: 14, 
+            fontWeight: "700", 
+            color: colors.primary,
+          }}>{action}</Text>
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
+function StatCard({ 
+  icon, 
+  iconBg, 
+  iconColor, 
+  label, 
+  value, 
+  subtitle, 
+  onPress,
+  highlight,
+  delay = 0,
+}: { 
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: number | string;
+  subtitle: string;
+  onPress: () => void;
+  highlight?: boolean;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View 
+      entering={FadeInDown.delay(delay).duration(400).springify()}
+      style={{ flex: 1 }}
+    >
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.97, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          padding: spacing.lg,
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{ 
+          flexDirection: "row", 
+          alignItems: "center", 
+          gap: 8,
+          marginBottom: spacing.md,
+        }}>
+          <View style={{
+            width: 36,
+            height: 36,
+            borderRadius: radius.md,
+            backgroundColor: iconBg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}>
+            <Ionicons name={icon} size={18} color={iconColor} />
+          </View>
+        </View>
+        
+        <Text style={{
+          fontSize: 11,
+          fontWeight: "700",
+          color: colors.textMuted,
+          letterSpacing: 0.5,
+          textTransform: "uppercase",
+          marginBottom: 4,
+        }}>{label}</Text>
+        
+        <Text style={{
+          fontSize: 36,
+          fontWeight: "800",
+          color: highlight ? iconColor : colors.textPrimary,
+          letterSpacing: -1,
+          lineHeight: 40,
+        }}>{value}</Text>
+        
+        <Text style={{
+          fontSize: 13,
+          color: colors.textMuted,
+          marginTop: 4,
+        }}>{subtitle}</Text>
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function QuickHelpItem({
+  icon,
+  iconBg,
+  iconColor,
+  title,
+  subtitle,
+  urgent,
+  onPress,
+  delay = 0,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  iconBg: string;
+  iconColor: string;
+  title: string;
+  subtitle: string;
+  urgent?: boolean;
+  onPress: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          paddingVertical: spacing.md,
+          paddingHorizontal: spacing.sm,
+          borderRadius: radius.lg,
+          backgroundColor: urgent ? iconBg : "transparent",
+        }]}
+      >
+        <View style={{
+          width: 44,
+          height: 44,
+          borderRadius: radius.lg,
+          backgroundColor: urgent ? colors.surface : iconBg,
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Ionicons name={icon} size={22} color={iconColor} />
+        </View>
+        
+        <View style={{ flex: 1 }}>
+          <Text style={{
+            fontSize: 15,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: 2,
+          }}>{title}</Text>
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+          }}>{subtitle}</Text>
+        </View>
+        
+        <View style={{
+          width: 28,
+          height: 28,
+          borderRadius: 14,
+          backgroundColor: colors.surface2,
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Ionicons name="chevron-forward" size={16} color={colors.textMuted} />
+        </View>
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function VehicleCard({
+  vehicle,
+  onPress,
+  delay = 0,
+}: {
+  vehicle: Vehicle;
+  onPress: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows } = useTheme();
+  const scale = useSharedValue(1);
+
+  const carImageUrl = `https://cdn.imagin.studio/getimage?customer=hrjavascript-mastery&zoomType=fullscreen&modelFamily=${encodeURIComponent(
+    vehicle.model.split(" ")[0] || vehicle.model
+  )}&make=${encodeURIComponent(vehicle.make)}&modelYear=${encodeURIComponent(
+    String(vehicle.year)
+  )}&angle=29`;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          padding: spacing.md,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.md,
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{
+          width: 80,
+          height: 52,
+          borderRadius: radius.lg,
+          backgroundColor: colors.surface2,
+          overflow: "hidden",
+        }}>
+          <Image 
+            source={{ uri: carImageUrl }} 
+            style={{ width: "100%", height: "100%" }} 
+            resizeMode="contain" 
+          />
+        </View>
+        
+        <View style={{ flex: 1 }}>
+          <Text style={{
+            fontSize: 15,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: 2,
+          }}>{vehicle.year} {vehicle.make}</Text>
+          <Text style={{
+            fontSize: 14,
+            color: colors.textSecondary,
+          }}>{vehicle.model}</Text>
+          {vehicle.nickname && (
+            <Text style={{
+              fontSize: 12,
+              color: colors.textMuted,
+              fontStyle: "italic",
+              marginTop: 2,
+            }}>"{vehicle.nickname}"</Text>
+          )}
+        </View>
+        
+        <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function EmptyGarage({ onAdd }: { onAdd: () => void }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeIn.delay(200).duration(400)}>
+      <AnimatedPressable
+        onPress={onAdd}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: withAlpha(colors.primary, 0.05),
+          borderWidth: 2,
+          borderColor: withAlpha(colors.primary, 0.15),
+          borderStyle: "dashed",
+          borderRadius: radius.xl,
+          padding: spacing.xl,
+          alignItems: "center",
+          gap: spacing.sm,
+        }]}
+      >
+        <View style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: withAlpha(colors.primary, 0.1),
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.xs,
+        }}>
+          <Ionicons name="car-sport" size={28} color={colors.primary} />
+        </View>
+        
+        <Text style={{
+          fontSize: 17,
+          fontWeight: "700",
+          color: colors.textPrimary,
+        }}>Add your first vehicle</Text>
+        
+        <Text style={{
+          fontSize: 14,
+          color: colors.textMuted,
+          textAlign: "center",
+          lineHeight: 20,
+        }}>Get faster quotes and personalized service recommendations</Text>
+        
+        <View style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 6,
+          marginTop: spacing.sm,
+          backgroundColor: colors.primary,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm,
+          borderRadius: radius.full,
+        }}>
+          <Ionicons name="add" size={18} color={colors.white} />
+          <Text style={{
+            fontSize: 14,
+            fontWeight: "700",
+            color: colors.white,
+          }}>Add Vehicle</Text>
+        </View>
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+  
+  const shimmerStyle = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingHorizontal: spacing.lg }}>
+      <View style={{ paddingTop: insets.top + spacing.lg, marginBottom: spacing.xl }}>
+        <View style={[shimmerStyle, { width: 120, height: 14, marginBottom: 8 }]} />
+        <View style={[shimmerStyle, { width: 200, height: 32 }]} />
+      </View>
+      
+      <View style={[shimmerStyle, { 
+        height: 88, 
+        borderRadius: radius.xl, 
+        marginBottom: spacing.lg 
+      }]} />
+      
+      <View style={{ flexDirection: "row", gap: spacing.md, marginBottom: spacing.xl }}>
+        <View style={[shimmerStyle, { flex: 1, height: 160, borderRadius: radius.xl }]} />
+        <View style={[shimmerStyle, { flex: 1, height: 160, borderRadius: radius.xl }]} />
+      </View>
+      
+      <View style={[shimmerStyle, { width: 100, height: 14, marginBottom: spacing.md }]} />
+      <View style={[shimmerStyle, { height: 100, borderRadius: radius.xl, marginBottom: spacing.xl }]} />
+      
+      <View style={[shimmerStyle, { width: 80, height: 14, marginBottom: spacing.md }]} />
+      <View style={{ gap: spacing.sm }}>
+        <View style={[shimmerStyle, { height: 68 }]} />
+        <View style={[shimmerStyle, { height: 68 }]} />
+      </View>
+    </View>
+  );
+}
+
 export default function CustomerHome() {
   const router = useRouter();
-  const { colors, text, spacing } = useTheme();
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
-  const card = useMemo(() => createCard(colors), [colors]);
 
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -131,373 +552,241 @@ export default function CustomerHome() {
     fetchData();
   }, [fetchData]);
 
+  const ctaScale = useSharedValue(1);
+  const ctaAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: ctaScale.value }],
+  }));
+
   if (loading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={colors.accent} />
-        <Text style={{ marginTop: 10, ...text.muted }}>Loading...</Text>
-      </View>
-    );
+    return <LoadingSkeleton />;
   }
+
+  const greeting = firstName ? `Hey, ${firstName}` : "Welcome back";
+  const timeOfDay = new Date().getHours();
+  const greetingPrefix = timeOfDay < 12 ? "Good morning" : timeOfDay < 18 ? "Good afternoon" : "Good evening";
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
-        contentContainerStyle={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.xl,
-          gap: spacing.md,
-        }}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: spacing.xxxl }}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={colors.primary} 
+          />
         }
       >
-        <View style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.sm }}>
-          <Text style={{ ...text.muted, fontSize: 14 }}>
-            {new Date().toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })}
-          </Text>
-          <Text style={{ ...text.title, fontSize: 28, marginTop: 4 }}>
-            {firstName ? `Hey, ${firstName}` : "Welcome back"}
-          </Text>
+        {/* HEADER SECTION */}
+        <View style={{ 
+          paddingHorizontal: spacing.lg, 
+          paddingTop: insets.top + spacing.md,
+          paddingBottom: spacing.lg,
+        }}>
+          <Animated.View entering={FadeIn.duration(400)}>
+            <Text style={{
+              fontSize: 14,
+              color: colors.textMuted,
+              marginBottom: 4,
+            }}>
+              {greetingPrefix} {firstName ? `${firstName}` : ""}
+            </Text>
+            <Text style={{
+              fontSize: 28,
+              fontWeight: "800",
+              color: colors.textPrimary,
+              letterSpacing: -0.5,
+            }}>
+              {new Date().toLocaleDateString(undefined, { 
+                weekday: "long", 
+                month: "short", 
+                day: "numeric" 
+              })}
+            </Text>
+          </Animated.View>
         </View>
 
-        <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_POST_JOB_CTA}>
-          <Pressable
-            onPress={() => router.push("/explore")}
-            style={({ pressed }) => [
-              card,
-              {
-                padding: spacing.lg,
-                backgroundColor: colors.accent,
-                borderColor: colors.accent,
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View
-                style={{
-                  width: 48,
-                  height: 48,
-                  borderRadius: 24,
-                  backgroundColor: "rgba(255,255,255,0.2)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="construct" size={24} color="#fff" />
-              </View>
-              <View>
-                <Text style={{ fontWeight: "900", color: "#fff", fontSize: 18 }}>Request a Mechanic</Text>
-                <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13, marginTop: 2 }}>
-                  Get help with your car today
-                </Text>
-              </View>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#fff" />
-          </Pressable>
-        </WalkthroughTarget>
-
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <Pressable
-            onPress={() => router.push("/(customer)/(tabs)/jobs" as any)}
-            style={({ pressed }) => [
-              card,
-              { flex: 1, padding: spacing.md },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <View
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
-                  backgroundColor: `${colors.accent}15`,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="briefcase-outline" size={18} color={colors.accent} />
-              </View>
-              <Text style={{ ...text.muted, fontSize: 12, fontWeight: "800" }}>ACTIVE JOBS</Text>
-            </View>
-            <Text style={{ ...text.title, fontSize: 32 }}>{activeJobs.length}</Text>
-            <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
-              {activeJobs.length === 0 ? "No active jobs" : "Tap to view"}
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => router.push("/(customer)/(tabs)/inbox" as any)}
-            style={({ pressed }) => [
-              card,
-              { flex: 1, padding: spacing.md },
-              pressed && { opacity: 0.9 },
-            ]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <View
-                style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 10,
-                  backgroundColor: unread > 0 ? "#EF444415" : `${colors.accent}15`,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons
-                  name={unread > 0 ? "mail-unread-outline" : "mail-outline"}
-                  size={18}
-                  color={unread > 0 ? "#EF4444" : colors.accent}
-                />
-              </View>
-              <Text style={{ ...text.muted, fontSize: 12, fontWeight: "800" }}>MESSAGES</Text>
-            </View>
-            <Text style={{ ...text.title, fontSize: 32, color: unread > 0 ? "#EF4444" : colors.textPrimary }}>
-              {unread}
-            </Text>
-            <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
-              {unread === 0 ? "All caught up" : "Unread messages"}
-            </Text>
-          </Pressable>
-        </View>
-
-        <View style={[card, { padding: spacing.md }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.md }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <View
-                style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 12,
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="car-outline" size={18} color={colors.textPrimary} />
-              </View>
-              <Text style={text.section}>My Garage</Text>
-            </View>
-            <Pressable onPress={() => router.push("/(customer)/garage/add" as any)}>
-              <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 14 }}>+ Add</Text>
-            </Pressable>
-          </View>
-
-          {vehicles.length === 0 ? (
-            <Pressable
-              onPress={() => router.push("/(customer)/garage/add" as any)}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
+        {/* PRIMARY CTA - Request a Mechanic */}
+        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.xl }}>
+          <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.CUSTOMER_POST_JOB_CTA}>
+            <Animated.View entering={FadeInDown.delay(100).duration(400).springify()}>
+              <AnimatedPressable
+                onPress={() => router.push("/explore")}
+                onPressIn={() => { ctaScale.value = withSpring(0.98, { damping: 15 }); }}
+                onPressOut={() => { ctaScale.value = withSpring(1, { damping: 15 }); }}
+                style={[ctaAnimatedStyle, {
+                  backgroundColor: colors.accent,
+                  borderRadius: radius.xxl,
                   padding: spacing.lg,
+                  flexDirection: "row",
                   alignItems: "center",
-                  gap: spacing.sm,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <Ionicons name="add-circle-outline" size={40} color={colors.textMuted} />
-              <Text style={{ ...text.body, fontWeight: "800" }}>Add your first vehicle</Text>
-              <Text style={{ ...text.muted, fontSize: 13, textAlign: "center" }}>
-                Get faster, more accurate quotes
-              </Text>
-            </Pressable>
+                  justifyContent: "space-between",
+                  ...shadows.lg,
+                }]}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}>
+                  <View style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 26,
+                    backgroundColor: withAlpha(colors.white, 0.2),
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    <Ionicons name="construct" size={26} color={colors.white} />
+                  </View>
+                  <View>
+                    <Text style={{
+                      fontSize: 18,
+                      fontWeight: "800",
+                      color: colors.buttonText,
+                      marginBottom: 2,
+                    }}>Request a Mechanic</Text>
+                    <Text style={{
+                      fontSize: 14,
+                      color: withAlpha(colors.buttonText, 0.8),
+                    }}>Get help with your car today</Text>
+                  </View>
+                </View>
+                <View style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 18,
+                  backgroundColor: withAlpha(colors.white, 0.2),
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Ionicons name="arrow-forward" size={20} color={colors.white} />
+                </View>
+              </AnimatedPressable>
+            </Animated.View>
+          </WalkthroughTarget>
+        </View>
+
+        {/* STATS SECTION */}
+        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.xl }}>
+          <View style={{ flexDirection: "row", gap: spacing.md }}>
+            <StatCard
+              icon="briefcase-outline"
+              iconBg={colors.primaryBg}
+              iconColor={colors.primary}
+              label="Active Jobs"
+              value={activeJobs.length}
+              subtitle={activeJobs.length === 0 ? "No active jobs" : "Tap to view"}
+              onPress={() => router.push("/(customer)/(tabs)/jobs" as any)}
+              delay={200}
+            />
+            <StatCard
+              icon={unread > 0 ? "mail-unread" : "mail-outline"}
+              iconBg={unread > 0 ? colors.errorBg : colors.primaryBg}
+              iconColor={unread > 0 ? colors.error : colors.primary}
+              label="Messages"
+              value={unread}
+              subtitle={unread === 0 ? "All caught up" : "Unread messages"}
+              onPress={() => router.push("/(customer)/(tabs)/inbox" as any)}
+              highlight={unread > 0}
+              delay={300}
+            />
+          </View>
+        </View>
+
+        {/* MY GARAGE SECTION */}
+        <View style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.xl }}>
+          <SectionHeader
+            overline="Your vehicles"
+            title="My Garage"
+            action="+ Add"
+            onAction={() => router.push("/(customer)/garage/add" as any)}
+          />
+          
+          {vehicles.length === 0 ? (
+            <EmptyGarage onAdd={() => router.push("/(customer)/garage/add" as any)} />
           ) : (
             <View style={{ gap: spacing.sm }}>
-              {vehicles.slice(0, 3).map((vehicle) => {
-                const carImageUrl = `https://cdn.imagin.studio/getimage?customer=hrjavascript-mastery&zoomType=fullscreen&modelFamily=${encodeURIComponent(
-                  vehicle.model.split(" ")[0] || vehicle.model
-                )}&make=${encodeURIComponent(vehicle.make)}&modelYear=${encodeURIComponent(
-                  String(vehicle.year)
-                )}&angle=29`;
-
-                return (
-                  <Pressable
-                    key={vehicle.id}
-                    onPress={() => router.push({ pathname: "/(customer)/garage/[id]" as any, params: { id: vehicle.id } })}
-                    style={({ pressed }) => [
-                      {
-                        backgroundColor: colors.bg,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 12,
-                        padding: spacing.sm,
-                        flexDirection: "row",
-                        alignItems: "center",
-                        gap: spacing.sm,
-                      },
-                      pressed && { opacity: 0.9 },
-                    ]}
-                  >
-                    <View
-                      style={{
-                        width: 70,
-                        height: 45,
-                        borderRadius: 10,
-                        backgroundColor: colors.surface,
-                        overflow: "hidden",
-                      }}
-                    >
-                      <Image source={{ uri: carImageUrl }} style={{ width: "100%", height: "100%" }} resizeMode="contain" />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={{ ...text.body, fontWeight: "800" }}>
-                        {vehicle.year} {vehicle.make} {vehicle.model}
-                      </Text>
-                      {vehicle.nickname && (
-                        <Text style={{ ...text.muted, fontSize: 12 }}>"{vehicle.nickname}"</Text>
-                      )}
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-                  </Pressable>
-                );
-              })}
+              {vehicles.slice(0, 3).map((vehicle, index) => (
+                <VehicleCard
+                  key={vehicle.id}
+                  vehicle={vehicle}
+                  onPress={() => router.push({ 
+                    pathname: "/(customer)/garage/[id]" as any, 
+                    params: { id: vehicle.id } 
+                  })}
+                  delay={400 + index * 100}
+                />
+              ))}
               {vehicles.length > 3 && (
-                <Pressable onPress={() => router.push("/(customer)/garage" as any)}>
-                  <Text style={{ color: colors.accent, fontWeight: "900", fontSize: 14, textAlign: "center", marginTop: 4 }}>
-                    View all {vehicles.length} vehicles
-                  </Text>
+                <Pressable 
+                  onPress={() => router.push("/(customer)/garage" as any)}
+                  style={{ paddingVertical: spacing.sm }}
+                >
+                  <Text style={{
+                    fontSize: 14,
+                    fontWeight: "700",
+                    color: colors.primary,
+                    textAlign: "center",
+                  }}>View all {vehicles.length} vehicles</Text>
                 </Pressable>
               )}
             </View>
           )}
         </View>
 
-        <View style={[card, { padding: spacing.md }]}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.md }}>
-            <View
-              style={{
-                width: 34,
-                height: 34,
-                borderRadius: 12,
-                backgroundColor: colors.bg,
-                borderWidth: 1,
-                borderColor: colors.border,
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-            >
-              <Ionicons name="help-circle-outline" size={18} color={colors.textPrimary} />
-            </View>
-            <Text style={text.section}>Quick Help</Text>
-          </View>
-
-          <View style={{ gap: spacing.sm }}>
-            <Pressable
+        {/* QUICK HELP SECTION */}
+        <View style={{ paddingHorizontal: spacing.lg }}>
+          <SectionHeader
+            overline="Need help?"
+            title="Quick Actions"
+          />
+          
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+            padding: spacing.sm,
+            ...shadows.sm,
+          }}>
+            <QuickHelpItem
+              icon="warning"
+              iconBg={colors.errorBg}
+              iconColor={colors.error}
+              title="Car won't start?"
+              subtitle="Get roadside help fast"
+              urgent
               onPress={() => router.push("/(customer)/education")}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: "#EF444415",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="warning-outline" size={20} color="#EF4444" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...text.body, fontWeight: "800" }}>Car won't start?</Text>
-                <Text style={{ ...text.muted, fontSize: 12 }}>Get roadside help fast</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-
-            <Pressable
+              delay={600}
+            />
+            
+            <View style={{ 
+              height: 1, 
+              backgroundColor: colors.border, 
+              marginHorizontal: spacing.md,
+            }} />
+            
+            <QuickHelpItem
+              icon="speedometer"
+              iconBg={colors.warningBg}
+              iconColor={colors.warning}
+              title="Check engine light on?"
+              subtitle="Diagnose the issue"
               onPress={() => router.push("/(customer)/education")}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: "#F59E0B15",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="speedometer-outline" size={20} color="#F59E0B" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...text.body, fontWeight: "800" }}>Check engine light on?</Text>
-                <Text style={{ ...text.muted, fontSize: 12 }}>Diagnose the issue</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-
-            <Pressable
+              delay={700}
+            />
+            
+            <View style={{ 
+              height: 1, 
+              backgroundColor: colors.border, 
+              marginHorizontal: spacing.md,
+            }} />
+            
+            <QuickHelpItem
+              icon="build"
+              iconBg={colors.successBg}
+              iconColor={colors.success}
+              title="Regular maintenance"
+              subtitle="Oil change, brakes & more"
               onPress={() => router.push("/(customer)/education")}
-              style={({ pressed }) => [
-                {
-                  backgroundColor: colors.bg,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <View
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 12,
-                  backgroundColor: "#10B98115",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Ionicons name="build-outline" size={20} color="#10B981" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ ...text.body, fontWeight: "800" }}>Regular maintenance</Text>
-                <Text style={{ ...text.muted, fontSize: 12 }}>Oil change, brakes & more</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
+              delay={800}
+            />
           </View>
         </View>
       </ScrollView>

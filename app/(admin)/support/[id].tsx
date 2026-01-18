@@ -4,13 +4,14 @@ import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
-import { 
-  adminGetSupportRequestDetails, 
-  adminUpdateSupportRequestStatus, 
-  AdminSupportRequestDetail, 
-  formatCents, 
-  formatDateTime 
+import {
+  adminGetSupportRequestDetails,
+  adminUpdateSupportRequestStatus,
+  AdminSupportRequestDetail,
+  formatCents,
+  formatDateTime
 } from '../../../src/lib/admin';
+import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 
 const STATUS_COLORS: Record<string, string> = {
   open: '#F59E0B',
@@ -25,6 +26,7 @@ export default function AdminSupportDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [note, setNote] = useState('');
+  const [showMessageModal, setShowMessageModal] = useState(false);
 
   const fetchDetail = useCallback(async () => {
     if (!id) return;
@@ -141,26 +143,45 @@ export default function AdminSupportDetailScreen() {
           <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: spacing.sm }}>
             Member since {formatDateTime(user.created_at)}
           </Text>
-          <TouchableOpacity
-            onPress={() => {
-              if (user.role === 'mechanic') {
-                router.push(`/(admin)/mechanics/${user.id}`);
-              } else {
-                router.push(`/(admin)/customers/${user.id}`);
-              }
-            }}
-            style={{
-              backgroundColor: colors.accent,
-              borderRadius: 8,
-              padding: spacing.sm,
-              marginTop: spacing.md,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>
-              View {user.role === 'mechanic' ? 'Mechanic' : 'Customer'} Profile
-            </Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', marginTop: spacing.md, gap: spacing.sm }}>
+            <TouchableOpacity
+              onPress={() => setShowMessageModal(true)}
+              style={{
+                flex: 1,
+                backgroundColor: '#8B5CF6',
+                borderRadius: 8,
+                padding: spacing.sm,
+                alignItems: 'center',
+                flexDirection: 'row',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={16} color="#fff" />
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13, marginLeft: 6 }}>
+                Message User
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                if (user.role === 'mechanic') {
+                  router.push(`/(admin)/mechanics/${user.id}`);
+                } else {
+                  router.push(`/(admin)/customers/${user.id}`);
+                }
+              }}
+              style={{
+                flex: 1,
+                backgroundColor: colors.accent,
+                borderRadius: 8,
+                padding: spacing.sm,
+                alignItems: 'center',
+              }}
+            >
+              <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13 }}>
+                View Profile
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {job && (
@@ -285,6 +306,15 @@ export default function AdminSupportDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      <AdminMessageModal
+        visible={showMessageModal}
+        onClose={() => setShowMessageModal(false)}
+        recipient={{ id: user.id, name: user.full_name, role: user.role }}
+        relatedJobId={job?.id}
+        relatedJobTitle={job?.title}
+        supportRequestId={sr.id}
+      />
     </View>
   );
 }

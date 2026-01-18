@@ -3,15 +3,21 @@ import {
   View,
   Text,
   FlatList,
-  ActivityIndicator,
   Alert,
   Pressable,
-  StyleSheet,
   RefreshControl,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  FadeInRight,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { getDisplayTitle } from "../../src/lib/format-symptom";
@@ -29,6 +35,8 @@ type Conversation = {
 type MessagesListViewProps = {
   role: "customer" | "mechanic";
 };
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 const getInitials = (name: string | null) => {
   if (!name) return "?";
@@ -59,27 +67,319 @@ const fmtTime = (iso: string) => {
   }
 };
 
+const avatarColors = [
+  "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316",
+  "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
+];
+
+const getAvatarColor = (name: string | null) => {
+  if (!name) return avatarColors[0];
+  const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  return avatarColors[hash % avatarColors.length];
+};
+
+function ConversationCard({
+  conversation,
+  onPress,
+  index,
+}: {
+  conversation: Conversation;
+  onPress: () => void;
+  index: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const hasUnread = conversation.unread_count > 0;
+  const initials = getInitials(conversation.other_party_name);
+  const avatarBg = getAvatarColor(conversation.other_party_name);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInRight.delay(index * 50).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          flexDirection: "row",
+          alignItems: "center",
+          backgroundColor: hasUnread ? withAlpha(colors.primary, 0.05) : colors.surface,
+          marginHorizontal: spacing.md,
+          marginBottom: spacing.sm,
+          padding: spacing.md,
+          borderRadius: radius.xl,
+          borderLeftWidth: hasUnread ? 3 : 0,
+          borderLeftColor: colors.primary,
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: avatarBg,
+          alignItems: "center",
+          justifyContent: "center",
+          position: "relative",
+        }}>
+          <Text style={{
+            color: colors.white,
+            fontWeight: "700",
+            fontSize: 18,
+          }}>{initials}</Text>
+          {hasUnread && (
+            <View style={{
+              position: "absolute",
+              bottom: 0,
+              right: 0,
+              width: 16,
+              height: 16,
+              borderRadius: 8,
+              backgroundColor: colors.success,
+              borderWidth: 2,
+              borderColor: colors.surface,
+            }} />
+          )}
+        </View>
+
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+          }}>
+            <Text style={{
+              fontSize: 16,
+              fontWeight: hasUnread ? "700" : "600",
+              color: colors.textPrimary,
+              flex: 1,
+            }} numberOfLines={1}>
+              {conversation.other_party_name || "Unknown"}
+            </Text>
+            <Text style={{
+              fontSize: 12,
+              color: hasUnread ? colors.primary : colors.textMuted,
+              fontWeight: hasUnread ? "600" : "400",
+              marginLeft: spacing.sm,
+            }}>{fmtTime(conversation.last_message_time)}</Text>
+          </View>
+
+          <Text style={{
+            fontSize: 13,
+            color: colors.textMuted,
+            marginBottom: 4,
+          }} numberOfLines={1}>
+            {conversation.title}
+          </Text>
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          }}>
+            <Text style={{
+              fontSize: 14,
+              color: hasUnread ? colors.textPrimary : colors.textMuted,
+              fontWeight: hasUnread ? "500" : "400",
+              flex: 1,
+            }} numberOfLines={1}>
+              {conversation.last_message ?? "No messages yet"}
+            </Text>
+            {hasUnread && (
+              <View style={{
+                minWidth: 22,
+                height: 22,
+                borderRadius: 11,
+                backgroundColor: colors.primary,
+                alignItems: "center",
+                justifyContent: "center",
+                paddingHorizontal: 6,
+              }}>
+                <Text style={{
+                  color: colors.white,
+                  fontWeight: "800",
+                  fontSize: 11,
+                }}>{conversation.unread_count > 9 ? "9+" : conversation.unread_count}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <Ionicons
+          name="chevron-forward"
+          size={20}
+          color={colors.textMuted}
+          style={{ marginLeft: spacing.sm }}
+        />
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function EmptyState({ isCustomer }: { isCustomer: boolean }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeIn.delay(200).duration(400)}
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: spacing.xl,
+        paddingBottom: spacing.xxxl,
+      }}
+    >
+      <View style={{
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: withAlpha(colors.primary, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name="chatbubbles" size={48} color={colors.primary} />
+      </View>
+
+      <Text style={{
+        fontSize: 22,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.sm,
+      }}>No messages yet</Text>
+
+      <Text style={{
+        fontSize: 15,
+        color: colors.textMuted,
+        textAlign: "center",
+        lineHeight: 22,
+      }}>
+        {isCustomer
+          ? "Once you accept a quote, you'll be able to chat with your mechanic here"
+          : "When a customer accepts your quote, you can message them here"}
+      </Text>
+    </Animated.View>
+  );
+}
+
+function ConversationSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+  };
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+      padding: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+    }}>
+      <View style={[shimmer, { width: 56, height: 56, borderRadius: 28 }]} />
+      <View style={{ flex: 1, marginLeft: spacing.md }}>
+        <View style={[shimmer, { width: 140, height: 18, borderRadius: radius.sm, marginBottom: 8 }]} />
+        <View style={[shimmer, { width: 100, height: 14, borderRadius: radius.sm, marginBottom: 6 }]} />
+        <View style={[shimmer, { width: 180, height: 14, borderRadius: radius.sm }]} />
+      </View>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing } = useTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: spacing.md }}>
+      <ConversationSkeleton />
+      <ConversationSkeleton />
+      <ConversationSkeleton />
+      <ConversationSkeleton />
+      <ConversationSkeleton />
+    </View>
+  );
+}
+
+function UnreadHeader({
+  count,
+  onMarkAllRead,
+}: {
+  count: number;
+  onMarkAllRead: () => void;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(300)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginHorizontal: spacing.md,
+        marginBottom: spacing.md,
+        padding: spacing.md,
+        backgroundColor: withAlpha(colors.primary, 0.08),
+        borderRadius: radius.xl,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <View style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: colors.primary,
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Text style={{
+            color: colors.white,
+            fontWeight: "800",
+            fontSize: 14,
+          }}>{count > 99 ? "99+" : count}</Text>
+        </View>
+        <Text style={{
+          fontSize: 15,
+          fontWeight: "600",
+          color: colors.textPrimary,
+        }}>unread {count === 1 ? "message" : "messages"}</Text>
+      </View>
+
+      <Pressable
+        onPress={onMarkAllRead}
+        hitSlop={8}
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Text style={{
+          fontSize: 14,
+          fontWeight: "600",
+          color: colors.primary,
+        }}>Mark all read</Text>
+      </Pressable>
+    </Animated.View>
+  );
+}
+
 export function MessagesListView({ role }: MessagesListViewProps) {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [items, setItems] = useState<Conversation[]>([]);
-  const { colors, text, spacing, radius } = useTheme();
+  const { colors, spacing } = useTheme();
 
   const isCustomer = role === "customer";
   const otherPartyLabel = isCustomer ? "Mechanic" : "Customer";
   const chatRoute = isCustomer ? "/(customer)/messages" : "/(mechanic)/messages";
-
-  const avatarColors = [
-    "#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f97316",
-    "#eab308", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
-  ];
-
-  const getAvatarColor = (name: string | null) => {
-    if (!name) return avatarColors[0];
-    const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return avatarColors[hash % avatarColors.length];
-  };
 
   const load = useCallback(async () => {
     try {
@@ -231,221 +531,45 @@ export function MessagesListView({ role }: MessagesListViewProps) {
     }
   }, [items, load]);
 
-  const empty = !loading && items.length === 0;
-
   if (loading) {
-    return (
-      <View style={[styles.centered, { backgroundColor: colors.bg }]}>
-        <ActivityIndicator color={colors.accent} size="large" />
-        <Text style={[text.muted, { marginTop: 12 }]}>Loading conversations...</Text>
-      </View>
-    );
+    return <LoadingSkeleton />;
   }
 
-  if (empty) {
+  if (items.length === 0) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: colors.bg }]}>
-        <View style={[styles.emptyIcon, { backgroundColor: colors.accent + "12" }]}>
-          <Ionicons name="chatbubbles-outline" size={40} color={colors.accent} />
-        </View>
-        <Text style={[text.title, { fontSize: 20, marginTop: 16 }]}>No messages yet</Text>
-        <Text style={[text.muted, { textAlign: "center", marginTop: 8, paddingHorizontal: 40, lineHeight: 22 }]}>
-          {isCustomer
-            ? "Once you accept a quote, you'll be able to chat with your mechanic here"
-            : "When a customer accepts your quote, you can message them here"}
-        </Text>
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <EmptyState isCustomer={isCustomer} />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      {unreadCount > 0 && (
-        <View style={[styles.headerBar, { borderBottomColor: colors.border }]}>
-          <View style={styles.headerLeft}>
-            <View style={[styles.unreadBadge, { backgroundColor: colors.accent }]}>
-              <Text style={styles.unreadBadgeText}>{unreadCount}</Text>
-            </View>
-            <Text style={[text.body, { fontWeight: "600" }]}>unread</Text>
-          </View>
-          <Pressable onPress={markAllRead} hitSlop={8}>
-            <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 14 }}>Mark all read</Text>
-          </Pressable>
-        </View>
-      )}
-
       <FlatList
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
         data={items}
         keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingVertical: 8 }}
-        renderItem={({ item }) => {
-          const hasUnread = item.unread_count > 0;
-          const initials = getInitials(item.other_party_name);
-          const avatarBg = getAvatarColor(item.other_party_name);
-
-          return (
-            <Pressable
-              onPress={() => openConversation(item)}
-              style={({ pressed }) => [
-                styles.conversationRow,
-                { 
-                  backgroundColor: pressed ? colors.surface : colors.bg,
-                  borderLeftColor: hasUnread ? colors.accent : "transparent",
-                },
-              ]}
-            >
-              <View style={[styles.avatar, { backgroundColor: avatarBg }]}>
-                <Text style={styles.avatarText}>{initials}</Text>
-                {hasUnread && <View style={[styles.onlineDot, { borderColor: colors.bg, backgroundColor: colors.success }]} />}
-              </View>
-
-              <View style={styles.conversationContent}>
-                <View style={styles.conversationHeader}>
-                  <Text style={[text.body, { fontWeight: "600", fontSize: 16 }]} numberOfLines={1}>
-                    {item.other_party_name}
-                  </Text>
-                  <Text style={[text.muted, { fontSize: 13 }]}>{fmtTime(item.last_message_time)}</Text>
-                </View>
-
-                <Text style={[text.muted, { fontSize: 13, marginTop: 2 }]} numberOfLines={1}>
-                  {item.title}
-                </Text>
-
-                <View style={styles.messagePreview}>
-                  <Text
-                    style={[
-                      { fontSize: 14, flex: 1, color: hasUnread ? colors.textPrimary : colors.textMuted },
-                      hasUnread && { fontWeight: "500" },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {item.last_message ?? "No messages yet"}
-                  </Text>
-                  {hasUnread && (
-                    <View style={[styles.countBadge, { backgroundColor: colors.accent }]}>
-                      <Text style={styles.countBadgeText}>{item.unread_count}</Text>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              <Ionicons name="chevron-forward" size={20} color={colors.textMuted} style={{ marginLeft: 8 }} />
-            </Pressable>
-          );
-        }}
-        ItemSeparatorComponent={() => (
-          <View style={[styles.separator, { backgroundColor: colors.border, marginLeft: 76 }]} />
+        contentContainerStyle={{ paddingTop: spacing.md, paddingBottom: spacing.xxxl }}
+        ListHeaderComponent={
+          unreadCount > 0 ? (
+            <UnreadHeader count={unreadCount} onMarkAllRead={markAllRead} />
+          ) : null
+        }
+        renderItem={({ item, index }) => (
+          <ConversationCard
+            conversation={item}
+            onPress={() => openConversation(item)}
+            index={index}
+          />
         )}
+        showsVerticalScrollIndicator={false}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  centered: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyContainer: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingBottom: 60,
-  },
-  emptyIcon: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  headerBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-  },
-  headerLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  unreadBadge: {
-    minWidth: 24,
-    height: 24,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  unreadBadgeText: {
-    color: "#000",
-    fontWeight: "800",
-    fontSize: 13,
-  },
-  conversationRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderLeftWidth: 3,
-  },
-  avatar: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  avatarText: {
-    color: "#fff",
-    fontWeight: "700",
-    fontSize: 18,
-  },
-  onlineDot: {
-    position: "absolute",
-    bottom: 2,
-    right: 2,
-    width: 14,
-    height: 14,
-    borderRadius: 7,
-    backgroundColor: "#22c55e",
-    borderWidth: 2,
-  },
-  conversationContent: {
-    flex: 1,
-    marginLeft: 12,
-  },
-  conversationHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  messagePreview: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 4,
-    gap: 8,
-  },
-  countBadge: {
-    minWidth: 20,
-    height: 20,
-    borderRadius: 10,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 6,
-  },
-  countBadgeText: {
-    color: "#000",
-    fontWeight: "800",
-    fontSize: 11,
-  },
-  separator: {
-    height: 1,
-  },
-});

@@ -976,11 +976,27 @@ export default function CustomerJobDetails() {
                     <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
                   </View>
 
-                  {!invoiceExpanded && (
-                    <Text style={{ ...text.body, color: colors.accent, fontWeight: "900", marginTop: spacing.sm }}>
-                      Total: ${((invoice.approved_subtotal_cents + invoice.pending_subtotal_cents + invoice.contract.platform_fee_cents) / 100).toFixed(2)}
-                    </Text>
-                  )}
+                  {!invoiceExpanded && (() => {
+                    const approvedTotal = invoice.approved_items
+                      .filter(i => i.item_type !== 'platform_fee')
+                      .reduce((sum, i) => sum + i.total_cents, 0);
+                    const platformFee = invoice.approved_items.find(i => i.item_type === 'platform_fee')?.total_cents
+                      ?? invoice.contract.platform_fee_cents;
+                    const promoDiscount = invoice.contract.promo_discount_cents || 0;
+                    const totalDue = approvedTotal + platformFee - promoDiscount;
+                    const pendingTotal = invoice.pending_items.reduce((sum, i) => sum + i.total_cents, 0);
+
+                    return (
+                      <Text style={{ ...text.body, color: colors.accent, fontWeight: "900", marginTop: spacing.sm }}>
+                        Total: ${(totalDue / 100).toFixed(2)}
+                        {pendingTotal > 0 && (
+                          <Text style={{ color: colors.textMuted, fontWeight: "500" }}>
+                            {" "}(+${(pendingTotal / 100).toFixed(2)} pending)
+                          </Text>
+                        )}
+                      </Text>
+                    );
+                  })()}
 
                   {invoiceExpanded && (
                     <View style={{ marginTop: spacing.sm }}>

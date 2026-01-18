@@ -1,17 +1,25 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, Alert } from 'react-native';
+import { View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '../../../src/lib/supabase';
 import { useTheme } from '../../../src/ui/theme-context';
 import ReviewForm from '../../../components/reviews/ReviewForm';
+import { ThemedText } from '../../../src/ui/components/ThemedText';
+import { ThemedCard } from '../../../src/ui/components/ThemedCard';
+import { Skeleton } from '../../../src/ui/components/Skeleton';
+import { AppButton } from '../../../src/ui/components/AppButton';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SubmitReviewScreen() {
-  const { colors, text, spacing } = useTheme();
+  const { colors, spacing, radius } = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const params = useLocalSearchParams<{ jobId: string }>();
   const jobId = params.jobId;
 
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [revieweeId, setRevieweeId] = useState<string | null>(null);
   const [revieweeName, setRevieweeName] = useState<string>('');
   const [reviewerRole, setReviewerRole] = useState<'customer' | 'mechanic'>('customer');
@@ -22,6 +30,7 @@ export default function SubmitReviewScreen() {
 
   const loadReviewData = async () => {
     try {
+      setError(null);
       const { data: userData } = await supabase.auth.getUser();
       if (!userData.user) throw new Error('Not authenticated');
 
@@ -61,8 +70,7 @@ export default function SubmitReviewScreen() {
       }
     } catch (err: any) {
       console.error('Load review data error:', err);
-      Alert.alert('Error', 'Failed to load review information');
-      router.back();
+      setError(err.message || 'Failed to load review information');
     } finally {
       setLoading(false);
     }
@@ -70,16 +78,64 @@ export default function SubmitReviewScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={{ flex: 1, backgroundColor: colors.bg, padding: spacing.lg }}>
+        <ThemedCard style={{ marginBottom: spacing.lg, alignItems: 'center' }}>
+          <Skeleton width={64} height={64} borderRadius={32} style={{ marginBottom: spacing.md }} />
+          <Skeleton width={150} height={20} style={{ marginBottom: spacing.xs }} />
+          <Skeleton width={200} height={14} />
+        </ThemedCard>
+        
+        <ThemedCard style={{ marginBottom: spacing.lg }}>
+          <Skeleton width={100} height={14} style={{ marginBottom: spacing.sm }} />
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: spacing.sm }}>
+            {[1, 2, 3, 4, 5].map((i) => (
+              <Skeleton key={i} width={40} height={40} borderRadius={20} />
+            ))}
+          </View>
+        </ThemedCard>
+        
+        <ThemedCard style={{ marginBottom: spacing.lg }}>
+          <Skeleton width={120} height={14} style={{ marginBottom: spacing.md }} />
+          <Skeleton width="100%" height={50} style={{ marginBottom: spacing.sm }} />
+          <Skeleton width="100%" height={50} style={{ marginBottom: spacing.sm }} />
+          <Skeleton width="100%" height={50} />
+        </ThemedCard>
       </View>
     );
   }
 
-  if (!revieweeId) {
+  if (error || !revieweeId) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, padding: spacing.lg }}>
-        <Text style={[text.base, { color: colors.textSecondary }]}>Unable to load review information</Text>
+      <View style={{ 
+        flex: 1, 
+        backgroundColor: colors.bg, 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        padding: spacing.xl,
+        paddingBottom: insets.bottom + spacing.xl
+      }}>
+        <View style={{ 
+          width: 80, 
+          height: 80, 
+          borderRadius: 40, 
+          backgroundColor: colors.errorBg, 
+          alignItems: 'center', 
+          justifyContent: 'center',
+          marginBottom: spacing.lg
+        }}>
+          <Ionicons name="alert-circle-outline" size={40} color={colors.error} />
+        </View>
+        <ThemedText variant="h3" style={{ marginBottom: spacing.sm, textAlign: 'center' }}>
+          Unable to Load Review
+        </ThemedText>
+        <ThemedText variant="body" color="muted" style={{ textAlign: 'center', marginBottom: spacing.lg }}>
+          {error || 'Could not find review information for this job'}
+        </ThemedText>
+        <AppButton 
+          label="Go Back" 
+          variant="secondary" 
+          onPress={() => router.back()} 
+        />
       </View>
     );
   }

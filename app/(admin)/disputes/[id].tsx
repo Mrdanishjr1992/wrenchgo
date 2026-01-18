@@ -32,6 +32,7 @@ import {
   DisputeResolutionType,
 } from '../../../src/constants/disputes';
 import { AdminEvidenceGallery } from '../../../components/media/AdminEvidenceGallery';
+import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 
 export default function AdminDisputeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -43,6 +44,7 @@ export default function AdminDisputeDetailScreen() {
   const [resolutionType, setResolutionType] = useState<DisputeResolutionType>(DISPUTE_RESOLUTION_TYPE.NO_ACTION);
   const [resolutionNotes, setResolutionNotes] = useState('');
   const [refundAmount, setRefundAmount] = useState('0');
+  const [messageRecipient, setMessageRecipient] = useState<{ id: string; name: string; role: string } | null>(null);
 
   useEffect(() => {
     fetchDetail();
@@ -194,11 +196,47 @@ export default function AdminDisputeDetailScreen() {
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Filed By</Text>
                 <Text style={{ ...text.body, fontWeight: '600' }}>{detail.customer?.full_name}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Customer</Text>
+                {detail.customer && (
+                  <TouchableOpacity
+                    onPress={() => setMessageRecipient({ id: detail.customer!.id, name: detail.customer!.full_name, role: 'Customer' })}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginTop: spacing.sm,
+                      backgroundColor: '#8B5CF6',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Ionicons name="chatbubble-outline" size={12} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>Message</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Filed Against</Text>
                 <Text style={{ ...text.body, fontWeight: '600' }}>{detail.mechanic?.full_name}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Mechanic</Text>
+                {detail.mechanic && (
+                  <TouchableOpacity
+                    onPress={() => setMessageRecipient({ id: detail.mechanic!.id, name: detail.mechanic!.full_name, role: 'Mechanic' })}
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginTop: spacing.sm,
+                      backgroundColor: '#8B5CF6',
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: 4,
+                      borderRadius: 6,
+                      alignSelf: 'flex-start',
+                    }}
+                  >
+                    <Ionicons name="chatbubble-outline" size={12} color="#fff" />
+                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>Message</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
           </View>
@@ -503,6 +541,17 @@ export default function AdminDisputeDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {messageRecipient && (
+        <AdminMessageModal
+          visible={!!messageRecipient}
+          onClose={() => setMessageRecipient(null)}
+          recipient={messageRecipient}
+          relatedJobId={detail?.job?.id}
+          relatedJobTitle={detail?.job?.title}
+          disputeId={id}
+        />
+      )}
     </View>
   );
 }

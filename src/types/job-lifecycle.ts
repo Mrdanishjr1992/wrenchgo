@@ -105,10 +105,16 @@ export interface JobContract {
   mechanic_commission_cents: number;
   mechanic_payout_cents: number;
 
-  // Promo discount
+  // Promo discount (customer)
   promo_discount_cents?: number;
   promo_credit_type?: string;
   original_platform_fee_cents?: number;
+
+  // Mechanic promo discount
+  mechanic_promo_discount_cents?: number;
+  mechanic_promo_credit_type?: string;
+  original_mechanic_commission_cents?: number;
+  applied_mechanic_promo_credit_id?: string;
 
   // Payment
   stripe_payment_intent_id: string | null;

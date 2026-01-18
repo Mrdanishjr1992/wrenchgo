@@ -2,18 +2,26 @@ import React, { useCallback, useMemo, useRef, useState } from "react";
 import {
   View,
   Text,
-  FlatList,
-  ActivityIndicator,
   Alert,
   Pressable,
   RefreshControl,
+  SectionList,
 } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard, cardPressed } from "../../../src/ui/styles";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Notif = {
   id: string;
@@ -27,9 +35,9 @@ type Notif = {
   source: "notifications_table" | "generated";
 };
 
-type TypeMeta = {
-  emoji: string;
-  label: string;
+type NotifSection = {
+  title: string;
+  data: Notif[];
 };
 
 type QuoteRequestRow = {
@@ -65,13 +73,10 @@ function timeAgo(iso: string): string {
   const s = Math.max(0, Math.floor((now - t) / 1000));
 
   if (s < 60) return "Just now";
-
   const m = Math.floor(s / 60);
   if (m < 60) return `${m}m ago`;
-
   const h = Math.floor(m / 60);
   if (h < 24) return `${h}h ago`;
-
   const d = Math.floor(h / 24);
   if (d < 7) return `${d}d ago`;
 
@@ -82,43 +87,36 @@ function timeAgo(iso: string): string {
   }
 }
 
-function typeMeta(type: string): TypeMeta {
-  const t = (type || "").toLowerCase();
-  if (t.includes("quote")) return { emoji: "💬", label: "Quote" };
-  if (t.includes("job")) return { emoji: "🧰", label: "Job" };
-  if (t.includes("message")) return { emoji: "✉️", label: "Message" };
-  if (t.includes("payment")) return { emoji: "💳", label: "Payment" };
-  if (t.includes("alert")) return { emoji: "🔔", label: "Alert" };
-  return { emoji: "📌", label: "Update" };
+function getTimeGroup(iso: string): string {
+  const date = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffHours = diffMs / (1000 * 60 * 60);
+  const diffDays = diffMs / (1000 * 60 * 60 * 24);
+
+  if (diffHours < 24 && date.getDate() === now.getDate()) return "Today";
+  if (diffDays < 2) return "Yesterday";
+  if (diffDays < 7) return "This Week";
+  if (diffDays < 30) return "This Month";
+  return "Earlier";
 }
 
-const TypePill = React.memo(({ type }: { type: string }) => {
-  const { colors, radius } = useTheme();
-  const meta = typeMeta(type);
+type TypeConfig = {
+  icon: keyof typeof Ionicons.glyphMap;
+  color: string;
+  label: string;
+};
 
-  return (
-    <View
-      style={{
-        alignSelf: "flex-start",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 6,
-        paddingHorizontal: 10,
-        paddingVertical: 6,
-        borderRadius: radius.xl,
-        borderWidth: 1,
-        borderColor: colors.border,
-        backgroundColor: colors.bg,
-      }}
-    >
-      <Text style={{ fontSize: 12 }}>{meta.emoji}</Text>
-      <Text style={{ fontSize: 12, fontWeight: "900", color: colors.textPrimary }}>
-        {meta.label}
-      </Text>
-    </View>
-  );
-});
-TypePill.displayName = "TypePill";
+function getTypeConfig(type: string, colors: any): TypeConfig {
+  const t = (type || "").toLowerCase();
+  if (t.includes("quote")) return { icon: "pricetag", color: colors.warning, label: "Quote" };
+  if (t.includes("job")) return { icon: "briefcase", color: colors.primary, label: "Job" };
+  if (t.includes("message")) return { icon: "chatbubble", color: colors.info, label: "Message" };
+  if (t.includes("payment") || t.includes("payout")) return { icon: "card", color: colors.success, label: "Payment" };
+  if (t.includes("lead")) return { icon: "flash", color: colors.accent, label: "Lead" };
+  if (t.includes("dispute")) return { icon: "warning", color: colors.error, label: "Dispute" };
+  return { icon: "notifications", color: colors.textMuted, label: "Update" };
+}
 
 function pgRelationMissing(err: any) {
   return err?.code === "42P01" || /relation .* does not exist/i.test(err?.message || "");
@@ -126,6 +124,312 @@ function pgRelationMissing(err: any) {
 
 function safeIso(iso?: string | null) {
   return iso ?? new Date().toISOString();
+}
+
+function NotificationCard({
+  notification,
+  onPress,
+  index,
+}: {
+  notification: Notif;
+  onPress: () => void;
+  index: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const isUnread = !notification.is_read;
+  const typeConfig = getTypeConfig(notification.type, colors);
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  return (
+    <Animated.View entering={FadeInDown.delay(index * 30).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          flexDirection: "row",
+          alignItems: "flex-start",
+          marginHorizontal: spacing.md,
+          marginBottom: spacing.sm,
+          padding: spacing.md,
+          backgroundColor: isUnread ? withAlpha(typeConfig.color, 0.06) : colors.surface,
+          borderRadius: radius.xl,
+          borderLeftWidth: isUnread ? 3 : 0,
+          borderLeftColor: typeConfig.color,
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{
+          width: 44,
+          height: 44,
+          borderRadius: 22,
+          backgroundColor: withAlpha(typeConfig.color, 0.12),
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Ionicons name={typeConfig.icon} size={20} color={typeConfig.color} />
+        </View>
+
+        <View style={{ flex: 1, marginLeft: spacing.md }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            marginBottom: 4,
+          }}>
+            <Text style={{
+              fontSize: 15,
+              fontWeight: isUnread ? "700" : "600",
+              color: colors.textPrimary,
+              flex: 1,
+            }} numberOfLines={1}>
+              {notification.title}
+            </Text>
+            <Text style={{
+              fontSize: 12,
+              color: isUnread ? typeConfig.color : colors.textMuted,
+              fontWeight: isUnread ? "600" : "400",
+              marginLeft: spacing.sm,
+            }}>{timeAgo(notification.created_at)}</Text>
+          </View>
+
+          {notification.body && (
+            <Text style={{
+              fontSize: 14,
+              color: isUnread ? colors.textPrimary : colors.textMuted,
+              lineHeight: 20,
+              fontWeight: isUnread ? "500" : "400",
+            }} numberOfLines={2}>
+              {notification.body}
+            </Text>
+          )}
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            marginTop: spacing.sm,
+            gap: spacing.sm,
+          }}>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+              backgroundColor: withAlpha(typeConfig.color, 0.1),
+              paddingHorizontal: 8,
+              paddingVertical: 4,
+              borderRadius: radius.full,
+            }}>
+              <Ionicons name={typeConfig.icon} size={12} color={typeConfig.color} />
+              <Text style={{
+                fontSize: 11,
+                fontWeight: "600",
+                color: typeConfig.color,
+              }}>{typeConfig.label}</Text>
+            </View>
+
+            {isUnread && (
+              <View style={{
+                backgroundColor: typeConfig.color,
+                paddingHorizontal: 8,
+                paddingVertical: 4,
+                borderRadius: radius.full,
+              }}>
+                <Text style={{
+                  fontSize: 10,
+                  fontWeight: "700",
+                  color: colors.white,
+                }}>NEW</Text>
+              </View>
+            )}
+          </View>
+        </View>
+
+        <Ionicons
+          name="chevron-forward"
+          size={18}
+          color={colors.textMuted}
+          style={{ marginLeft: spacing.xs, marginTop: 2 }}
+        />
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function SectionHeader({ title }: { title: string }) {
+  const { colors, spacing } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeIn.duration(200)}
+      style={{
+        paddingHorizontal: spacing.lg,
+        paddingTop: spacing.lg,
+        paddingBottom: spacing.sm,
+        backgroundColor: colors.bg,
+      }}
+    >
+      <Text style={{
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.textMuted,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+      }}>{title}</Text>
+    </Animated.View>
+  );
+}
+
+function EmptyState() {
+  const { colors, spacing, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeIn.delay(200).duration(400)}
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        paddingHorizontal: spacing.xl,
+        paddingBottom: spacing.xxxl,
+      }}
+    >
+      <View style={{
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: withAlpha(colors.primary, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name="notifications" size={48} color={colors.primary} />
+      </View>
+
+      <Text style={{
+        fontSize: 22,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.sm,
+      }}>No notifications yet</Text>
+
+      <Text style={{
+        fontSize: 15,
+        color: colors.textMuted,
+        textAlign: "center",
+        lineHeight: 22,
+      }}>
+        You'll see updates here when you receive new leads, quotes are accepted, or jobs change status.
+      </Text>
+    </Animated.View>
+  );
+}
+
+function NotificationSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+  };
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "flex-start",
+      marginHorizontal: spacing.md,
+      marginBottom: spacing.sm,
+      padding: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.xl,
+    }}>
+      <View style={[shimmer, { width: 44, height: 44, borderRadius: 22 }]} />
+      <View style={{ flex: 1, marginLeft: spacing.md }}>
+        <View style={[shimmer, { width: 180, height: 16, borderRadius: radius.sm, marginBottom: 8 }]} />
+        <View style={[shimmer, { width: "100%", height: 14, borderRadius: radius.sm, marginBottom: 4 }]} />
+        <View style={[shimmer, { width: "60%", height: 14, borderRadius: radius.sm, marginBottom: 8 }]} />
+        <View style={[shimmer, { width: 60, height: 20, borderRadius: radius.full }]} />
+      </View>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing } = useTheme();
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: spacing.md }}>
+      <NotificationSkeleton />
+      <NotificationSkeleton />
+      <NotificationSkeleton />
+      <NotificationSkeleton />
+      <NotificationSkeleton />
+    </View>
+  );
+}
+
+function UnreadHeader({
+  count,
+  onMarkAllRead,
+}: {
+  count: number;
+  onMarkAllRead: () => void;
+}) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+
+  return (
+    <Animated.View
+      entering={FadeInDown.duration(300)}
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginHorizontal: spacing.md,
+        marginBottom: spacing.md,
+        padding: spacing.md,
+        backgroundColor: withAlpha(colors.primary, 0.08),
+        borderRadius: radius.xl,
+      }}
+    >
+      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+        <View style={{
+          width: 32,
+          height: 32,
+          borderRadius: 16,
+          backgroundColor: colors.primary,
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          <Text style={{
+            color: colors.white,
+            fontWeight: "800",
+            fontSize: 14,
+          }}>{count > 99 ? "99+" : count}</Text>
+        </View>
+        <Text style={{
+          fontSize: 15,
+          fontWeight: "600",
+          color: colors.textPrimary,
+        }}>unread {count === 1 ? "notification" : "notifications"}</Text>
+      </View>
+
+      <Pressable
+        onPress={onMarkAllRead}
+        hitSlop={8}
+        style={({ pressed }) => ({
+          opacity: pressed ? 0.7 : 1,
+        })}
+      >
+        <Text style={{
+          fontSize: 14,
+          fontWeight: "600",
+          color: colors.primary,
+        }}>Mark all read</Text>
+      </Pressable>
+    </Animated.View>
+  );
 }
 
 export default function Notifications() {
@@ -136,9 +440,7 @@ export default function Notifications() {
   const [usingNotificationsTable, setUsingNotificationsTable] = useState<boolean | null>(null);
 
   const localReadSetRef = useRef<Set<string>>(new Set());
-
-  const { colors, text, spacing, radius } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
+  const { colors, spacing } = useTheme();
 
   const loadFromNotificationsTable = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -266,7 +568,7 @@ export default function Notifications() {
       generated.push({
         id,
         title: "New message",
-        body: m.content ? m.content : "You received a message.",
+        body: m.content ? m.content : "You received a message from a customer.",
         type: "message",
         entity_type: "job",
         entity_id: m.job_id,
@@ -277,7 +579,6 @@ export default function Notifications() {
     }
 
     generated.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
-
     return generated.slice(0, 100);
   }, []);
 
@@ -359,7 +660,21 @@ export default function Notifications() {
   }, [load]);
 
   const unreadCount = useMemo(() => items.filter((n) => !n.is_read).length, [items]);
-  const empty = useMemo(() => !loading && items.length === 0, [loading, items.length]);
+
+  const sections = useMemo(() => {
+    const groups: Record<string, Notif[]> = {};
+    const order = ["Today", "Yesterday", "This Week", "This Month", "Earlier"];
+
+    items.forEach((item) => {
+      const group = getTimeGroup(item.created_at);
+      if (!groups[group]) groups[group] = [];
+      groups[group].push(item);
+    });
+
+    return order
+      .filter((title) => groups[title]?.length > 0)
+      .map((title) => ({ title, data: groups[title] }));
+  }, [items]);
 
   const markRead = useCallback(
     async (n: Notif) => {
@@ -414,149 +729,54 @@ export default function Notifications() {
     }
   }, [items, usingNotificationsTable]);
 
-  const keyExtractor = useCallback((n: Notif) => n.id, []);
+  if (loading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <LoadingSkeleton />
+      </View>
+    );
+  }
 
-  const renderItem = useCallback(
-    ({ item }: { item: Notif }) => {
-      const unread = !item.is_read;
-
-      return (
-        <Pressable
-          onPress={() => open(item)}
-          style={({ pressed }) => [
-            card,
-            pressed && cardPressed,
-            {
-              paddingVertical: 10,
-              paddingHorizontal: 12,
-              borderRadius: radius.sm,
-              backgroundColor: colors.surface,
-              borderWidth: 1,
-              borderColor: colors.border,
-            },
-          ]}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-            <View
-              style={{
-                width: 10,
-                height: 10,
-                borderRadius: 5,
-                backgroundColor: unread ? colors.accent : colors.border,
-              }}
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={text.section} numberOfLines={1}>
-                {item.title}
-              </Text>
-              <Text style={[text.muted, { marginTop: 2 }]}>{timeAgo(item.created_at)}</Text>
-            </View>
-
-            <TypePill type={item.type} />
-          </View>
-
-          {item.body ? (
-            <Text style={[text.body, { marginTop: spacing.sm }]} numberOfLines={2}>
-              {item.body}
-            </Text>
-          ) : null}
-
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: spacing.sm }}>
-            <Text style={{ color: colors.accent, fontWeight: "900" }}>
-              {unread ? "NEW • Tap to open →" : "Tap to open →"}
-            </Text>
-          </View>
-
-          {unread ? (
-            <View
-              style={{
-                position: "absolute",
-                right: 0,
-                top: 0,
-                bottom: 0,
-                width: 6,
-                backgroundColor: colors.accent,
-                opacity: 0.25,
-              }}
-            />
-          ) : null}
-        </Pressable>
-      );
-    },
-    [open, spacing.sm, colors, text, card, radius.sm]
-  );
-
-  const ItemSeparator = useCallback(() => <View style={{ height: spacing.md }} />, [spacing.md]);
-
-  const headerHint = useMemo(() => {
-    if (usingNotificationsTable === null) return "";
-    return usingNotificationsTable
-      ? "Live notifications enabled"
-      : "Showing generated alerts (no notifications table yet)";
-  }, [usingNotificationsTable]);
+  if (items.length === 0) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+        <EmptyState />
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ padding: spacing.md, paddingTop: spacing.lg }}>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-          <View style={{ flex: 1 }}>
-            <Text style={text.title}>Notifications</Text>
-
-            <Text style={[text.muted, { marginTop: 4 }]}>
-              Unread:{" "}
-              <Text style={{ color: colors.accent, fontWeight: "900" }}>{unreadCount}</Text>
-              {headerHint ? <Text style={{ color: colors.textMuted }}> • {headerHint}</Text> : null}
-            </Text>
-          </View>
-
-          {unreadCount > 0 && (
-            <Pressable
-              onPress={markAllRead}
-              style={({ pressed }) => [
-                card,
-                pressed && cardPressed,
-                {
-                  paddingVertical: 10,
-                  paddingHorizontal: 12,
-                  borderRadius: radius.sm,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                },
-              ]}
-            >
-              <Text style={{ color: colors.textPrimary, fontWeight: "900" }}>Mark all read</Text>
-            </Pressable>
-          )}
-        </View>
-      </View>
-
-      {loading ? (
-        <View style={{ marginTop: 40, alignItems: "center" }}>
-          <ActivityIndicator color={colors.accent} />
-          <Text style={[text.muted, { marginTop: 10 }]}>Loading…</Text>
-        </View>
-      ) : empty ? (
-        <View style={{ padding: spacing.md }}>
-          <View style={[card, { padding: spacing.lg }]}>
-            <Text style={text.section}>No notifications yet</Text>
-            <Text style={[text.body, { marginTop: 6 }]}>
-              You'll see updates here when customers accept quotes and when jobs change status.
-            </Text>
-          </View>
-        </View>
-      ) : (
-        <FlatList
-          contentContainerStyle={{ padding: spacing.md, paddingBottom: 120 }}
-          data={items}
-          keyExtractor={keyExtractor}
-          ItemSeparatorComponent={ItemSeparator}
-          renderItem={renderItem}
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-          }
-        />
-      )}
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderSectionHeader={({ section }) => <SectionHeader title={section.title} />}
+        renderItem={({ item, index }) => (
+          <NotificationCard
+            notification={item}
+            onPress={() => open(item)}
+            index={index}
+          />
+        )}
+        ListHeaderComponent={
+          unreadCount > 0 ? (
+            <UnreadHeader count={unreadCount} onMarkAllRead={markAllRead} />
+          ) : null
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        contentContainerStyle={{
+          paddingTop: spacing.md,
+          paddingBottom: spacing.xxxl,
+        }}
+        stickySectionHeadersEnabled={false}
+        showsVerticalScrollIndicator={false}
+      />
     </View>
   );
 }
