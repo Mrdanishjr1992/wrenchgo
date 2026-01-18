@@ -255,7 +255,7 @@ export default function AdminVerificationScreen() {
           </Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 16, marginTop: 12 }}>
+      <View style={{ flexDirection: 'row', gap: 16, marginTop: 12, alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <Ionicons
             name={mechanic.docs_complete ? 'checkmark-circle' : 'document-outline'}
@@ -270,6 +270,25 @@ export default function AdminVerificationScreen() {
           <Ionicons name="chatbox-outline" size={14} color={colors.textMuted} />
           <Text style={{ fontSize: 12, color: colors.textMuted }}>{mechanic.vetting_count} responses</Text>
         </View>
+        <View style={{ flex: 1 }} />
+        <TouchableOpacity
+          onPress={(e) => {
+            e.stopPropagation();
+            router.push(`/(admin)/mechanic/${mechanic.id}` as any);
+          }}
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            borderRadius: 8,
+            backgroundColor: colors.accent + '15',
+          }}
+        >
+          <Ionicons name="settings-outline" size={14} color={colors.accent} />
+          <Text style={{ fontSize: 12, fontWeight: '600', color: colors.accent }}>Manage</Text>
+        </TouchableOpacity>
       </View>
     </TouchableOpacity>
   );
@@ -708,27 +727,35 @@ export default function AdminVerificationScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <LinearGradient
-        colors={[colors.primary, colors.primary + '28']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={{ paddingTop: insets.top, paddingBottom: 16, paddingHorizontal: 16 }}
-      >
-        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary }}>
-            Mechanic Verification
-          </Text>
-          <View style={{ width: 24 }} />
-        </View>
-      </LinearGradient>
+      {/* Header */}
+      <View style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        paddingTop: insets.top + 16,
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
+      }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: 12 }}>
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1 }}>Verification</Text>
+        <TouchableOpacity onPress={handleRefresh}>
+          <Ionicons name="refresh" size={24} color={colors.accent} />
+        </TouchableOpacity>
+      </View>
 
+      {/* Filters */}
+      <View style={{ paddingHorizontal: 16, paddingTop: 12 }}>
+        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textMuted, marginBottom: 8 }}>
+          Filter by Status
+        </Text>
+      </View>
       <View style={{
         flexDirection: 'row',
         paddingHorizontal: 16,
-        paddingVertical: 12,
+        paddingBottom: 12,
         gap: 8,
         borderBottomWidth: 1,
         borderBottomColor: colors.border,
@@ -740,14 +767,16 @@ export default function AdminVerificationScreen() {
             style={{
               paddingVertical: 6,
               paddingHorizontal: 12,
-              borderRadius: 16,
+              borderRadius: 20,
               backgroundColor: statusFilter === status ? colors.accent : colors.surface,
+              borderWidth: 1,
+              borderColor: statusFilter === status ? colors.accent : colors.border,
             }}
           >
             <Text style={{
               fontSize: 13,
               fontWeight: '600',
-              color: statusFilter === status ? colors.black : colors.textMuted,
+              color: statusFilter === status ? '#fff' : colors.textMuted,
             }}>
               {status === 'all' ? 'All' : VERIFICATION_STATUS_LABELS[status as keyof typeof VERIFICATION_STATUS_LABELS]}
             </Text>

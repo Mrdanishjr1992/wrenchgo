@@ -339,6 +339,10 @@ export interface AcceptQuoteResponse {
   contract_id?: string;
   total_cents?: number;
   mechanic_id?: string;
+  requires_terms?: boolean;
+  requires_acknowledgement?: boolean;
+  terms_version?: string;
+  job_id?: string;
 }
 
 export interface JobActionResponse {

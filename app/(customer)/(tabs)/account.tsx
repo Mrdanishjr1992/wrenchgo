@@ -28,7 +28,8 @@ import { HelpSupportSection } from "../../../src/components/HelpSupportSection";
 import * as ImagePicker from "expo-image-picker";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 import { useStripe } from "@stripe/stripe-react-native";
-import { acceptInvitation, getInvitationStatus } from "../../../src/lib/promos";
+import { acceptInvitation, hasUsedReferral } from "../../../src/lib/promos";
+import { checkIsAdmin } from "../../../src/lib/verification";
 
 async function uriToArrayBuffer(uri: string) {
   const res = await fetch(uri);
@@ -84,7 +85,8 @@ export default function CustomerAccount() {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [referralInput, setReferralInput] = useState("");
   const [applyingReferral, setApplyingReferral] = useState(false);
-  const [wasInvited, setWasInvited] = useState(false);
+  const [hasUsedReferralCode, setHasUsedReferralCode] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const isDark = mode === "dark";
   const goToLegal = () => router.push("/(customer)/legal");
@@ -110,7 +112,8 @@ export default function CustomerAccount() {
           state,
           theme_preference,
           created_at,
-          payment_method_status
+          payment_method_status,
+          role
         `)
         .eq("id", userId)
         .single();
@@ -197,8 +200,11 @@ export default function CustomerAccount() {
         : 0;
       setRatingStats({ avg: avgRating, count: reviewCount, avgCommunication, avgPunctuality, avgPayment });
 
-      const invitationStatus = await getInvitationStatus();
-      setWasInvited(invitationStatus?.was_invited ?? false);
+      const referralUsed = await hasUsedReferral();
+      setHasUsedReferralCode(referralUsed);
+
+      const adminStatus = await checkIsAdmin();
+      setIsAdmin(adminStatus);
 
       setIsDirty(false);
     } catch (e: any) {
@@ -220,14 +226,14 @@ export default function CustomerAccount() {
   }, [load]);
 
   const handleApplyReferral = useCallback(async () => {
-    if (!referralInput.trim()) return;
+    if (!referralInput.trim() || hasUsedReferralCode) return;
     setApplyingReferral(true);
     try {
       const result = await acceptInvitation(referralInput.trim().toUpperCase());
       if (result.success) {
-        Alert.alert("Success!", "Referral code applied. You'll receive credits after your first completed job!");
+        Alert.alert("Success!", "Referral code applied! The person who invited you has been rewarded.");
         setReferralInput("");
-        load();
+        setHasUsedReferralCode(true);
       } else {
         Alert.alert("Error", result.error || "Failed to apply referral code");
       }
@@ -236,7 +242,7 @@ export default function CustomerAccount() {
     } finally {
       setApplyingReferral(false);
     }
-  }, [referralInput, load]);
+  }, [referralInput, hasUsedReferralCode]);
 
   const uploadPhoto = useCallback(async (uri: string | undefined) => {
     if (!uri) return;
@@ -983,6 +989,96 @@ export default function CustomerAccount() {
 
 
 
+            <View style={[card, { padding: spacing.md, borderRadius: radius.lg, gap: spacing.sm }]}>
+              <Text style={text.section}>Security</Text>
+
+              <Pressable
+                onPress={() => router.push("/(modals)/change-password")}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  backgroundColor: colors.bg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: colors.surface,
+                    }}
+                  >
+                    <Ionicons name="lock-closed-outline" size={18} color={colors.textPrimary} />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>
+                      Change Password
+                    </Text>
+                    <Text style={{ ...text.muted, marginTop: 3 }}>
+                      Update your account password
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </Pressable>
+
+              <Pressable
+                onPress={() => router.push("/(customer)/invite")}
+                style={{
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                  padding: spacing.md,
+                  backgroundColor: colors.bg,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: spacing.md,
+                }}
+              >
+                <View style={{ flex: 1, flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View
+                    style={{
+                      width: 42,
+                      height: 42,
+                      borderRadius: 14,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderWidth: 1,
+                      borderColor: colors.border,
+                      backgroundColor: "#f59e0b" + "15",
+                    }}
+                  >
+                    <Ionicons name="gift-outline" size={18} color="#f59e0b" />
+                  </View>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ ...text.body, fontWeight: "900", color: colors.textPrimary }}>
+                      Invite & Earn
+                    </Text>
+                    <Text style={{ ...text.muted, marginTop: 3 }}>
+                      Refer friends, get free platform fees
+                    </Text>
+                  </View>
+                </View>
+
+                <Ionicons name="chevron-forward" size={20} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -1278,52 +1374,13 @@ export default function CustomerAccount() {
           <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
         </Pressable>
 
-        <Pressable
-          onPress={() => router.push("/(customer)/invite")}
-          style={({ pressed }) => [
-            card,
-            {
-              flexDirection: "row",
-              alignItems: "center",
-              padding: spacing.lg,
-              borderRadius: radius.lg,
-              gap: spacing.md,
-              opacity: pressed ? 0.7 : 1,
-            },
-          ]}
-        >
-          <View
-            style={{
-              width: 44,
-              height: 44,
-              borderRadius: radius.md,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "#10B981" + "20",
-              borderWidth: 1,
-              borderColor: "#10B981" + "30",
-            }}
-          >
-            <Ionicons name="gift-outline" size={22} color="#10B981" />
-          </View>
-
-          <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>Invite & Earn</Text>
-            <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
-              Refer friends, get free platform fees
-            </Text>
-          </View>
-
-          <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-        </Pressable>
-
-        {!wasInvited && (
+        {!hasUsedReferralCode && (
           <View style={[card, { padding: spacing.lg, borderRadius: radius.lg }]}>
             <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary, marginBottom: spacing.xs }}>
-              Have a Referral Code?
+              Enter Referral Code (One-Time Only)
             </Text>
             <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted, marginBottom: spacing.md }}>
-              Enter a friend's code to connect and earn rewards together.
+              Have a friend's code? Enter it below. This cannot be changed later.
             </Text>
 
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
@@ -1365,6 +1422,30 @@ export default function CustomerAccount() {
               </Pressable>
             </View>
           </View>
+        )}
+
+        {isAdmin && (
+          <Pressable
+            onPress={() => router.push('/(admin)')}
+            style={({ pressed }) => [
+              card,
+              {
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                borderRadius: radius.lg,
+                backgroundColor: '#8B5CF6',
+                opacity: pressed ? 0.9 : 1,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
+                marginBottom: spacing.md,
+              },
+            ]}
+          >
+            <Ionicons name="shield-checkmark" size={18} color="#fff" />
+            <Text style={{ fontWeight: "900", color: "#fff" }}>ADMIN PANEL</Text>
+          </Pressable>
         )}
 
         <Pressable

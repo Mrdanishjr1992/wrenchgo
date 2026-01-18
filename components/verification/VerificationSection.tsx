@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Alert,
   TextInput,
-  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -16,9 +15,11 @@ import {
   VERIFICATION_DOC_TYPES,
   VERIFICATION_DOC_LABELS,
   VERIFICATION_DOC_HINTS,
-  VERIFICATION_STATUS,
   VERIFICATION_STATUS_LABELS,
   VETTING_PROMPTS,
+  MECHANIC_TIER_LABELS,
+  MECHANIC_TIER_COLORS,
+  MECHANIC_TIER_DESCRIPTIONS,
   type VerificationDocType,
 } from '@/src/constants/verification';
 import {
@@ -27,9 +28,9 @@ import {
   uploadVerificationDocument,
   getVettingResponses,
   saveVettingResponse,
+  formatProbationLimits,
   type VerificationStatus,
   type VerificationDocument,
-  type VettingResponse,
 } from '@/src/lib/verification';
 
 interface VerificationSectionProps {
@@ -181,9 +182,6 @@ export function VerificationSection({ mechanicId, onStatusChange }: Verification
     );
   }
 
-  const isComplete = status && (status as any).docs_complete && status.vetting_review_status === 'pass';
-  const isPending = status && !status.is_active && !isComplete;
-
   return (
     <View style={[styles.container, { backgroundColor: colors.surface, borderRadius: radius.lg }]}>
       <TouchableOpacity style={styles.header} onPress={() => setExpanded(!expanded)} activeOpacity={0.7}>
@@ -199,124 +197,186 @@ export function VerificationSection({ mechanicId, onStatusChange }: Verification
         <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={24} color={colors.textMuted} />
       </TouchableOpacity>
 
-      {expanded && (
-        <View style={styles.content}>
-          {status?.is_active ? (
-            <View style={[styles.statusBanner, { backgroundColor: (colors.success || '#10B981') + '20' }]}>
-              <Ionicons name="checkmark-circle" size={20} color={colors.success || '#10B981'} />
-              <Text style={[styles.statusText, { color: colors.success || '#10B981' }]}>
-                Your account is verified and active
+      {/* Always visible: Status banner and Tier section */}
+      <View style={styles.content}>
+        {status?.is_active ? (
+          <View style={[styles.statusBanner, { backgroundColor: (colors.success || '#10B981') + '20' }]}>
+            <Ionicons name="checkmark-circle" size={20} color={colors.success || '#10B981'} />
+            <Text style={[styles.statusText, { color: colors.success || '#10B981' }]}>
+              Your account is verified and active
+            </Text>
+          </View>
+        ) : status?.status === 'paused' ? (
+          <View style={[styles.statusBanner, { backgroundColor: (colors.error || '#EF4444') + '20' }]}>
+            <Ionicons name="pause-circle" size={20} color={colors.error || '#EF4444'} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.statusText, { color: colors.error || '#EF4444' }]}>
+                Account Paused
               </Text>
-            </View>
-          ) : (
-            <View style={[styles.statusBanner, { backgroundColor: (colors.warning || '#D97706') + '20' }]}>
-              <Ionicons name="information-circle" size={20} color={colors.warning || '#D97706'} />
-              <Text style={[styles.statusText, { color: colors.warning || '#D97706' }]}>
-                Complete verification to access leads
-              </Text>
-            </View>
-          )}
-
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Required Documents</Text>
-          {Object.values(VERIFICATION_DOC_TYPES).map((docType) => {
-            const doc = getDocByType(docType);
-            const icon = getStatusIcon(doc?.status);
-            const hint = VERIFICATION_DOC_HINTS[docType];
-            return (
-              <View key={docType} style={[styles.docRow, { borderColor: colors.border }]}>
-                <View style={styles.docInfo}>
-                  <Ionicons name={icon.name} size={20} color={icon.color} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.docLabel, { color: colors.textPrimary }]}>{VERIFICATION_DOC_LABELS[docType]}</Text>
-                    {hint && !doc && (
-                      <Text style={[styles.docHint, { color: colors.textMuted }]}>{hint}</Text>
-                    )}
-                  </View>
-                </View>
-                {doc?.status === 'approved' ? (
-                  <Text style={[styles.docStatus, { color: colors.success || '#10B981' }]}>Approved</Text>
-                ) : doc?.status === 'rejected' ? (
-                  <TouchableOpacity
-                    style={[styles.uploadBtn, { backgroundColor: colors.error || '#EF4444' }]}
-                    onPress={() => showUploadOptions(docType)}
-                    disabled={uploading === docType}
-                  >
-                    {uploading === docType ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.uploadBtnText}>Re-upload</Text>
-                    )}
-                  </TouchableOpacity>
-                ) : doc ? (
-                  <Text style={[styles.docStatus, { color: colors.warning || '#D97706' }]}>Pending Review</Text>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.uploadBtn, { backgroundColor: colors.accent }]}
-                    onPress={() => showUploadOptions(docType)}
-                    disabled={uploading === docType}
-                  >
-                    {uploading === docType ? (
-                      <ActivityIndicator size="small" color="#fff" />
-                    ) : (
-                      <Text style={styles.uploadBtnText}>Upload</Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-            );
-          })}
-
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.lg }]}>
-            Vetting Questions ({status?.vetting_responses || 0}/{status?.vetting_required || 5})
-          </Text>
-          {VETTING_PROMPTS.map((prompt, idx) => {
-            const saved = documents.length > 0 || status?.vetting_responses ? vettingResponses[prompt.key] : undefined;
-            const existingResponse = vettingResponses[prompt.key] || '';
-            return (
-              <View key={prompt.key} style={[styles.vettingItem, { borderColor: colors.border }]}>
-                <Text style={[styles.vettingPrompt, { color: colors.textPrimary }]}>
-                  {idx + 1}. {prompt.text}
+              {status?.reason && (
+                <Text style={[styles.statusSubtext, { color: colors.error || '#EF4444' }]}>
+                  {status.reason}
                 </Text>
-                <TextInput
-                  style={[
-                    styles.vettingInput,
-                    { backgroundColor: colors.surface2, color: colors.textPrimary, borderColor: colors.border },
-                  ]}
-                  placeholder={prompt.placeholder}
-                  placeholderTextColor={colors.textMuted}
-                  multiline
-                  numberOfLines={4}
-                  value={existingResponse}
-                  onChangeText={(text) => setVettingResponses((prev) => ({ ...prev, [prompt.key]: text }))}
-                />
-                <TouchableOpacity
-                  style={[
-                    styles.saveBtn,
-                    { backgroundColor: existingResponse.length >= prompt.minLength ? colors.accent : colors.surface2 },
-                  ]}
-                  onPress={() => handleSaveVetting(prompt.key, prompt.text)}
-                  disabled={savingVetting === prompt.key || existingResponse.length < prompt.minLength}
-                >
-                  {savingVetting === prompt.key ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Text style={[styles.saveBtnText, { color: existingResponse.length >= prompt.minLength ? '#fff' : colors.textMuted }]}>
-                      {saved ? 'Update' : 'Save'}
-                    </Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            );
-          })}
-
-          {status?.reason && (
-            <View style={[styles.reasonBox, { backgroundColor: colors.surface2 }]}>
-              <Text style={[styles.reasonLabel, { color: colors.textMuted }]}>Admin Note:</Text>
-              <Text style={[styles.reasonText, { color: colors.textPrimary }]}>{status.reason}</Text>
+              )}
             </View>
-          )}
-        </View>
-      )}
+          </View>
+        ) : (
+          <View style={[styles.statusBanner, { backgroundColor: (colors.warning || '#D97706') + '20' }]}>
+            <Ionicons name="information-circle" size={20} color={colors.warning || '#D97706'} />
+            <Text style={[styles.statusText, { color: colors.warning || '#D97706' }]}>
+              Complete verification to access leads
+            </Text>
+          </View>
+        )}
+
+        {/* Tier Display */}
+        {status?.is_active && status?.tier && (
+          <View style={[styles.tierSection, { borderColor: colors.border }]}>
+            <View style={styles.tierHeader}>
+              <View style={[styles.tierBadge, { backgroundColor: MECHANIC_TIER_COLORS[status.tier] + '20' }]}>
+                <Ionicons
+                  name={status.tier === 'trusted' ? 'star' : status.tier === 'standard' ? 'shield-checkmark' : 'time'}
+                  size={16}
+                  color={MECHANIC_TIER_COLORS[status.tier]}
+                />
+                <Text style={[styles.tierLabel, { color: MECHANIC_TIER_COLORS[status.tier] }]}>
+                  {MECHANIC_TIER_LABELS[status.tier]} Tier
+                </Text>
+              </View>
+              {status.strike_count > 0 && (
+                <View style={[styles.strikeBadge, { backgroundColor: colors.error + '20' }]}>
+                  <Ionicons name="warning" size={14} color={colors.error} />
+                  <Text style={[styles.strikeCount, { color: colors.error }]}>
+                    {status.strike_count} Strike{status.strike_count > 1 ? 's' : ''}
+                  </Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.tierDescription, { color: colors.textMuted }]}>
+              {MECHANIC_TIER_DESCRIPTIONS[status.tier]}
+            </Text>
+
+            {/* Probation Limits */}
+            {status.tier === 'probation' && (
+              <View style={[styles.limitsContainer, { backgroundColor: colors.surface2 }]}>
+                <Text style={[styles.limitsTitle, { color: colors.textPrimary }]}>
+                  <Ionicons name="lock-closed" size={14} color={colors.warning} /> Probation Limits
+                </Text>
+                {formatProbationLimits(status).map((limit, idx) => (
+                  <View key={idx} style={styles.limitRow}>
+                    <Ionicons name="chevron-forward" size={14} color={colors.textMuted} />
+                    <Text style={[styles.limitText, { color: colors.textMuted }]}>{limit}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Expanded only: Required Documents and Vetting Questions */}
+        {expanded && (
+          <>
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Required Documents</Text>
+            {Object.values(VERIFICATION_DOC_TYPES).map((docType) => {
+              const doc = getDocByType(docType);
+              const icon = getStatusIcon(doc?.status);
+              const hint = VERIFICATION_DOC_HINTS[docType];
+              return (
+                <View key={docType} style={[styles.docRow, { borderColor: colors.border }]}>
+                  <View style={styles.docInfo}>
+                    <Ionicons name={icon.name} size={20} color={icon.color} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.docLabel, { color: colors.textPrimary }]}>{VERIFICATION_DOC_LABELS[docType]}</Text>
+                      {hint && !doc && (
+                        <Text style={[styles.docHint, { color: colors.textMuted }]}>{hint}</Text>
+                      )}
+                    </View>
+                  </View>
+                  {doc?.status === 'approved' ? (
+                    <Text style={[styles.docStatus, { color: colors.success || '#10B981' }]}>Approved</Text>
+                  ) : doc?.status === 'rejected' ? (
+                    <TouchableOpacity
+                      style={[styles.uploadBtn, { backgroundColor: colors.error || '#EF4444' }]}
+                      onPress={() => showUploadOptions(docType)}
+                      disabled={uploading === docType}
+                    >
+                      {uploading === docType ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.uploadBtnText}>Re-upload</Text>
+                      )}
+                    </TouchableOpacity>
+                  ) : doc ? (
+                    <Text style={[styles.docStatus, { color: colors.warning || '#D97706' }]}>Pending Review</Text>
+                  ) : (
+                    <TouchableOpacity
+                      style={[styles.uploadBtn, { backgroundColor: colors.accent }]}
+                      onPress={() => showUploadOptions(docType)}
+                      disabled={uploading === docType}
+                    >
+                      {uploading === docType ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.uploadBtnText}>Upload</Text>
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              );
+            })}
+
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: spacing.lg }]}>
+              Vetting Questions ({status?.vetting_responses || 0}/{status?.vetting_required || 5})
+            </Text>
+            {VETTING_PROMPTS.map((prompt, idx) => {
+              const saved = documents.length > 0 || status?.vetting_responses ? vettingResponses[prompt.key] : undefined;
+              const existingResponse = vettingResponses[prompt.key] || '';
+              return (
+                <View key={prompt.key} style={[styles.vettingItem, { borderColor: colors.border }]}>
+                  <Text style={[styles.vettingPrompt, { color: colors.textPrimary }]}>
+                    {idx + 1}. {prompt.text}
+                  </Text>
+                  <TextInput
+                    style={[
+                      styles.vettingInput,
+                      { backgroundColor: colors.surface2, color: colors.textPrimary, borderColor: colors.border },
+                    ]}
+                    placeholder={prompt.placeholder}
+                    placeholderTextColor={colors.textMuted}
+                    multiline
+                    numberOfLines={4}
+                    value={existingResponse}
+                    onChangeText={(text) => setVettingResponses((prev) => ({ ...prev, [prompt.key]: text }))}
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.saveBtn,
+                      { backgroundColor: existingResponse.length >= prompt.minLength ? colors.accent : colors.surface2 },
+                    ]}
+                    onPress={() => handleSaveVetting(prompt.key, prompt.text)}
+                    disabled={savingVetting === prompt.key || existingResponse.length < prompt.minLength}
+                  >
+                    {savingVetting === prompt.key ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Text style={[styles.saveBtnText, { color: existingResponse.length >= prompt.minLength ? '#fff' : colors.textMuted }]}>
+                        {saved ? 'Update' : 'Save'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+
+            {status?.reason && (
+              <View style={[styles.reasonBox, { backgroundColor: colors.surface2 }]}>
+                <Text style={[styles.reasonLabel, { color: colors.textMuted }]}>Admin Note:</Text>
+                <Text style={[styles.reasonText, { color: colors.textPrimary }]}>{status.reason}</Text>
+              </View>
+            )}
+          </>
+        )}
+      </View>
     </View>
   );
 }
@@ -331,6 +391,7 @@ const styles = StyleSheet.create({
   content: { marginTop: 16 },
   statusBanner: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 8, marginBottom: 16 },
   statusText: { fontSize: 14, fontWeight: '500', flex: 1 },
+  statusSubtext: { fontSize: 12, marginTop: 2, opacity: 0.9 },
   sectionTitle: { fontSize: 15, fontWeight: '600', marginBottom: 12 },
   docRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1 },
   docInfo: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
@@ -347,4 +408,16 @@ const styles = StyleSheet.create({
   reasonBox: { marginTop: 16, padding: 12, borderRadius: 8 },
   reasonLabel: { fontSize: 12, marginBottom: 4 },
   reasonText: { fontSize: 14 },
+  // Tier styles
+  tierSection: { marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1 },
+  tierHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  tierBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  tierLabel: { fontSize: 14, fontWeight: '600' },
+  tierDescription: { fontSize: 13, lineHeight: 18 },
+  strikeBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  strikeCount: { fontSize: 12, fontWeight: '600' },
+  limitsContainer: { marginTop: 12, padding: 12, borderRadius: 8 },
+  limitsTitle: { fontSize: 13, fontWeight: '600', marginBottom: 8 },
+  limitRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  limitText: { fontSize: 13 },
 });

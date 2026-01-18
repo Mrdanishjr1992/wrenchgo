@@ -11,7 +11,7 @@ import {
   getPromoCreditsBalance,
   getMyInvitations,
   acceptInvitation,
-  getInvitationStatus,
+  hasUsedReferral,
 } from "@/src/lib/promos";
 import type { PromoCreditsBalance, MyInvitation } from "@/src/types/promos";
 
@@ -28,20 +28,20 @@ export default function MechanicInviteScreen() {
   const [copied, setCopied] = useState(false);
   const [referralInput, setReferralInput] = useState("");
   const [applyingReferral, setApplyingReferral] = useState(false);
-  const [wasInvited, setWasInvited] = useState(false);
+  const [hasUsedReferralCode, setHasUsedReferralCode] = useState(true);
 
   const loadData = useCallback(async () => {
     try {
-      const [code, balance, invites, invitationStatus] = await Promise.all([
+      const [code, balance, invites, referralUsed] = await Promise.all([
         getOrCreateInviteCode(),
         getPromoCreditsBalance(),
         getMyInvitations(),
-        getInvitationStatus(),
+        hasUsedReferral(),
       ]);
       setInviteCode(code);
       setCredits(balance);
       setInvitations(invites);
-      setWasInvited(invitationStatus?.was_invited ?? false);
+      setHasUsedReferralCode(referralUsed);
     } catch (error) {
       console.error("Error loading invite data:", error);
     } finally {
@@ -78,14 +78,14 @@ export default function MechanicInviteScreen() {
   }, [inviteCode]);
 
   const handleApplyReferral = useCallback(async () => {
-    if (!referralInput.trim()) return;
+    if (!referralInput.trim() || hasUsedReferralCode) return;
     setApplyingReferral(true);
     try {
       const result = await acceptInvitation(referralInput.trim().toUpperCase());
       if (result.success) {
-        Alert.alert("Success!", "Referral code applied. You'll receive credits after your first completed job!");
+        Alert.alert("Success!", "Referral code applied! The person who invited you has been rewarded.");
         setReferralInput("");
-        loadData();
+        setHasUsedReferralCode(true);
       } else {
         Alert.alert("Error", result.error || "Failed to apply referral code");
       }
@@ -94,7 +94,7 @@ export default function MechanicInviteScreen() {
     } finally {
       setApplyingReferral(false);
     }
-  }, [referralInput, loadData]);
+  }, [referralInput, hasUsedReferralCode]);
 
   if (loading) {
     return (
@@ -214,11 +214,11 @@ export default function MechanicInviteScreen() {
           )}
         </View>
 
-        {!wasInvited && (
+        {!hasUsedReferralCode && (
           <View style={[card, { padding: spacing.lg }]}>
-            <Text style={[text.title, { marginBottom: spacing.sm }]}>Have a Referral Code?</Text>
+            <Text style={[text.title, { marginBottom: spacing.sm }]}>Enter Referral Code (One-Time Only)</Text>
             <Text style={[text.muted, { marginBottom: spacing.md }]}>
-              Enter a friend's code to connect and earn rewards together.
+              Have a friend's code? Enter it below. This cannot be changed later.
             </Text>
 
             <View style={{ flexDirection: "row", gap: spacing.sm }}>

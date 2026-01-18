@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../../src/ui/theme-context';
@@ -15,6 +15,8 @@ import {
   cancelJob,
 } from '../../src/lib/job-contract';
 import { acceptInvitation } from '../../src/lib/promos';
+import { useJobAcknowledgement, MECHANIC_ACKNOWLEDGEMENT_BULLETS } from '../../src/hooks/useTerms';
+import { JobPhotoPicker, JobMediaRow } from '../media/JobPhotoPicker';
 
 interface JobActionsProps {
   jobId: string;
@@ -23,6 +25,7 @@ interface JobActionsProps {
   role: 'customer' | 'mechanic';
   onRefresh?: () => void;
   hasPendingItems?: boolean;
+  contractId?: string;
 }
 
 export function JobActions({
@@ -32,6 +35,7 @@ export function JobActions({
   role,
   onRefresh,
   hasPendingItems = false,
+  contractId,
 }: JobActionsProps) {
   const { colors, spacing } = useTheme();
   const [loading, setLoading] = useState(false);
@@ -41,12 +45,49 @@ export function JobActions({
   const [referralError, setReferralError] = useState<string | null>(null);
   const [hasUsedReferral, setHasUsedReferral] = useState<boolean | null>(null);
 
+  const [mechanicAcknowledged, setMechanicAcknowledged] = useState(false);
+  const [ackChecked, setAckChecked] = useState(false);
+  const { accepting: ackAccepting, acceptAcknowledgement, checkAcknowledgement } = useJobAcknowledgement();
+
+  const [beforePhotos, setBeforePhotos] = useState<JobMediaRow[]>([]);
+  const [afterPhotos, setAfterPhotos] = useState<JobMediaRow[]>([]);
+
   const phase = getJobPhase(progress, contract);
 
   // Check if user has already used a referral code
   React.useEffect(() => {
     checkReferralUsage();
   }, []);
+
+  // Check if mechanic has already acknowledged for this job
+  useEffect(() => {
+    const checkMechanicAck = async () => {
+      if (role !== 'mechanic') return;
+      try {
+        const { data: userData } = await supabase.auth.getUser();
+        if (userData.user?.id && jobId) {
+          const hasAck = await checkAcknowledgement(jobId, userData.user.id, 'mechanic');
+          setMechanicAcknowledged(hasAck);
+        }
+      } catch (e) {
+        console.error('Error checking mechanic acknowledgement:', e);
+      }
+    };
+    checkMechanicAck();
+  }, [jobId, role, checkAcknowledgement]);
+
+  const handleMechanicAcknowledge = async () => {
+    if (!ackChecked) {
+      Alert.alert('Acknowledgement Required', 'Please check the box to acknowledge the terms.');
+      return;
+    }
+    const success = await acceptAcknowledgement(jobId, 'mechanic');
+    if (success) {
+      setMechanicAcknowledged(true);
+    } else {
+      Alert.alert('Error', 'Failed to save acknowledgement. Please try again.');
+    }
+  };
 
   const checkReferralUsage = async () => {
     try {
@@ -291,16 +332,7 @@ export function JobActions({
           </View>
         )}
 
-        {/* Cancel option for early phases */}
-        {['quote_accepted', 'mechanic_en_route', 'awaiting_arrival_confirmation'].includes(phase) && (
-          <Pressable
-            style={[styles.cancelButton, { borderColor: colors.border }]}
-            onPress={handleCancel}
-            disabled={loading}
-          >
-            <Text style={[styles.cancelButtonText, { color: colors.error }]}>Cancel Job</Text>
-          </Pressable>
-        )}
+        {/* Cancel button removed - it's in the mechanic card section */}
       </View>
     );
   }
@@ -392,25 +424,90 @@ export function JobActions({
             </Text>
           </View>
           <Text style={[styles.actionDescription, { color: colors.textSecondary }]}>
-            Customer has confirmed your arrival. Start the work timer.
+            Customer has confirmed your arrival. {!mechanicAcknowledged ? 'Please acknowledge the terms below.' : 'Take "before" photos and start the work timer.'}
           </Text>
-          <Pressable
-            style={[styles.primaryButton, { backgroundColor: colors.success }]}
-            onPress={() => handleAction(
-              () => mechanicStartWork(jobId),
-              'Work started! You can now add line items.'
-            )}
-            disabled={loading}
-          >
-            {loading ? (
-              <ActivityIndicator color={colors.white} />
-            ) : (
-              <>
-                <Ionicons name="play" size={20} color={colors.white} />
-                <Text style={styles.primaryButtonText}>Start Work</Text>
-              </>
-            )}
-          </Pressable>
+
+          {!mechanicAcknowledged ? (
+            <>
+              <View style={[styles.ackBulletList, { borderColor: colors.border }]}>
+                {MECHANIC_ACKNOWLEDGEMENT_BULLETS.map((bullet, index) => (
+                  <View key={index} style={styles.ackBulletItem}>
+                    <Text style={[styles.ackBulletDot, { color: colors.accent }]}>•</Text>
+                    <Text style={[styles.ackBulletText, { color: colors.textSecondary }]}>{bullet}</Text>
+                  </View>
+                ))}
+              </View>
+              <Pressable
+                style={styles.ackCheckboxRow}
+                onPress={() => setAckChecked(!ackChecked)}
+                disabled={ackAccepting}
+              >
+                <View style={[
+                  styles.ackCheckbox,
+                  { borderColor: ackChecked ? colors.success : colors.border },
+                  ackChecked && { backgroundColor: colors.success }
+                ]}>
+                  {ackChecked && <Text style={styles.ackCheckmark}>✓</Text>}
+                </View>
+                <Text style={[styles.ackCheckboxLabel, { color: colors.text }]}>
+                  I have read and agree to the above
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.primaryButton,
+                  { backgroundColor: ackChecked ? colors.success : colors.border }
+                ]}
+                onPress={handleMechanicAcknowledge}
+                disabled={!ackChecked || ackAccepting}
+              >
+                {ackAccepting ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color={colors.white} />
+                    <Text style={styles.primaryButtonText}>Acknowledge & Continue</Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <View style={styles.photoSection}>
+                <JobPhotoPicker
+                  jobId={jobId}
+                  contractId={contractId}
+                  category="mechanic_before"
+                  label="Before Photos (Required)"
+                  maxPhotos={5}
+                  onUploaded={setBeforePhotos}
+                  existingMedia={beforePhotos}
+                />
+                {beforePhotos.length === 0 && (
+                  <Text style={[styles.photoHint, { color: colors.textMuted }]}>
+                    Please add at least one photo before starting work
+                  </Text>
+                )}
+              </View>
+              <Pressable
+                style={[styles.primaryButton, { backgroundColor: beforePhotos.length > 0 ? colors.success : colors.border }]}
+                onPress={() => handleAction(
+                  () => mechanicStartWork(jobId),
+                  'Work started! You can now add line items.'
+                )}
+                disabled={loading || beforePhotos.length === 0}
+              >
+                {loading ? (
+                  <ActivityIndicator color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="play" size={20} color={colors.white} />
+                    <Text style={styles.primaryButtonText}>Start Work</Text>
+                  </>
+                )}
+              </Pressable>
+            </>
+          )}
         </View>
       )}
 
@@ -429,9 +526,26 @@ export function JobActions({
             </Text>
           ) : (
             <Text style={[styles.actionDescription, { color: colors.textSecondary }]}>
-              Mark the job as complete when you're done.
+              Take "after" photos and mark the job as complete.
             </Text>
           )}
+
+          <View style={styles.photoSection}>
+            <JobPhotoPicker
+              jobId={jobId}
+              contractId={contractId}
+              category="mechanic_after"
+              label="After Photos (Required)"
+              maxPhotos={5}
+              onUploaded={setAfterPhotos}
+              existingMedia={afterPhotos}
+            />
+            {afterPhotos.length === 0 && (
+              <Text style={[styles.photoHint, { color: colors.textMuted }]}>
+                Please add at least one photo before completing
+              </Text>
+            )}
+          </View>
 
           {/* Referral Code Section for Mechanic - only show if not already used */}
           {!referralApplied && !hasUsedReferral && hasUsedReferral !== null && (
@@ -493,13 +607,13 @@ export function JobActions({
           <Pressable
             style={[
               styles.primaryButton,
-              { backgroundColor: hasPendingItems ? colors.textMuted : colors.info },
+              { backgroundColor: (hasPendingItems || afterPhotos.length === 0) ? colors.textMuted : colors.info },
             ]}
             onPress={() => handleAction(
               () => mechanicMarkComplete(jobId),
               'Marked complete! Waiting for customer confirmation.'
             )}
-            disabled={loading || hasPendingItems}
+            disabled={loading || hasPendingItems || afterPhotos.length === 0}
           >
             {loading ? (
               <ActivityIndicator color={colors.white} />
@@ -647,6 +761,62 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 13,
     fontWeight: '500',
+  },
+  ackBulletList: {
+    marginVertical: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderRadius: 8,
+    borderStyle: 'dashed',
+  },
+  ackBulletItem: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    paddingRight: 8,
+  },
+  ackBulletDot: {
+    fontSize: 14,
+    marginRight: 8,
+    marginTop: 2,
+  },
+  ackBulletText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+  },
+  ackCheckboxRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingVertical: 8,
+  },
+  ackCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 4,
+    borderWidth: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  ackCheckmark: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  ackCheckboxLabel: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  photoSection: {
+    marginHorizontal: 12,
+    marginBottom: 12,
+  },
+  photoHint: {
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginTop: 4,
   },
 });
 

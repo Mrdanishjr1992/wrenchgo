@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,8 @@ import { SUPPORT_CATEGORIES } from '../../src/types/support';
 import type { SupportCategory } from '../../src/types/support';
 import { supabase } from '../../src/lib/supabase';
 
+const MAX_PHOTOS = 5;
+
 export default function ContactSupportScreen() {
   const router = useRouter();
   const pathname = usePathname();
@@ -29,7 +32,7 @@ export default function ContactSupportScreen() {
 
   const [category, setCategory] = useState<SupportCategory | ''>('');
   const [message, setMessage] = useState('');
-  const [screenshot, setScreenshot] = useState<string | null>(null);
+  const [screenshots, setScreenshots] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
@@ -37,6 +40,11 @@ export default function ContactSupportScreen() {
   const selectedCategory = SUPPORT_CATEGORIES.find((c: any) => c.value === category);
 
   const pickImage = async () => {
+    if (screenshots.length >= MAX_PHOTOS) {
+      Alert.alert('Limit Reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      return;
+    }
+
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('Permission Required', 'Please allow access to your photo library.');
@@ -45,14 +53,40 @@ export default function ContactSupportScreen() {
 
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_PHOTOS - screenshots.length,
       quality: 0.8,
-      aspect: [4, 3],
+    });
+
+    if (!result.canceled && result.assets) {
+      const newUris = result.assets.map(a => a.uri);
+      setScreenshots(prev => [...prev, ...newUris].slice(0, MAX_PHOTOS));
+    }
+  };
+
+  const takePhoto = async () => {
+    if (screenshots.length >= MAX_PHOTOS) {
+      Alert.alert('Limit Reached', `You can add up to ${MAX_PHOTOS} photos.`);
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow camera access.');
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
-      setScreenshot(result.assets[0].uri);
+      setScreenshots(prev => [...prev, result.assets[0].uri].slice(0, MAX_PHOTOS));
     }
+  };
+
+  const removeScreenshot = (index: number) => {
+    setScreenshots(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async () => {
@@ -69,17 +103,18 @@ export default function ContactSupportScreen() {
     setSubmitting(true);
 
     try {
-      let screenshotUrl: string | undefined;
+      const screenshotUrls: string[] = [];
+      const { data: userData } = await supabase.auth.getUser();
 
-      if (screenshot) {
-        const { data: userData } = await supabase.auth.getUser();
-        if (userData.user) {
-          const { url, error } = await uploadSupportScreenshot(screenshot, userData.user.id);
-          if (error) {
-            Alert.alert('Upload Warning', 'Screenshot upload failed, but we\'ll submit your request anyway.');
-          } else if (url) {
-            screenshotUrl = url;
+      if (userData.user && screenshots.length > 0) {
+        for (const uri of screenshots) {
+          const { url, error } = await uploadSupportScreenshot(uri, userData.user.id);
+          if (!error && url) {
+            screenshotUrls.push(url);
           }
+        }
+        if (screenshotUrls.length < screenshots.length) {
+          Alert.alert('Upload Warning', 'Some photos failed to upload, but we\'ll submit your request anyway.');
         }
       }
 
@@ -89,8 +124,8 @@ export default function ContactSupportScreen() {
         category,
         message: message.trim(),
         job_id: jobId,
-        screenshot_url: screenshotUrl,
-        metadata: { role },
+        screenshot_url: screenshotUrls[0],
+        metadata: { role, screenshot_urls: screenshotUrls },
       });
 
       if (response.success) {
@@ -232,29 +267,39 @@ export default function ContactSupportScreen() {
         />
 
         <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 20 }]}>
-          Screenshot (Optional)
+          Photos ({screenshots.length}/{MAX_PHOTOS}) - Optional
         </Text>
-        {screenshot ? (
-          <View style={styles.screenshotContainer}>
-            <Image source={{ uri: screenshot }} style={styles.screenshotImage} />
-            <Pressable
-              onPress={() => setScreenshot(null)}
-              style={[styles.removeScreenshot, { backgroundColor: colors.surface }]}
-            >
-              <Ionicons name="close-circle" size={28} color="#ef4444" />
-            </Pressable>
-          </View>
-        ) : (
-          <Pressable
-            onPress={pickImage}
-            style={[styles.uploadButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
-          >
-            <Ionicons name="image-outline" size={32} color={colors.accent} />
-            <Text style={[styles.uploadText, { color: colors.textSecondary }]}>
-              Tap to add a screenshot
-            </Text>
-          </Pressable>
-        )}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photosRow}>
+          {screenshots.map((uri, index) => (
+            <View key={index} style={styles.thumbnailContainer}>
+              <Image source={{ uri }} style={styles.thumbnailImage} />
+              <TouchableOpacity
+                onPress={() => removeScreenshot(index)}
+                style={styles.removeButton}
+              >
+                <Ionicons name="close-circle" size={24} color="#ef4444" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          {screenshots.length < MAX_PHOTOS && (
+            <View style={styles.addPhotoButtons}>
+              <TouchableOpacity
+                onPress={takePhoto}
+                style={[styles.addPhotoButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <Ionicons name="camera" size={24} color={colors.accent} />
+                <Text style={[styles.addPhotoText, { color: colors.textMuted }]}>Camera</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={pickImage}
+                style={[styles.addPhotoButton, { backgroundColor: colors.surface, borderColor: colors.border }]}
+              >
+                <Ionicons name="images" size={24} color={colors.accent} />
+                <Text style={[styles.addPhotoText, { color: colors.textMuted }]}>Library</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </ScrollView>
 
         {jobId && (
           <View style={[styles.infoBox, { backgroundColor: colors.surface }]}>
@@ -469,5 +514,42 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  photosRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+  },
+  thumbnailContainer: {
+    position: 'relative',
+    marginRight: 10,
+  },
+  thumbnailImage: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+  },
+  removeButton: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+  },
+  addPhotoButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  addPhotoButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    borderWidth: 2,
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addPhotoText: {
+    fontSize: 11,
+    marginTop: 4,
   },
 });

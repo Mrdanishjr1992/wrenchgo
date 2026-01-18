@@ -13,6 +13,7 @@ import { notifyUser } from "@/src/lib/notify";
 import { getDisplayTitle } from "@/src/lib/format-symptom";
 import { previewPromoDiscount, getPromoDiscountDescription, applyPromoToPayment } from "@/src/lib/promos";
 import type { PromoDiscountPreview } from "@/src/types/promos";
+import { JobAcknowledgementCheckbox } from "@/components/legal/JobAcknowledgementCheckbox";
 
 const PLATFORM_FEE_CENTS = 1500;
 
@@ -44,6 +45,7 @@ export default function JobPayment() {
   const [quote, setQuote] = useState<Quote | null>(null);
   const [processing, setProcessing] = useState(false);
   const [promoPreview, setPromoPreview] = useState<PromoDiscountPreview | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
 
   const loadPaymentInfo = useCallback(async () => {
     if (!jobId) return;
@@ -86,6 +88,19 @@ export default function JobPayment() {
       }
 
       setJob(jobData);
+
+      // Check if already acknowledged
+      const { data: existingAck } = await supabase
+        .from("job_acknowledgements")
+        .select("id")
+        .eq("job_id", jobId)
+        .eq("user_id", userId)
+        .eq("role", "customer")
+        .maybeSingle();
+
+      if (existingAck) {
+        setAcknowledged(true);
+      }
 
       let quoteQuery = supabase
         .from("quotes")
@@ -135,12 +150,22 @@ export default function JobPayment() {
   const handlePayment = useCallback(async () => {
     if (!quote || !job) return;
 
+    if (!acknowledged) {
+      Alert.alert("Acknowledgement Required", "Please review and acknowledge the terms before proceeding.");
+      return;
+    }
+
     try {
       setProcessing(true);
 
       const contractResult = await acceptQuoteAndCreateContract(quote.id);
 
       if (!contractResult.success) {
+        if (contractResult.requires_acknowledgement) {
+          Alert.alert("Acknowledgement Required", "Please acknowledge the job terms before proceeding.");
+          setAcknowledged(false);
+          return;
+        }
         throw new Error(contractResult.error || "Failed to create contract");
       }
 
@@ -204,7 +229,7 @@ export default function JobPayment() {
     } finally {
       setProcessing(false);
     }
-  }, [quote, job, jobId, router, promoPreview]);
+  }, [quote, job, jobId, router, promoPreview, acknowledged]);
 
   if (loading) {
     return (
@@ -326,11 +351,28 @@ export default function JobPayment() {
           </View>
         </View>
 
+        {!acknowledged && (
+          <JobAcknowledgementCheckbox
+            jobId={jobId as string}
+            role="customer"
+            onAccepted={() => setAcknowledged(true)}
+          />
+        )}
+
+        {acknowledged && (
+          <View style={[card, { padding: spacing.md, marginBottom: spacing.lg, flexDirection: "row", alignItems: "center" }]}>
+            <Ionicons name="checkmark-circle" size={24} color="#10B981" style={{ marginRight: spacing.sm }} />
+            <Text style={[text.body, { color: "#10B981", flex: 1 }]}>
+              Terms acknowledged
+            </Text>
+          </View>
+        )}
+
         <View style={[card, { padding: spacing.lg, marginBottom: spacing.lg }]}>
           <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
             <Ionicons name="shield-checkmark" size={24} color={colors.accent} style={{ marginRight: spacing.sm }} />
             <Text style={[text.body, { flex: 1, color: colors.textSecondary }]}>
-              Your payment is processed securely through Stripe. The mechanic will be notified immediately after Authorization. Can cancel before mechanic starts departure with no charge. 
+              Your payment is processed securely through Stripe. The mechanic will be notified immediately after Authorization. Can cancel before mechanic starts departure with no charge.
             </Text>
           </View>
         </View>
@@ -339,7 +381,7 @@ export default function JobPayment() {
           title={processing ? "Processing..." : `Authorize Hold`}
           variant="primary"
           onPress={handlePayment}
-          disabled={processing}
+          disabled={processing || !acknowledged}
           style={{ marginBottom: spacing.md }}
         />
 

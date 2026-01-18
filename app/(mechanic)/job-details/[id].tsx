@@ -10,6 +10,8 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Modal,
+  TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -24,10 +26,12 @@ import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
 
 import { JobProgressTracker, InvoiceView, JobActions, AddLineItemForm } from "../../../components/job";
 import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract } from "../../../src/lib/job-contract";
-import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
+import { getInvoice, getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { symptomQuestions } from "../../../src/data/symptomQuestions";
+import { getDisputeForJob, mechanicRespondToDispute, formatSlaRemaining, Dispute } from "../../../src/lib/disputes";
+import { DISPUTE_STATUS_LABELS, DISPUTE_STATUS_COLORS, DisputeStatus } from "../../../src/constants/disputes";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -144,6 +148,12 @@ export default function MechanicJobDetails() {
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [invoiceExpanded, setInvoiceExpanded] = useState(false);
 
+  // Dispute state
+  const [dispute, setDispute] = useState<Dispute | null>(null);
+  const [showDisputeResponseModal, setShowDisputeResponseModal] = useState(false);
+  const [disputeResponse, setDisputeResponse] = useState('');
+  const [submittingResponse, setSubmittingResponse] = useState(false);
+
   const detailsChevronRotation = useSharedValue(0);
 
   useEffect(() => {
@@ -234,12 +244,26 @@ export default function MechanicJobDetails() {
         setContract(lifecycleData.contract);
         setProgress(lifecycleData.progress);
 
-        const invoiceData = await getInvoiceByJobId(id);
-        setInvoice(invoiceData);
+        // Use the contract we already fetched to get invoice
+        if (lifecycleData.contract) {
+          const invoiceData = await getInvoice(lifecycleData.contract.id, lifecycleData.contract);
+          setInvoice(invoiceData);
+          } else {
+        setInvoice(null);
+          }
+        
+// Check for disputes on this job
+        try {
+        const disputeData = await getDisputeForJob(id);
+          setDispute(disputeData);
+          } catch (err) {
+          console.log('Error checking for disputes:', err);
+        }
       } else {
         setContract(null);
         setProgress(null);
         setInvoice(null);
+        setDispute(null);
       }
 
       const intake = parseJobIntake(data?.description);
@@ -402,7 +426,61 @@ export default function MechanicJobDetails() {
           </View>
         </LinearGradient>
 
-        <View style={{ paddingHorizontal: spacing.md, marginTop: -spacing.lg }}>
+        {/* Dispute Banner */}
+        {dispute && (
+          <View style={{
+            backgroundColor: dispute.sla_breached ? '#EF4444' : '#F59E0B',
+            padding: spacing.md,
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+              <Ionicons name="warning" size={24} color="#fff" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#fff', fontWeight: '700', fontSize: 16 }}>
+                  {dispute.sla_breached ? 'SLA BREACHED - Response Overdue!' : 'Customer Reported an Issue'}
+                </Text>
+                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 2 }}>
+                  {dispute.mechanic_response
+                    ? `Responded on ${new Date(dispute.mechanic_responded_at!).toLocaleDateString()}`
+                    : `Respond within: ${formatSlaRemaining(dispute.response_deadline)}`
+                  }
+                </Text>
+              </View>
+            </View>
+
+            {!dispute.mechanic_response && (
+              <Pressable
+                onPress={() => setShowDisputeResponseModal(true)}
+                style={({ pressed }) => ({
+                  backgroundColor: 'rgba(255,255,255,0.2)',
+                  padding: spacing.md,
+                  borderRadius: 8,
+                  marginTop: spacing.md,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.8 : 1,
+                })}
+              >
+                <Text style={{ color: '#fff', fontWeight: '700' }}>Respond Now</Text>
+              </Pressable>
+            )}
+
+            <Pressable
+              onPress={() => {
+                Alert.alert(
+                  'Issue Details',
+                  `Category: ${dispute.category}\n\nDescription: ${dispute.description}${dispute.desired_resolution ? `\n\nDesired Resolution: ${dispute.desired_resolution}` : ''}`,
+                  [{ text: 'OK' }]
+                );
+              }}
+              style={{ marginTop: spacing.sm }}
+            >
+              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 12, textDecorationLine: 'underline' }}>
+                View Issue Details
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={{ paddingHorizontal: spacing.md, marginTop: dispute ? spacing.md : -spacing.lg }}>
           {chatUnlocked && (
             <Pressable
               onPress={openChat}
@@ -652,36 +730,38 @@ export default function MechanicJobDetails() {
                 role="mechanic"
                 onRefresh={load}
                 hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
+                contractId={contract?.id}
               />
             </View>
           )}
 
           {invoice && (
-            <Pressable
-              onPress={() => {
-                LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                setInvoiceExpanded(!invoiceExpanded);
-              }}
-              style={[card, { padding: spacing.md, marginBottom: spacing.md }]}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#10B98120", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="receipt-outline" size={18} color="#10B981" />
+            <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
+              <Pressable
+                onPress={() => {
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setInvoiceExpanded(!invoiceExpanded);
+                }}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#10B98120", alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="receipt-outline" size={18} color="#10B981" />
+                    </View>
+                    <Text style={text.section}>Invoice & Line Items</Text>
                   </View>
-                  <Text style={text.section}>Invoice</Text>
+                  <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
                 </View>
-                <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
-              </View>
 
-              {!invoiceExpanded && (
-                <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
-                  <Text style={text.muted}>Your earnings</Text>
-                  <Text style={{ ...text.body, color: "#10B981", fontWeight: "900" }}>
-                    ${((invoice.approved_subtotal_cents + invoice.pending_subtotal_cents) / 100).toFixed(2)}
-                  </Text>
-                </View>
-              )}
+                {!invoiceExpanded && (
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: spacing.sm }}>
+                    <Text style={text.muted}>Your earnings</Text>
+                    <Text style={{ ...text.body, color: "#10B981", fontWeight: "900" }}>
+                      ${((invoice.approved_subtotal_cents + invoice.pending_subtotal_cents) / 100).toFixed(2)}
+                    </Text>
+                  </View>
+                )}
+              </Pressable>
 
               {invoiceExpanded && (
                 <View style={{ marginTop: spacing.sm }}>
@@ -691,31 +771,29 @@ export default function MechanicJobDetails() {
                     onRefresh={load}
                     showPendingActions={job.status !== "completed" && job.status !== "canceled"}
                   />
-
-                  {job.status !== "completed" && job.status !== "canceled" && (
-                    <Pressable
-                      onPress={() => setShowAddLineItem(true)}
-                      style={({ pressed }) => ({
-                        marginTop: spacing.md,
-                        paddingVertical: 14,
-                        backgroundColor: colors.surface,
-                        borderWidth: 1,
-                        borderColor: colors.border,
-                        borderRadius: 12,
-                        alignItems: "center",
-                        flexDirection: "row",
-                        justifyContent: "center",
-                        gap: 8,
-                        opacity: pressed ? 0.7 : 1,
-                      })}
-                    >
-                      <Ionicons name="add-circle-outline" size={20} color={colors.accent} />
-                      <Text style={{ fontWeight: "700", color: colors.accent }}>Add Line Item</Text>
-                    </Pressable>
-                  )}
                 </View>
               )}
-            </Pressable>
+
+              {job.status !== "completed" && job.status !== "canceled" && (
+                <Pressable
+                  onPress={() => setShowAddLineItem(true)}
+                  style={({ pressed }) => ({
+                    marginTop: spacing.md,
+                    paddingVertical: 14,
+                    backgroundColor: colors.accent,
+                    borderRadius: 12,
+                    alignItems: "center",
+                    flexDirection: "row",
+                    justifyContent: "center",
+                    gap: 8,
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                >
+                  <Ionicons name="add-circle" size={20} color="#fff" />
+                  <Text style={{ fontWeight: "700", color: "#fff" }}>Add Parts or Labor</Text>
+                </Pressable>
+              )}
+            </View>
           )}
         </View>
       </ScrollView>
@@ -741,6 +819,141 @@ export default function MechanicJobDetails() {
           }}
         />
       )}
+
+      {/* Dispute Response Modal */}
+      <Modal visible={showDisputeResponseModal} animationType="slide" transparent>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'flex-end',
+        }}>
+          <View style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: spacing.lg,
+            maxHeight: '80%',
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg }}>
+              <Text style={{ ...text.section }}>Respond to Issue</Text>
+              <Pressable onPress={() => setShowDisputeResponseModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView>
+              {dispute && (
+                <View style={{
+                  backgroundColor: '#F59E0B20',
+                  padding: spacing.md,
+                  borderRadius: 8,
+                  marginBottom: spacing.lg,
+                }}>
+                  <Text style={{ color: '#F59E0B', fontWeight: '600', marginBottom: spacing.sm }}>
+                    Customer's Issue
+                  </Text>
+                  <Text style={{ color: colors.textPrimary, marginBottom: spacing.sm }}>
+                    {dispute.description}
+                  </Text>
+                  {dispute.desired_resolution && (
+                    <>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: spacing.sm }}>
+                        Desired Resolution:
+                      </Text>
+                      <Text style={{ color: colors.textPrimary, fontSize: 13 }}>
+                        {dispute.desired_resolution}
+                      </Text>
+                    </>
+                  )}
+                </View>
+              )}
+
+              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                Your Response *
+              </Text>
+              <TextInput
+                value={disputeResponse}
+                onChangeText={setDisputeResponse}
+                placeholder="Explain your perspective on this issue..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                numberOfLines={4}
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  minHeight: 120,
+                  textAlignVertical: 'top',
+                  marginBottom: spacing.lg,
+                }}
+              />
+
+              <View style={{
+                backgroundColor: colors.background,
+                padding: spacing.md,
+                borderRadius: 8,
+                marginBottom: spacing.lg,
+              }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  Your response will be shared with the customer and reviewed by our support team.
+                  Please be professional and provide relevant details about the work performed.
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={async () => {
+                  if (!disputeResponse.trim()) {
+                    Alert.alert('Error', 'Please provide a response');
+                    return;
+                  }
+                  if (!dispute) return;
+
+                  setSubmittingResponse(true);
+                  try {
+                    const result = await mechanicRespondToDispute(dispute.id, disputeResponse);
+                    if (result.success) {
+                      Alert.alert(
+                        'Response Submitted',
+                        result.sla_breached
+                          ? 'Your response was submitted but was past the deadline. This may affect your account.'
+                          : 'Your response has been submitted and will be reviewed.',
+                        [{ text: 'OK', onPress: () => {
+                          setShowDisputeResponseModal(false);
+                          setDisputeResponse('');
+                          load();
+                        }}]
+                      );
+                    } else {
+                      Alert.alert('Error', result.error || 'Failed to submit response');
+                    }
+                  } catch (error: any) {
+                    Alert.alert('Error', error.message);
+                  } finally {
+                    setSubmittingResponse(false);
+                  }
+                }}
+                disabled={submittingResponse || !disputeResponse.trim()}
+                style={({ pressed }) => ({
+                  backgroundColor: submittingResponse || !disputeResponse.trim() ? colors.border : colors.accent,
+                  padding: spacing.md,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                {submittingResponse ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#000', fontWeight: '600' }}>Submit Response</Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

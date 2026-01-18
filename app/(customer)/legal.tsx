@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { Stack, useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,11 +14,11 @@ import { useTheme } from "../../src/ui/theme-context";
 import { createCard } from "../../src/ui/styles";
 import { LegalDocumentViewer } from "../../src/components/LegalDocumentViewer";
 import {
-  TERMS_OF_SERVICE,
   PRIVACY_POLICY,
   REFUND_POLICY,
   PAYMENTS_DISCLOSURE,
 } from "../../src/legal";
+import { useTerms } from "../../src/hooks/useTerms";
 
 type LegalDocument = {
   id: string;
@@ -26,8 +27,7 @@ type LegalDocument = {
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-const legalDocuments: LegalDocument[] = [
-  { id: "terms", title: "Terms of Service", content: TERMS_OF_SERVICE, icon: "document-text-outline" },
+const staticDocuments: LegalDocument[] = [
   { id: "privacy", title: "Privacy Policy", content: PRIVACY_POLICY, icon: "shield-checkmark-outline" },
   { id: "refund", title: "Refund & Cancellation Policy", content: REFUND_POLICY, icon: "cash-outline" },
   { id: "payments", title: "Payments & Fees", content: PAYMENTS_DISCLOSURE, icon: "card-outline" },
@@ -37,8 +37,23 @@ export default function LegalScreen() {
   const router = useRouter();
   const { colors, spacing, text, radius } = useTheme();
   const card = createCard(colors);
+  const { terms, fetchActiveTerms } = useTerms('customer');
 
   const [selectedDocument, setSelectedDocument] = useState<LegalDocument | null>(null);
+
+  useEffect(() => {
+    fetchActiveTerms();
+  }, []);
+
+  const legalDocuments: LegalDocument[] = [
+    ...(terms ? [{
+      id: "platform-terms",
+      title: terms.title,
+      content: terms.full_text,
+      icon: "document-text-outline" as keyof typeof Ionicons.glyphMap,
+    }] : []),
+    ...staticDocuments,
+  ];
 
   return (
     <>

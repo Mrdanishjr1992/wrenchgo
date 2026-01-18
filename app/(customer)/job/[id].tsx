@@ -13,10 +13,15 @@ import {
   Dimensions,
   FlatList,
   Animated as RNAnimated,
+  Modal,
+  TextInput,
+  Image,
+  TouchableOpacity,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import * as ImagePicker from "expo-image-picker";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -40,6 +45,10 @@ import { getContractWithDetails, subscribeToJobProgress, subscribeToJobContract 
 import { getInvoiceByJobId, subscribeToLineItems } from "../../../src/lib/invoice";
 import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-lifecycle";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
+import { canFileComeback, customerFileComeback, getDisputeForJob, ComebackEligibility, Dispute } from "../../../src/lib/disputes";
+import { DISPUTE_DEFAULTS } from "../../../src/constants/disputes";
+import { spacing } from "../../../src/ui/theme";
+import * as Crypto from "expo-crypto";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const QUOTE_CARD_WIDTH = SCREEN_WIDTH - 80;
@@ -175,6 +184,17 @@ export default function CustomerJobDetails() {
   const [progress, setProgress] = useState<JobProgress | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
 
+  // Comeback/Report Issue state
+  const [comebackEligibility, setComebackEligibility] = useState<ComebackEligibility | null>(null);
+  const [existingDispute, setExistingDispute] = useState<Dispute | null>(null);
+  const [showReportIssueModal, setShowReportIssueModal] = useState(false);
+  const [issueDescription, setIssueDescription] = useState('');
+  const [desiredResolution, setDesiredResolution] = useState('');
+  const [submittingIssue, setSubmittingIssue] = useState(false);
+  const [evidencePhotos, setEvidencePhotos] = useState<string[]>([]);
+
+  const MAX_EVIDENCE_PHOTOS = 5;
+
   const scrollX = useRef(new RNAnimated.Value(0)).current;
   const detailsChevronRotation = useSharedValue(0);
 
@@ -270,6 +290,20 @@ export default function CustomerJobDetails() {
       } else {
         setInvoice(null);
       }
+
+      // Check comeback eligibility for completed jobs
+      if (j.status === 'completed') {
+        try {
+          const eligibility = await canFileComeback(id);
+          setComebackEligibility(eligibility);
+
+          // Also check for existing dispute
+          const dispute = await getDisputeForJob(id);
+          setExistingDispute(dispute);
+        } catch (err) {
+          console.log('Error checking comeback eligibility:', err);
+        }
+      }
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load job.");
     } finally {
@@ -345,6 +379,68 @@ export default function CustomerJobDetails() {
         },
       },
     ]);
+  };
+
+  const pickEvidencePhoto = async () => {
+    if (evidencePhotos.length >= MAX_EVIDENCE_PHOTOS) {
+      Alert.alert('Limit Reached', `You can add up to ${MAX_EVIDENCE_PHOTOS} photos.`);
+      return;
+    }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow access to your photo library.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      selectionLimit: MAX_EVIDENCE_PHOTOS - evidencePhotos.length,
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets) {
+      const newUris = result.assets.map(a => a.uri);
+      setEvidencePhotos(prev => [...prev, ...newUris].slice(0, MAX_EVIDENCE_PHOTOS));
+    }
+  };
+
+  const takeEvidencePhoto = async () => {
+    if (evidencePhotos.length >= MAX_EVIDENCE_PHOTOS) {
+      Alert.alert('Limit Reached', `You can add up to ${MAX_EVIDENCE_PHOTOS} photos.`);
+      return;
+    }
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Please allow camera access.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8 });
+    if (!result.canceled && result.assets[0]) {
+      setEvidencePhotos(prev => [...prev, result.assets[0].uri].slice(0, MAX_EVIDENCE_PHOTOS));
+    }
+  };
+
+  const removeEvidencePhoto = (index: number) => {
+    setEvidencePhotos(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadEvidencePhotos = async (): Promise<string[]> => {
+    const urls: string[] = [];
+    for (const uri of evidencePhotos) {
+      try {
+        const response = await fetch(uri);
+        const blob = await response.blob();
+        const uuid = Crypto.randomUUID();
+        const path = `${id}/customer/dispute_evidence/${uuid}.jpg`;
+        const { error } = await supabase.storage.from('job-media').upload(path, blob, { contentType: 'image/jpeg' });
+        if (!error) {
+          const { data: urlData } = supabase.storage.from('job-media').getPublicUrl(path);
+          urls.push(urlData.publicUrl);
+        }
+      } catch (e) {
+        console.error('Failed to upload evidence photo:', e);
+      }
+    }
+    return urls;
   };
 
   if (loading) {
@@ -857,6 +953,7 @@ export default function CustomerJobDetails() {
                     role="customer"
                     onRefresh={load}
                     hasPendingItems={(invoice?.pending_items.length ?? 0) > 0}
+                    contractId={contract?.id}
                   />
                 </View>
               )}
@@ -931,6 +1028,62 @@ export default function CustomerJobDetails() {
                     <Text style={{ fontWeight: "700", color: "#EF4444" }}>Cancel Job</Text>
                   </Pressable>
                 )}
+
+                {/* Report Issue button for completed jobs */}
+                {job.status === "completed" && comebackEligibility && (
+                  existingDispute ? (
+                    <View style={{
+                      marginTop: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: "#F59E0B20",
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: "#F59E0B",
+                    }}>
+                      <Text style={{ color: "#F59E0B", fontWeight: "600", marginBottom: 4 }}>
+                        Issue Reported
+                      </Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                        Your issue is being reviewed. We'll contact you with updates.
+                      </Text>
+                    </View>
+                  ) : comebackEligibility.can_file ? (
+                    <Pressable
+                      onPress={() => setShowReportIssueModal(true)}
+                      style={({ pressed }) => ({
+                        marginTop: spacing.md,
+                        paddingVertical: 14,
+                        backgroundColor: "transparent",
+                        borderWidth: 1,
+                        borderColor: "#F59E0B",
+                        borderRadius: 12,
+                        alignItems: "center",
+                        opacity: pressed ? 0.7 : 1,
+                      })}
+                    >
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <Ionicons name="warning-outline" size={18} color="#F59E0B" />
+                        <Text style={{ fontWeight: "700", color: "#F59E0B" }}>Report an Issue</Text>
+                      </View>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                        {comebackEligibility.days_remaining} days left to report
+                      </Text>
+                    </Pressable>
+                  ) : (
+                    <View style={{
+                      marginTop: spacing.md,
+                      padding: spacing.md,
+                      backgroundColor: colors.surface,
+                      borderRadius: 12,
+                    }}>
+                      <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                        {comebackEligibility.reason === 'Comeback window expired'
+                          ? 'The window to report issues has expired.'
+                          : comebackEligibility.reason}
+                      </Text>
+                    </View>
+                  )
+                )}
               </View>
             </>
           )}
@@ -962,6 +1115,182 @@ export default function CustomerJobDetails() {
           showReviewsButton={true}
         />
       )}
+
+      {/* Report Issue Modal */}
+      <Modal visible={showReportIssueModal} animationType="slide" transparent>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'flex-end',
+        }}>
+          <View style={{
+            backgroundColor: colors.surface,
+            borderTopLeftRadius: 20,
+            borderTopRightRadius: 20,
+            padding: spacing.lg,
+            maxHeight: '80%',
+          }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg }}>
+              <Text style={{ ...text.section }}>Report an Issue</Text>
+              <Pressable onPress={() => setShowReportIssueModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView>
+              <View style={{
+                backgroundColor: '#F59E0B20',
+                padding: spacing.md,
+                borderRadius: 8,
+                marginBottom: spacing.lg,
+              }}>
+                <Text style={{ color: '#F59E0B', fontWeight: '600', marginBottom: 4 }}>
+                  What to expect
+                </Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 13 }}>
+                  Your mechanic will have 12 hours to respond. If they don't respond, the issue will be escalated to our support team.
+                </Text>
+              </View>
+
+              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                What's the issue? *
+              </Text>
+              <TextInput
+                value={issueDescription}
+                onChangeText={setIssueDescription}
+                placeholder="Describe what went wrong..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                numberOfLines={4}
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  minHeight: 100,
+                  textAlignVertical: 'top',
+                  marginBottom: spacing.md,
+                }}
+              />
+
+              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                What would you like to happen?
+              </Text>
+              <TextInput
+                value={desiredResolution}
+                onChangeText={setDesiredResolution}
+                placeholder="e.g., Mechanic to fix the issue, partial refund..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                numberOfLines={2}
+                style={{
+                  backgroundColor: colors.background,
+                  borderRadius: 8,
+                  padding: spacing.md,
+                  color: colors.textPrimary,
+                  borderWidth: 1,
+                  borderColor: colors.border,
+                  minHeight: 60,
+                  textAlignVertical: 'top',
+                  marginBottom: spacing.lg,
+                }}
+              />
+
+              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+                Evidence Photos ({evidencePhotos.length}/{MAX_EVIDENCE_PHOTOS}) - Optional
+              </Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.lg }}>
+                {evidencePhotos.map((uri, index) => (
+                  <View key={index} style={{ position: 'relative', marginRight: 10 }}>
+                    <Image source={{ uri }} style={{ width: 80, height: 80, borderRadius: 8 }} />
+                    <TouchableOpacity
+                      onPress={() => removeEvidencePhoto(index)}
+                      style={{ position: 'absolute', top: -8, right: -8, backgroundColor: '#fff', borderRadius: 12 }}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#ef4444" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+                {evidencePhotos.length < MAX_EVIDENCE_PHOTOS && (
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <TouchableOpacity
+                      onPress={takeEvidencePhoto}
+                      style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}
+                    >
+                      <Ionicons name="camera" size={24} color={colors.accent} />
+                      <Text style={{ fontSize: 11, marginTop: 4, color: colors.textMuted }}>Camera</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={pickEvidencePhoto}
+                      style={{ width: 80, height: 80, borderRadius: 8, borderWidth: 2, borderStyle: 'dashed', borderColor: colors.border, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.background }}
+                    >
+                      <Ionicons name="images" size={24} color={colors.accent} />
+                      <Text style={{ fontSize: 11, marginTop: 4, color: colors.textMuted }}>Library</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </ScrollView>
+
+              <Pressable
+                onPress={async () => {
+                  if (!issueDescription.trim()) {
+                    Alert.alert('Error', 'Please describe the issue');
+                    return;
+                  }
+                  setSubmittingIssue(true);
+                  try {
+                    let evidenceUrls: string[] | undefined;
+                    if (evidencePhotos.length > 0) {
+                      evidenceUrls = await uploadEvidencePhotos();
+                    }
+                    const result = await customerFileComeback(
+                      id!,
+                      issueDescription,
+                      desiredResolution || undefined,
+                      evidenceUrls
+                    );
+                    if (result.success) {
+                      Alert.alert(
+                        'Issue Reported',
+                        'Your issue has been submitted. The mechanic will be notified and has 12 hours to respond.',
+                        [{ text: 'OK', onPress: () => {
+                          setShowReportIssueModal(false);
+                          setIssueDescription('');
+                          setDesiredResolution('');
+                          setEvidencePhotos([]);
+                          load();
+                        }}]
+                      );
+                    } else {
+                      Alert.alert('Error', result.error || 'Failed to submit issue');
+                    }
+                  } catch (error: any) {
+                    Alert.alert('Error', error.message);
+                  } finally {
+                    setSubmittingIssue(false);
+                  }
+                }}
+                disabled={submittingIssue || !issueDescription.trim()}
+                style={({ pressed }) => ({
+                  backgroundColor: submittingIssue || !issueDescription.trim() ? colors.border : '#F59E0B',
+                  padding: spacing.md,
+                  borderRadius: 8,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                {submittingIssue ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={{ color: '#fff', fontWeight: '600' }}>Submit Report</Text>
+                )}
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }

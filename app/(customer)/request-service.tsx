@@ -17,6 +17,7 @@ import * as Location from "expo-location";
 import { supabase } from "../../src/lib/supabase";
 import { useTheme } from "../../src/ui/theme-context";
 import { spacing } from "../../src/ui/theme";
+import { PreJobPhotoPicker, PendingPhoto } from "../../components/media/PreJobPhotoPicker";
 
 type Question = {
   id: string;
@@ -170,6 +171,7 @@ export default function RequestService() {
   const [canMove, setCanMove] = useState<string | null>(null);
   const [vehicleLocation, setVehicleLocation] = useState<string | null>(null);
   const [timePreference, setTimePreference] = useState<string | null>(null);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
 
   // Typography helpers
   const text = useMemo(
@@ -555,6 +557,36 @@ export default function RequestService() {
         throw new Error(result?.message || 'Failed to create job');
       }
 
+      // Upload photos if any were added
+      if (pendingPhotos.length > 0 && result?.job_id) {
+        try {
+          for (const photo of pendingPhotos) {
+            const response = await fetch(photo.uri);
+            const buffer = await response.arrayBuffer();
+            const fileId = `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const path = `${result.job_id}/customer/customer_request/${fileId}.jpg`;
+
+            await supabase.storage.from("job-media").upload(path, buffer, {
+              contentType: "image/jpeg",
+              upsert: false,
+            });
+
+            await supabase.rpc("create_job_media_record", {
+              p_job_id: result.job_id,
+              p_media_category: "customer_request",
+              p_path: path,
+              p_mime_type: "image/jpeg",
+              p_file_size_bytes: buffer.byteLength,
+              p_contract_id: null,
+              p_caption: null,
+              p_taken_at: new Date().toISOString(),
+            });
+          }
+        } catch (photoError) {
+          console.warn("Photo upload failed:", photoError);
+        }
+      }
+
       Alert.alert(
         "Sent!",
         "Your request has been sent to mechanics in your area. You'll receive quotes soon.",
@@ -566,7 +598,7 @@ export default function RequestService() {
     } finally {
       setLoadingSubmit(false);
     }
-  }, [userId, hasPaymentMethod, symptomKey, symptomLabel, vehicleId, location, savedLat, savedLng, savedAddress, generateProblemDescription]);
+  }, [userId, hasPaymentMethod, symptomKey, symptomLabel, vehicleId, location, savedLat, savedLng, savedAddress, generateProblemDescription, pendingPhotos]);
 
   const renderTopHeader = () => (
     <View
@@ -748,6 +780,23 @@ export default function RequestService() {
       >
         <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Summary</Text>
         <Text style={{ ...text.muted, lineHeight: 18 }}>{getHumanReadableSummary()}</Text>
+      </View>
+
+      <View
+        style={{
+          backgroundColor: colors.surface,
+          padding: spacing.lg,
+          borderRadius: 14,
+          borderWidth: 1,
+          borderColor: colors.border,
+          marginBottom: spacing.lg,
+        }}
+      >
+        <PreJobPhotoPicker
+          label="Add photos of the issue (optional)"
+          maxPhotos={5}
+          onPhotosChanged={setPendingPhotos}
+        />
       </View>
 
       <Text style={{ ...text.body, fontWeight: "900", marginBottom: spacing.sm }}>Can the vehicle move?</Text>

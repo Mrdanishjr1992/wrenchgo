@@ -13,6 +13,7 @@ interface ReviewsListProps {
   ListHeaderComponent?: React.ReactElement;
   mechanicName?: string;
   revieweeRole?: 'mechanic' | 'customer';
+  scrollEnabled?: boolean;
 }
 
 export function ReviewsList({
@@ -24,6 +25,7 @@ export function ReviewsList({
   ListHeaderComponent,
   mechanicName,
   revieweeRole = 'mechanic',
+  scrollEnabled = true,
 }: ReviewsListProps) {
   const { colors } = useTheme();
 
@@ -44,6 +46,8 @@ export function ReviewsList({
       onEndReached={hasMore && !loading ? onLoadMore : undefined}
       onEndReachedThreshold={0.5}
       ListHeaderComponent={ListHeaderComponent}
+      scrollEnabled={scrollEnabled}
+      nestedScrollEnabled={!scrollEnabled}
       ListEmptyComponent={
         <View style={styles.emptyContainer}>
           <View style={[styles.emptyIconCircle, { backgroundColor: colors.primary + '15' }]}>

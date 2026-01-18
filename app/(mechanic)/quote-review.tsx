@@ -257,6 +257,33 @@ export default function QuoteReview() {
           );
           return;
         }
+        if (result?.code === 'NOT_VERIFIED') {
+          Alert.alert(
+            "Verification Required",
+            result?.message || "Your account must be verified to submit quotes.",
+            [
+              { text: "OK", onPress: () => router.push("/(mechanic)/(tabs)/profile") },
+            ]
+          );
+          return;
+        }
+        if (result?.code === 'PROBATION_QUOTE_LIMIT') {
+          const maxAmount = result?.max_quote_cents ? `$${(result.max_quote_cents / 100).toFixed(0)}` : '$250';
+          Alert.alert(
+            "Quote Limit Exceeded",
+            `As a new mechanic, your maximum quote is ${maxAmount}. Build your reputation to unlock higher limits.`,
+            [{ text: "OK" }]
+          );
+          return;
+        }
+        if (result?.code === 'PROBATION_CATEGORY_BLOCKED') {
+          Alert.alert(
+            "Category Restricted",
+            "This job category is restricted for new mechanics. Complete more jobs to unlock all categories.",
+            [{ text: "OK" }]
+          );
+          return;
+        }
         throw new Error(result?.message || 'Failed to submit quote');
       }
 

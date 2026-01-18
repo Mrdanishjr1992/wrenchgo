@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, ScrollView, Pressable, StyleSheet, Modal } from "react-native";
 import { Stack } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -6,12 +6,12 @@ import { useTheme } from "../../src/ui/theme-context";
 import { createCard } from "../../src/ui/styles";
 import { LegalDocumentViewer } from "../../src/components/LegalDocumentViewer";
 import {
-  TERMS_OF_SERVICE,
   PRIVACY_POLICY,
   REFUND_POLICY,
   CONTRACTOR_DISCLAIMER,
   PAYMENTS_DISCLOSURE,
 } from "../../src/legal";
+import { useTerms } from "../../src/hooks/useTerms";
 
 type LegalDocument = {
   id: string;
@@ -20,13 +20,7 @@ type LegalDocument = {
   icon: keyof typeof Ionicons.glyphMap;
 };
 
-const legalDocuments: LegalDocument[] = [
-  {
-    id: "terms",
-    title: "Terms of Service",
-    content: TERMS_OF_SERVICE,
-    icon: "document-text",
-  },
+const staticDocuments: LegalDocument[] = [
   {
     id: "privacy",
     title: "Privacy Policy",
@@ -56,7 +50,22 @@ const legalDocuments: LegalDocument[] = [
 export default function LegalScreen() {
   const { colors, spacing, text, radius } = useTheme();
   const card = createCard(colors);
+  const { terms, fetchActiveTerms } = useTerms('mechanic');
   const [selectedDocument, setSelectedDocument] = useState<LegalDocument | null>(null);
+
+  useEffect(() => {
+    fetchActiveTerms();
+  }, []);
+
+  const legalDocuments: LegalDocument[] = [
+    ...(terms ? [{
+      id: "platform-terms",
+      title: terms.title,
+      content: terms.full_text,
+      icon: "document-text" as keyof typeof Ionicons.glyphMap,
+    }] : []),
+    ...staticDocuments,
+  ];
 
   return (
     <>

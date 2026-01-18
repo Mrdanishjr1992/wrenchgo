@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   TouchableOpacity,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, Stack } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -137,7 +138,10 @@ export default function ProfileScreen() {
           headerShown: true,
         }}
       />
-      <View style={[styles.container, { backgroundColor: colors.bg }]}>
+      <ScrollView
+        style={[styles.container, { backgroundColor: colors.bg }]}
+        contentContainerStyle={styles.contentContainer}
+      >
         <UserProfileCard profile={profile} />
 
         {profile.role === 'mechanic' && profile.service_area && (
@@ -186,9 +190,10 @@ export default function ProfileScreen() {
             onReportReview={handleReportReview}
             mechanicName={profile.role === 'mechanic' ? displayName : undefined}
             revieweeRole={profile.role as 'mechanic' | 'customer'}
+            scrollEnabled={false}
           />
         </View>
-      </View>
+      </ScrollView>
     </>
   );
 }
@@ -196,7 +201,10 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  contentContainer: {
     padding: 16,
+    paddingBottom: 32,
   },
   loadingContainer: {
     flex: 1,

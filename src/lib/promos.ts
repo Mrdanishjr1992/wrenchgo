@@ -17,13 +17,22 @@ export async function getOrCreateInviteCode(): Promise<string | null> {
 
 export async function acceptInvitation(inviteCode: string): Promise<{ success: boolean; error?: string }> {
   const { data, error } = await supabase.rpc('accept_invitation', {
-    p_code: inviteCode,
+    p_invite_code: inviteCode,
   });
   if (error) {
     console.error('Error accepting invitation:', error);
     return { success: false, error: error.message };
   }
   return data;
+}
+
+export async function hasUsedReferral(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_used_referral');
+  if (error) {
+    console.error('Error checking referral status:', error);
+    return false;
+  }
+  return data === true;
 }
 
 export async function getPromoCreditsBalance(): Promise<PromoCreditsBalance | null> {

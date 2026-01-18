@@ -1896,7 +1896,7 @@ export default function MechanicProfile() {
 
         {isAdmin && (
           <Pressable
-            onPress={() => router.push("/(admin)/verification")}
+            onPress={() => router.push("/(admin)")}
             style={({ pressed }) => [
               card,
               {

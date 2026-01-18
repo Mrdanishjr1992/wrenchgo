@@ -12,6 +12,7 @@ export interface SupportRequestMetadata {
   app_version: string;
   device_model: string;
   role: string;
+  screenshot_urls?: string[];
 }
 
 export interface SupportRequest {

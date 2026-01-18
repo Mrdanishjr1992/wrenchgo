@@ -114,8 +114,8 @@ export function useMechanicLeads(
       const { data, error: rpcError } = await supabase.rpc('get_mechanic_leads', {
         p_mechanic_id: mechanicId,
         p_filter: filter,
-        p_mechanic_lat: mechanicLat,
-        p_mechanic_lng: mechanicLng,
+        p_mechanic_lat: mechanicLat ?? null,
+        p_mechanic_lng: mechanicLng ?? null,
         p_radius_miles: radiusMiles,
         p_limit: LEADS_PER_PAGE,
         p_offset: currentOffset,
@@ -177,8 +177,8 @@ export function useMechanicLeads(
         supabase.rpc('get_mechanic_leads', {
           p_mechanic_id: mechanicId,
           p_filter: filter,
-          p_mechanic_lat: mechanicLat,
-          p_mechanic_lng: mechanicLng,
+          p_mechanic_lat: mechanicLat ?? null,
+          p_mechanic_lng: mechanicLng ?? null,
           p_radius_miles: radiusMiles,
           p_limit: LEADS_PER_PAGE,
           p_offset: 0,
@@ -186,8 +186,8 @@ export function useMechanicLeads(
         }),
         supabase.rpc('get_mechanic_leads_summary', {
           p_mechanic_id: mechanicId,
-          p_mechanic_lat: mechanicLat,
-          p_mechanic_lng: mechanicLng,
+          p_mechanic_lat: mechanicLat ?? null,
+          p_mechanic_lng: mechanicLng ?? null,
           p_radius_miles: radiusMiles,
         }),
         checkProfileStatus(mechanicId),
