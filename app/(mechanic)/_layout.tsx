@@ -103,6 +103,7 @@ export default function MechanicLayout() {
         <Stack.Screen name="payout-details/[jobId]" options={{ headerShown: false }} />
         <Stack.Screen name="stripe-onboarding/index" options={{ headerTitle: "Payout Setup" }} />
         <Stack.Screen name="legal" options={{ headerTitle: "Legal" }} />
+        <Stack.Screen name="support-thread/[threadId]" options={{ headerShown: false }} />
       </Stack>
     </>
   );

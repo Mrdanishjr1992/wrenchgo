@@ -292,6 +292,55 @@ export const DiagnosisAssistant: React.FC<DiagnosisAssistantProps> = ({
     ? `${vehicleInfo.year || ""} ${vehicleInfo.make || ""} ${vehicleInfo.model || ""}`.trim()
     : null;
 
+  // Parse description if it's JSON
+  const formatDescription = (desc: string): string => {
+    if (!desc) return "";
+    try {
+      const parsed = JSON.parse(desc);
+      if (typeof parsed === "object") {
+        const parts: string[] = [];
+
+        // Get symptom label
+        if (parsed.symptom?.label) {
+          parts.push(parsed.symptom.label);
+        }
+
+        // Get context details
+        if (parsed.context) {
+          if (parsed.context.additional_details) {
+            parts.push(parsed.context.additional_details);
+          }
+          if (parsed.context.location_type) {
+            parts.push(`Location: ${parsed.context.location_type}`);
+          }
+          if (parsed.context.can_move === "no") {
+            parts.push("Vehicle cannot be moved");
+          }
+        }
+
+        // Get answers - format as readable text
+        if (parsed.answers && typeof parsed.answers === "object") {
+          Object.entries(parsed.answers).forEach(([key, val]) => {
+            if (typeof val === "string" && val.length > 0 && val !== "null") {
+              // Clean up the key for display
+              const cleanKey = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+              parts.push(`${cleanKey}: ${val}`);
+            }
+          });
+        }
+
+        if (parts.length > 0) {
+          return parts.join("\n");
+        }
+      }
+      return desc;
+    } catch {
+      return desc;
+    }
+  };
+
+  const displayDescription = formatDescription(description);
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "flex-end" }}>
@@ -395,7 +444,7 @@ export const DiagnosisAssistant: React.FC<DiagnosisAssistantProps> = ({
                   <TriageBadge level={diagnosis.triage_level} />
                 </View>
                 <Text style={{ ...text.muted, fontSize: 13 }} numberOfLines={3}>
-                  {description}
+                  {displayDescription}
                 </Text>
               </View>
 
@@ -546,7 +595,7 @@ export const DiagnosisAssistant: React.FC<DiagnosisAssistantProps> = ({
                       }}
                     >
                       <Text style={{ ...text.body, fontWeight: "600", marginBottom: spacing.xs }}>Customer Complaint</Text>
-                      <Text style={{ ...text.muted, fontSize: 13 }}>{diagnosis.documentation_template.complaint || description}</Text>
+                      <Text style={{ ...text.muted, fontSize: 13 }}>{diagnosis.documentation_template.complaint || displayDescription}</Text>
                     </View>
 
                     <View

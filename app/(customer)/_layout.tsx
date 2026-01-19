@@ -97,7 +97,8 @@ export default function CustomerLayout() {
         }}
       >
         <Stack.Screen name="(tabs)" />
-        <Stack.Screen name="education" />
+        <Stack.Screen name="education/index" />
+        <Stack.Screen name="education/[slug]" />
         <Stack.Screen
           name="legal"
           options={{
@@ -111,6 +112,7 @@ export default function CustomerLayout() {
         <Stack.Screen name="job/[id]" />
         <Stack.Screen name="messages/[jobId]" />
         <Stack.Screen name="payment/[jobId]" />
+        <Stack.Screen name="support-thread/[threadId]" />
       </Stack>
     </>
   );

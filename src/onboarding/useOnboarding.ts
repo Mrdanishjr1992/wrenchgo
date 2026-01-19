@@ -1,7 +1,7 @@
 // src/onboarding/useOnboarding.ts
 
 import { useContext } from 'react';
-import { OnboardingContext } from './OnboardingProvider';
+import { OnboardingContext } from './OnboardingContext';
 import type { OnboardingContextValue } from './types';
 
 export function useOnboarding(): OnboardingContextValue {

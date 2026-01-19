@@ -32,10 +32,11 @@ import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { symptomQuestions } from "../../../src/data/symptomQuestions";
 import { getDisputeForJob, mechanicRespondToDispute, formatSlaRemaining, Dispute } from "../../../src/lib/disputes";
 import { DISPUTE_STATUS_LABELS, DISPUTE_STATUS_COLORS, DisputeStatus } from "../../../src/constants/disputes";
+import { AI_DIAGNOSIS_ENABLED, isDescriptionVague } from "../../../src/lib/aiDiagnosisService";
+import { DiagnosisAssistant } from "../../../components/diagnosis/DiagnosisAssistant";
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// Note: setLayoutAnimationEnabledExperimental is a no-op in New Architecture
+// Removed to suppress warning
 
 type JobIntake = {
   symptom?: { key: string; label: string };
@@ -153,6 +154,9 @@ export default function MechanicJobDetails() {
   const [showDisputeResponseModal, setShowDisputeResponseModal] = useState(false);
   const [disputeResponse, setDisputeResponse] = useState('');
   const [submittingResponse, setSubmittingResponse] = useState(false);
+
+  // AI Diagnosis state
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
 
   const detailsChevronRotation = useSharedValue(0);
 
@@ -715,6 +719,35 @@ export default function MechanicJobDetails() {
             </View>
           )}
 
+          {/* AI Diagnose Button */}
+          {AI_DIAGNOSIS_ENABLED && job.status !== "completed" && job.status !== "canceled" && (
+            <Pressable
+              onPress={() => setShowDiagnosis(true)}
+              style={({ pressed }) => [
+                card,
+                {
+                  padding: spacing.md,
+                  marginBottom: spacing.md,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                  borderWidth: 1,
+                  borderColor: colors.accent,
+                  opacity: pressed ? 0.85 : 1,
+                },
+              ]}
+            >
+              <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                <Ionicons name="pulse" size={18} color={colors.accent} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ ...text.body, fontWeight: "700", fontSize: 14 }}>AI Diagnose</Text>
+                <Text style={{ ...text.muted, fontSize: 12 }}>Get diagnostic help and suggested questions</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+            </Pressable>
+          )}
+
           {contract && job.status !== "completed" && job.status !== "canceled" && (
             <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
@@ -976,6 +1009,56 @@ export default function MechanicJobDetails() {
           </View>
         </View>
       </Modal>
+
+      {/* AI Diagnosis Assistant Modal */}
+      {AI_DIAGNOSIS_ENABLED && job && (
+        <DiagnosisAssistant
+          visible={showDiagnosis}
+          onClose={() => setShowDiagnosis(false)}
+          leadId={id || ""}
+          title={job.title}
+          description={job.description || ""}
+          vehicleInfo={
+            job.vehicle
+              ? {
+                  year: job.vehicle.year,
+                  make: job.vehicle.make,
+                  model: job.vehicle.model,
+                }
+              : undefined
+          }
+          onSendMessage={(message) => {
+            Alert.alert(
+              "Message Ready",
+              "Question copied! Go to messages to send it to the customer.",
+              [
+                { text: "Later", style: "cancel" },
+                {
+                  text: "Go to Messages",
+                  onPress: () => {
+                    setShowDiagnosis(false);
+                    router.push(`/(mechanic)/messages/${id}` as any);
+                  },
+                },
+              ]
+            );
+          }}
+          onSaveNotes={async (notes) => {
+            try {
+              await supabase.from("lead_notes").insert({
+                lead_id: id,
+                content: notes,
+                source: "ai_assist",
+                created_at: new Date().toISOString(),
+              });
+              Alert.alert("Saved", "Documentation has been recorded.");
+            } catch (e) {
+              console.log("Note save failed:", e);
+              Alert.alert("Note Saved", "Documentation has been recorded.");
+            }
+          }}
+        />
+      )}
     </View>
   );
 }

@@ -17,9 +17,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useTheme } from '../../src/ui/theme-context';
 import {
-  AdminMessage,
-  listMyAdminMessages,
-  markAdminMessageRead,
+  type SupportThread,
+  listMySupportThreads,
 } from '../../src/lib/admin-messages';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -40,25 +39,31 @@ function formatTimeAgo(dateString: string): string {
 }
 
 interface Props {
-  onMessagePress?: (message: AdminMessage) => void;
+  onThreadPress?: (thread: SupportThread) => void;
 }
 
-function MessageCard({
-  message,
+function ThreadCard({
+  thread,
   onPress,
   index,
 }: {
-  message: AdminMessage;
+  thread: SupportThread;
   onPress: () => void;
   index: number;
 }) {
   const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const scale = useSharedValue(1);
-  const isUnread = !message.read_at;
+  const hasUnread = thread.unread_count > 0;
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
+
+  const getLastMessagePreview = () => {
+    const prefix = thread.last_message_sender_type === 'user' ? 'You: ' : '';
+    const body = thread.last_message_body || '';
+    return prefix + (body.length > 60 ? body.slice(0, 60) + '...' : body);
+  };
 
   return (
     <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
@@ -72,9 +77,9 @@ function MessageCard({
           marginHorizontal: spacing.md,
           marginBottom: spacing.sm,
           padding: spacing.md,
-          backgroundColor: isUnread ? withAlpha(colors.info, 0.08) : colors.surface,
+          backgroundColor: hasUnread ? withAlpha(colors.info, 0.08) : colors.surface,
           borderRadius: radius.xl,
-          borderLeftWidth: isUnread ? 3 : 0,
+          borderLeftWidth: hasUnread ? 3 : 0,
           borderLeftColor: colors.info,
           ...shadows.sm,
         }]}
@@ -101,19 +106,21 @@ function MessageCard({
               fontWeight: '700',
               color: colors.textPrimary,
               fontSize: 15,
-            }}>
-              {message.sender_name || 'Support Team'}
+              flex: 1,
+            }} numberOfLines={1}>
+              {thread.subject}
             </Text>
             <Text style={{
               fontSize: 12,
-              color: isUnread ? colors.info : colors.textMuted,
-              fontWeight: isUnread ? '600' : '400',
+              color: hasUnread ? colors.info : colors.textMuted,
+              fontWeight: hasUnread ? '600' : '400',
+              marginLeft: spacing.sm,
             }}>
-              {formatTimeAgo(message.created_at)}
+              {formatTimeAgo(thread.last_message_at)}
             </Text>
           </View>
 
-          {message.related_job_title && (
+          {thread.related_job_title && (
             <View style={{
               flexDirection: 'row',
               alignItems: 'center',
@@ -125,8 +132,8 @@ function MessageCard({
                 fontSize: 12,
                 color: colors.primary,
                 fontWeight: '500',
-              }}>
-                {message.related_job_title}
+              }} numberOfLines={1}>
+                {thread.related_job_title}
               </Text>
             </View>
           )}
@@ -134,53 +141,42 @@ function MessageCard({
           <Text
             numberOfLines={2}
             style={{
-              color: isUnread ? colors.textPrimary : colors.textMuted,
+              color: hasUnread ? colors.textPrimary : colors.textMuted,
               fontSize: 14,
               lineHeight: 20,
-              fontWeight: isUnread ? '500' : '400',
+              fontWeight: hasUnread ? '500' : '400',
             }}
           >
-            {message.body}
+            {getLastMessagePreview()}
           </Text>
-
-          {message.attachment_url && (
-            <View style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              marginTop: spacing.xs,
-              gap: 4,
-            }}>
-              <Ionicons
-                name={message.attachment_type === 'image' ? 'image' : 'document'}
-                size={14}
-                color={colors.textMuted}
-              />
-              <Text style={{
-                fontSize: 12,
-                color: colors.textMuted,
-              }}>
-                Attachment
-              </Text>
-            </View>
-          )}
         </View>
 
-        {isUnread && (
+        {hasUnread && (
           <View style={{
-            width: 10,
-            height: 10,
-            borderRadius: 5,
+            minWidth: 22,
+            height: 22,
+            borderRadius: 11,
             backgroundColor: colors.info,
+            alignItems: 'center',
+            justifyContent: 'center',
             marginLeft: spacing.sm,
-            marginTop: 4,
-          }} />
+            paddingHorizontal: 6,
+          }}>
+            <Text style={{
+              color: colors.white,
+              fontSize: 11,
+              fontWeight: '700',
+            }}>
+              {thread.unread_count > 99 ? '99+' : thread.unread_count}
+            </Text>
+          </View>
         )}
       </AnimatedPressable>
     </Animated.View>
   );
 }
 
-function EmptyState() {
+function EmptyState({ onContactSupport }: { onContactSupport?: () => void }) {
   const { colors, spacing, radius, withAlpha } = useTheme();
 
   return (
@@ -211,21 +207,44 @@ function EmptyState() {
         fontWeight: '700',
         color: colors.textPrimary,
         marginBottom: spacing.sm,
-      }}>No support messages</Text>
+      }}>No support conversations</Text>
 
       <Text style={{
         fontSize: 15,
         color: colors.textMuted,
         textAlign: 'center',
         lineHeight: 22,
+        marginBottom: spacing.lg,
       }}>
-        Messages from our support team will appear here
+        Need help? Start a conversation with our support team.
       </Text>
+
+      {onContactSupport && (
+        <Pressable
+          onPress={onContactSupport}
+          style={({ pressed }) => ({
+            backgroundColor: pressed ? withAlpha(colors.info, 0.8) : colors.info,
+            paddingHorizontal: spacing.xl,
+            paddingVertical: spacing.md,
+            borderRadius: radius.lg,
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: spacing.sm,
+          })}
+        >
+          <Ionicons name="chatbubble-ellipses" size={20} color={colors.white} />
+          <Text style={{
+            color: colors.white,
+            fontSize: 16,
+            fontWeight: '600',
+          }}>Contact Support</Text>
+        </Pressable>
+      )}
     </Animated.View>
   );
 }
 
-function MessageSkeleton() {
+function LoadingSkeleton() {
   const { colors, spacing, radius, withAlpha } = useTheme();
 
   const shimmer = {
@@ -233,50 +252,65 @@ function MessageSkeleton() {
   };
 
   return (
-    <View style={{
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      marginHorizontal: spacing.md,
-      marginBottom: spacing.sm,
-      padding: spacing.md,
-      backgroundColor: colors.surface,
-      borderRadius: radius.xl,
-    }}>
-      <View style={[shimmer, { width: 48, height: 48, borderRadius: 24 }]} />
-      <View style={{ flex: 1, marginLeft: spacing.md }}>
-        <View style={[shimmer, { width: 120, height: 16, borderRadius: radius.sm, marginBottom: 8 }]} />
-        <View style={[shimmer, { width: '100%', height: 14, borderRadius: radius.sm, marginBottom: 4 }]} />
-        <View style={[shimmer, { width: '70%', height: 14, borderRadius: radius.sm }]} />
-      </View>
-    </View>
-  );
-}
-
-function LoadingSkeleton() {
-  const { colors, spacing } = useTheme();
-
-  return (
     <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: spacing.md }}>
-      <MessageSkeleton />
-      <MessageSkeleton />
-      <MessageSkeleton />
-      <MessageSkeleton />
+      {[0, 1, 2].map((i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: 'row',
+            marginHorizontal: spacing.md,
+            marginBottom: spacing.sm,
+            padding: spacing.md,
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+          }}
+        >
+          <View style={{
+            width: 48,
+            height: 48,
+            borderRadius: 24,
+            ...shimmer,
+          }} />
+          <View style={{ flex: 1, marginLeft: spacing.md }}>
+            <View style={{
+              height: 16,
+              width: '60%',
+              borderRadius: radius.sm,
+              marginBottom: 8,
+              ...shimmer,
+            }} />
+            <View style={{
+              height: 14,
+              width: '90%',
+              borderRadius: radius.sm,
+              marginBottom: 4,
+              ...shimmer,
+            }} />
+            <View style={{
+              height: 14,
+              width: '70%',
+              borderRadius: radius.sm,
+              ...shimmer,
+            }} />
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
 
-export function SupportMessagesView({ onMessagePress }: Props) {
-  const { colors, spacing } = useTheme();
-  const [messages, setMessages] = useState<AdminMessage[]>([]);
+export function SupportMessagesView({ onThreadPress }: Props) {
+  const { colors, spacing, shadows, withAlpha } = useTheme();
+  const [threads, setThreads] = useState<SupportThread[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchMessages = useCallback(async () => {
+  const fetchThreads = useCallback(async () => {
     try {
-      const data = await listMyAdminMessages(50, 0);
-      setMessages(data);
+      const data = await listMySupportThreads(50, 0);
+      setThreads(data);
     } catch (error) {
-      console.error('Error fetching admin messages:', error);
+      console.error('Error fetching support threads:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -285,68 +319,86 @@ export function SupportMessagesView({ onMessagePress }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      fetchMessages();
-    }, [fetchMessages])
+      fetchThreads();
+    }, [fetchThreads])
   );
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchMessages();
+    fetchThreads();
   };
 
-  const handleMessagePress = async (message: AdminMessage) => {
-    if (!message.read_at) {
-      try {
-        await markAdminMessageRead(message.id);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === message.id ? { ...m, read_at: new Date().toISOString() } : m
-          )
-        );
-      } catch (error) {
-        console.error('Error marking message as read:', error);
-      }
-    }
-    onMessagePress?.(message);
+  const handleNewSupportThread = () => {
+    onThreadPress?.({
+      thread_id: 'new',
+      subject: 'New Conversation',
+      last_message_body: '',
+      last_message_at: new Date().toISOString(),
+      last_message_sender_type: 'user',
+      unread_count: 0,
+      total_messages: 0,
+      related_job_id: null,
+      related_job_title: null,
+      created_at: new Date().toISOString(),
+    });
   };
 
   if (loading) {
     return <LoadingSkeleton />;
   }
 
-  if (messages.length === 0) {
+  if (threads.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
-        <EmptyState />
+        <EmptyState onContactSupport={handleNewSupportThread} />
       </View>
     );
   }
 
   return (
-    <FlatList
-      data={messages}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item, index }) => (
-        <MessageCard
-          message={item}
-          onPress={() => handleMessagePress(item)}
-          index={index}
-        />
-      )}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={handleRefresh}
-          tintColor={colors.primary}
-        />
-      }
-      contentContainerStyle={{
-        paddingTop: spacing.md,
-        paddingBottom: spacing.xxxl,
-        flexGrow: 1,
-      }}
-      style={{ flex: 1, backgroundColor: colors.bg }}
-      showsVerticalScrollIndicator={false}
-    />
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <FlatList
+        data={threads}
+        keyExtractor={(item) => item.thread_id}
+        renderItem={({ item, index }) => (
+          <ThreadCard
+            thread={item}
+            onPress={() => onThreadPress?.(item)}
+            index={index}
+          />
+        )}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
+        contentContainerStyle={{
+          paddingTop: spacing.md,
+          paddingBottom: spacing.xxxl,
+          flexGrow: 1,
+        }}
+        showsVerticalScrollIndicator={false}
+      />
+
+      <Pressable
+        onPress={handleNewSupportThread}
+        style={({ pressed }) => ({
+          position: 'absolute',
+          bottom: spacing.xl,
+          right: spacing.lg,
+          width: 56,
+          height: 56,
+          borderRadius: 28,
+          backgroundColor: pressed ? withAlpha(colors.info, 0.8) : colors.info,
+          alignItems: 'center',
+          justifyContent: 'center',
+          ...shadows.lg,
+        })}
+      >
+        <Ionicons name="add" size={28} color={colors.white} />
+      </Pressable>
+    </View>
   );
 }

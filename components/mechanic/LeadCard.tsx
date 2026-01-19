@@ -168,14 +168,31 @@ export function LeadCard({ lead, onPressView, onPressQuote }: LeadCardProps) {
             </View>
 
             {lead.has_quoted && lead.quote_amount && (
-              <View style={[styles.quotedChip, { backgroundColor: colors.surface2 }]}>
-                <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
-                <View>
-                  <Text style={[styles.quotedLabel, { color: colors.textMuted }]}>Quoted</Text>
-                  <Text style={[styles.quoteAmount, { color: colors.accent }]}>
-                    ${(lead.quote_amount / 100).toFixed(2)}
-                  </Text>
-                </View>
+              <View style={[
+                styles.quotedChip,
+                { backgroundColor: lead.quote_status === 'expired_conflict' ? colors.error + '20' : colors.surface2 }
+              ]}>
+                {lead.quote_status === 'expired_conflict' ? (
+                  <>
+                    <Ionicons name="alert-circle" size={16} color={colors.error} />
+                    <View>
+                      <Text style={[styles.quotedLabel, { color: colors.error }]}>Expired</Text>
+                      <Text style={[styles.quoteAmount, { color: colors.error, fontSize: 11 }]}>
+                        Time conflict
+                      </Text>
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={16} color={colors.accent} />
+                    <View>
+                      <Text style={[styles.quotedLabel, { color: colors.textMuted }]}>Quoted</Text>
+                      <Text style={[styles.quoteAmount, { color: colors.accent }]}>
+                        ${(lead.quote_amount / 100).toFixed(2)}
+                      </Text>
+                    </View>
+                  </>
+                )}
               </View>
             )}
           </View>

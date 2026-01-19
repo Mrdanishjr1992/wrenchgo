@@ -240,7 +240,7 @@ function getCategoryFromDescription(description: string): string {
 export async function getDiagnosis(input: DiagnosisInput, forceRefresh = false): Promise<DiagnosisResult> {
   const inputHash = hashInput(input);
   const cached = diagnosisCache.get(input.leadId);
-  
+
   if (!forceRefresh && cached && Date.now() - cached.timestamp < CACHE_TTL && cached.inputHash === inputHash) {
     return cached.result;
   }
@@ -248,7 +248,32 @@ export async function getDiagnosis(input: DiagnosisInput, forceRefresh = false):
   // Simulate API delay
   await new Promise((resolve) => setTimeout(resolve, 800 + Math.random() * 400));
 
-  const category = input.category || getCategoryFromDescription(input.description);
+  // Parse description if it's JSON
+  const parseDescription = (desc: string): string => {
+    if (!desc) return "";
+    try {
+      const parsed = JSON.parse(desc);
+      if (typeof parsed === "object") {
+        const parts: string[] = [];
+        if (parsed.symptom?.label) parts.push(parsed.symptom.label);
+        if (parsed.context?.additional_details) parts.push(parsed.context.additional_details);
+        if (parsed.answers && typeof parsed.answers === "object") {
+          Object.entries(parsed.answers).forEach(([key, val]) => {
+            if (typeof val === "string" && val.length > 0 && val !== "null") {
+              parts.push(val);
+            }
+          });
+        }
+        if (parts.length > 0) return parts.join(". ");
+      }
+      return desc;
+    } catch {
+      return desc;
+    }
+  };
+
+  const readableDescription = parseDescription(input.description);
+  const category = input.category || getCategoryFromDescription(readableDescription);
   const baseResult = MOCK_RESPONSES[category] || MOCK_RESPONSES.default;
 
   // Customize the result based on input
@@ -256,13 +281,13 @@ export async function getDiagnosis(input: DiagnosisInput, forceRefresh = false):
     ...baseResult,
     documentation_template: {
       ...baseResult.documentation_template,
-      complaint: input.description || baseResult.documentation_template.complaint,
+      complaint: readableDescription || baseResult.documentation_template.complaint,
     },
   };
 
   // Adjust triage level for safety keywords
   const safetyKeywords = ["brake", "steering", "fuel leak", "smoke", "fire", "overheat"];
-  if (safetyKeywords.some((kw) => input.description.toLowerCase().includes(kw))) {
+  if (safetyKeywords.some((kw) => readableDescription.toLowerCase().includes(kw))) {
     result.triage_level = "high";
   }
 

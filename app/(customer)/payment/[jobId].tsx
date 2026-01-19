@@ -166,6 +166,14 @@ export default function JobPayment() {
           setAcknowledged(false);
           return;
         }
+        if (contractResult.error_code === 'MECHANIC_UNAVAILABLE') {
+          Alert.alert(
+            "Mechanic Unavailable",
+            "This mechanic is no longer available at the scheduled time. Please select another quote.",
+            [{ text: "OK", onPress: () => router.back() }]
+          );
+          return;
+        }
         throw new Error(contractResult.error || "Failed to create contract");
       }
 

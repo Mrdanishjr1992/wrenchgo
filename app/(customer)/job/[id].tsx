@@ -53,9 +53,8 @@ import * as Crypto from "expo-crypto";
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 const QUOTE_CARD_WIDTH = SCREEN_WIDTH - 80;
 
-if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
+// Note: setLayoutAnimationEnabledExperimental is a no-op in New Architecture
+// Removed to suppress warning
 
 type JobIntake = {
   symptom?: { key: string; label: string };

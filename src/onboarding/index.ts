@@ -1,6 +1,7 @@
 // src/onboarding/index.ts
 
-export { OnboardingProvider, OnboardingContext } from './OnboardingProvider';
+export { OnboardingProvider } from './OnboardingProvider';
+export { OnboardingContext } from './OnboardingContext';
 export { useOnboarding } from './useOnboarding';
 export { WalkthroughTarget } from './WalkthroughTarget';
 export { WalkthroughOverlay } from './WalkthroughOverlay';

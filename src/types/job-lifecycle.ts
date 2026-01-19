@@ -81,7 +81,8 @@ export type JobEventType =
   | 'dispute_resolved'
   | 'refund_issued'
   | 'message_sent'
-  | 'system_note';
+  | 'system_note'
+  | 'quote_expired_conflict';
 
 // =====================================================
 // INTERFACES
@@ -132,6 +133,10 @@ export interface JobContract {
   cancellation_reason: CancellationReason | null;
   cancellation_note: string | null;
   refund_amount_cents: number | null;
+
+  // Booking window (for conflict detection)
+  scheduled_start_at: string | null;
+  scheduled_end_at: string | null;
 
   created_at: string;
   updated_at: string;
@@ -342,6 +347,7 @@ export interface Invoice {
 export interface AcceptQuoteResponse {
   success: boolean;
   error?: string;
+  error_code?: string;
   contract_id?: string;
   total_cents?: number;
   mechanic_id?: string;
@@ -349,6 +355,14 @@ export interface AcceptQuoteResponse {
   requires_acknowledgement?: boolean;
   terms_version?: string;
   job_id?: string;
+  already_exists?: boolean;
+  expired_quote_ids?: string[];
+  expired_count?: number;
+  scheduled_start_at?: string;
+  scheduled_end_at?: string;
+  mechanic_promo_applied?: boolean;
+  mechanic_promo_discount_cents?: number;
+  conflict_contract_id?: string;
 }
 
 export interface JobActionResponse {

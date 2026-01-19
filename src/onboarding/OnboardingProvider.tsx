@@ -1,6 +1,6 @@
 // src/onboarding/OnboardingProvider.tsx
 
-import React, { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import type { OnboardingContextValue, OnboardingState, TargetMeasurement, UserRole } from './types';
 import { getWalkthroughSteps } from './steps';
@@ -11,6 +11,7 @@ import {
   setUserRole as saveUserRole,
 } from './storage';
 import { WalkthroughOverlay } from './WalkthroughOverlay';
+import { OnboardingContext } from './OnboardingContext';
 
 const initialState: OnboardingState = {
   userRole: null,
@@ -20,8 +21,6 @@ const initialState: OnboardingState = {
   currentStepIndex: 0,
   currentRole: null,
 };
-
-export const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
 interface OnboardingProviderProps {
   children: React.ReactNode;

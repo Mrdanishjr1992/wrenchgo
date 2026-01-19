@@ -9,7 +9,7 @@
 
 export type UserRole = 'customer' | 'mechanic';
 export type ThemeMode = 'light' | 'dark' | 'system';
-export type JobStatus = 
+export type JobStatus =
   | 'draft'
   | 'searching'
   | 'quoted'
@@ -20,7 +20,7 @@ export type JobStatus =
   | 'completed'
   | 'cancelled'
   | 'disputed';
-export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'withdrawn';
+export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'withdrawn' | 'declined' | 'expired_conflict';
 export type PaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded' | 'partially_refunded';
 
 // =====================================================
@@ -75,6 +75,7 @@ export interface Job {
   location_address: string | null;
   preferred_time: string | null;
   scheduled_at: string | null;
+  estimated_duration_minutes: number;
   completed_at: string | null;
   cancelled_at: string | null;
   final_price_cents: number | null;
@@ -94,6 +95,21 @@ export interface QuoteRequest {
   expires_at: string | null;
   responded_at: string | null;
   deleted_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Quote {
+  id: string;
+  job_id: string;
+  mechanic_id: string;
+  price_cents: number | null;
+  estimated_hours: number | null;
+  notes: string | null;
+  status: QuoteStatus;
+  proposed_start_at: string | null;
+  proposed_end_at: string | null;
+  conflict_status_reason: string | null;
   created_at: string;
   updated_at: string;
 }

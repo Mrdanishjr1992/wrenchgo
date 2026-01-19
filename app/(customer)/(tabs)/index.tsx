@@ -732,13 +732,15 @@ export default function CustomerHome() {
           )}
         </View>
 
-        {/* QUICK HELP SECTION */}
+        {/* CAR CARE LIBRARY SECTION */}
         <View style={{ paddingHorizontal: spacing.lg }}>
           <SectionHeader
-            overline="Need help?"
-            title="Quick Actions"
+            overline="Learn first"
+            title="Car Care Library"
+            action="See all"
+            onAction={() => router.push("/(customer)/education/index" as any)}
           />
-          
+
           <View style={{
             backgroundColor: colors.surface,
             borderRadius: radius.xl,
@@ -750,41 +752,41 @@ export default function CustomerHome() {
               iconBg={colors.errorBg}
               iconColor={colors.error}
               title="Car won't start?"
-              subtitle="Get roadside help fast"
+              subtitle="Learn common causes & what to do"
               urgent
-              onPress={() => router.push("/(customer)/education")}
+              onPress={() => router.push({ pathname: "/(customer)/education/[slug]", params: { slug: "car-wont-start" } } as any)}
               delay={600}
             />
-            
-            <View style={{ 
-              height: 1, 
-              backgroundColor: colors.border, 
+
+            <View style={{
+              height: 1,
+              backgroundColor: colors.border,
               marginHorizontal: spacing.md,
             }} />
-            
+
             <QuickHelpItem
               icon="speedometer"
               iconBg={colors.warningBg}
               iconColor={colors.warning}
               title="Check engine light on?"
-              subtitle="Diagnose the issue"
-              onPress={() => router.push("/(customer)/education")}
+              subtitle="Understand what it means"
+              onPress={() => router.push({ pathname: "/(customer)/education/[slug]", params: { slug: "check-engine-light" } } as any)}
               delay={700}
             />
-            
-            <View style={{ 
-              height: 1, 
-              backgroundColor: colors.border, 
+
+            <View style={{
+              height: 1,
+              backgroundColor: colors.border,
               marginHorizontal: spacing.md,
             }} />
-            
+
             <QuickHelpItem
               icon="build"
               iconBg={colors.successBg}
               iconColor={colors.success}
               title="Regular maintenance"
-              subtitle="Oil change, brakes & more"
-              onPress={() => router.push("/(customer)/education")}
+              subtitle="Keep your car running smoothly"
+              onPress={() => router.push({ pathname: "/(customer)/education/[slug]", params: { slug: "regular-maintenance" } } as any)}
               delay={800}
             />
           </View>

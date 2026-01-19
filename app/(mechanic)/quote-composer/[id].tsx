@@ -52,7 +52,6 @@ type Job = {
 };
 
 const DRIVE_FEE = 50;
-const DIAGNOSTIC_FEE = 80;
 
 const HOURLY_RATE_OPTIONS = [50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 180, 200];
 const HOURS_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8];
@@ -75,7 +74,6 @@ export default function QuoteComposer() {
   const [estimatedHours, setEstimatedHours] = useState<number | null>(null);
   const [hoursLow, setHoursLow] = useState<number | null>(null);
   const [hoursHigh, setHoursHigh] = useState<number | null>(null);
-  const [includeDiagnosticFee, setIncludeDiagnosticFee] = useState(false);
   const [includeDriveFee, setIncludeDriveFee] = useState(true);
 
   const [arrivalDate, setArrivalDate] = useState<Date>(new Date());
@@ -244,7 +242,6 @@ export default function QuoteComposer() {
 
     let total = laborSubtotal;
     if (includeDriveFee) total += DRIVE_FEE;
-    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
 
     return total;
   };
@@ -253,7 +250,6 @@ export default function QuoteComposer() {
     if (!hourlyRate || !hoursLow) return 0;
     let total = hourlyRate * hoursLow;
     if (includeDriveFee) total += DRIVE_FEE;
-    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
   };
 
@@ -261,7 +257,6 @@ export default function QuoteComposer() {
     if (!hourlyRate || !hoursHigh) return 0;
     let total = hourlyRate * hoursHigh;
     if (includeDriveFee) total += DRIVE_FEE;
-    if (includeDiagnosticFee) total += DIAGNOSTIC_FEE;
     return total;
   };
 
@@ -297,7 +292,6 @@ export default function QuoteComposer() {
       estimatedHours: estimatedHours?.toString() || "",
       hoursLow: hoursLow?.toString() || "",
       hoursHigh: hoursHigh?.toString() || "",
-      includeDiagnosticFee: includeDiagnosticFee.toString(),
       includeDriveFee: includeDriveFee.toString(),
       arrivalDate: formatDate(arrivalDate),
       arrivalTime: formatTime(arrivalTime),
@@ -738,32 +732,6 @@ export default function QuoteComposer() {
               )}
 
               <Pressable
-                onPress={() => setIncludeDiagnosticFee(!includeDiagnosticFee)}
-                style={[
-                  styles.checkboxRow,
-                  { backgroundColor: colors.surface, borderColor: colors.border }
-                ]}
-              >
-                <View style={[
-                  styles.checkbox,
-                  {
-                    borderColor: includeDiagnosticFee ? colors.accent : colors.border,
-                    backgroundColor: includeDiagnosticFee ? colors.accent : "transparent",
-                  }
-                ]}>
-                  {includeDiagnosticFee && <Ionicons name="checkmark" size={16} color="#fff" />}
-                </View>
-                <View style={styles.checkboxContent}>
-                  <Text style={[styles.checkboxTitle, { color: colors.textPrimary }]}>
-                    Include diagnostic fee
-                  </Text>
-                  <Text style={[styles.checkboxSubtitle, { color: colors.textMuted }]}>
-                    Add ${DIAGNOSTIC_FEE} diagnostic fee
-                  </Text>
-                </View>
-              </Pressable>
-
-              <Pressable
                 onPress={() => setIncludeDriveFee(!includeDriveFee)}
                 style={[
                   styles.checkboxRow,
@@ -826,13 +794,6 @@ export default function QuoteComposer() {
                   <View style={styles.breakdownRow}>
                     <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Drive fee</Text>
                     <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>${DRIVE_FEE}</Text>
-                  </View>
-                )}
-
-                {includeDiagnosticFee && (
-                  <View style={styles.breakdownRow}>
-                    <Text style={[styles.breakdownLabel, { color: colors.textSecondary }]}>Diagnostic fee</Text>
-                    <Text style={[styles.breakdownValue, { color: colors.textPrimary }]}>${DIAGNOSTIC_FEE}</Text>
                   </View>
                 )}
 

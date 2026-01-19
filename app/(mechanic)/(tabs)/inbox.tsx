@@ -1,19 +1,21 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { View, Pressable, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter, useFocusEffect } from "expo-router";
 import Animated, {
   FadeIn,
   useAnimatedStyle,
   useSharedValue,
   withSpring,
-  withTiming,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
 import { useTheme } from "../../../src/ui/theme-context";
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
 import { MessagesListView, SupportMessagesView } from "../../../components/inbox";
 import Notifications from "./notifications";
-import { getUnreadAdminMessageCount } from "../../../src/lib/admin-messages";
+import { getUnreadSupportThreadCount, type SupportThread } from "../../../src/lib/admin-messages";
+import { getUnreadMessagesCount, getUnreadNotificationsCount, subscribeToUnreadCounts } from "../../../src/lib/inbox-counts";
+import { supabase } from "../../../src/lib/supabase";
 
 type TabType = "messages" | "support" | "alerts";
 
@@ -35,13 +37,15 @@ function TabButton({
   const { colors, spacing, radius } = useTheme();
   const scale = useSharedValue(1);
 
-  useEffect(() => {
-    // Trigger animation on active change
-  }, [isActive]);
-
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
+
+  const formatBadge = (count: number) => {
+    if (count > 99) return "99+";
+    if (count > 9) return String(count);
+    return String(count);
+  };
 
   return (
     <AnimatedPressable
@@ -59,10 +63,10 @@ function TabButton({
         backgroundColor: isActive ? colors.primary : "transparent",
       }]}
     >
-      <Ionicons 
-        name={isActive ? icon : `${icon}-outline` as any} 
-        size={18} 
-        color={isActive ? colors.white : colors.textMuted} 
+      <Ionicons
+        name={isActive ? icon : `${icon}-outline` as any}
+        size={18}
+        color={isActive ? colors.white : colors.textMuted}
       />
       <Text style={{
         fontSize: 14,
@@ -75,6 +79,7 @@ function TabButton({
           borderRadius: 10,
           minWidth: 18,
           height: 18,
+          paddingHorizontal: 4,
           alignItems: "center",
           justifyContent: "center",
           marginLeft: 2,
@@ -83,7 +88,7 @@ function TabButton({
             color: isActive ? colors.primary : colors.white,
             fontSize: 10,
             fontWeight: "800",
-          }}>{badge > 9 ? "9+" : badge}</Text>
+          }}>{formatBadge(badge)}</Text>
         </View>
       )}
     </AnimatedPressable>
@@ -94,13 +99,50 @@ export default function Inbox() {
   const [tab, setTab] = useState<TabType>("messages");
   const { colors, spacing, radius, shadows } = useTheme();
   const insets = useSafeAreaInsets();
+  const router = useRouter();
+  const [unreadMessages, setUnreadMessages] = useState(0);
   const [unreadSupport, setUnreadSupport] = useState(0);
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  const refreshCounts = useCallback(async () => {
+    const [messages, support, alerts] = await Promise.all([
+      getUnreadMessagesCount(),
+      getUnreadSupportThreadCount(),
+      getUnreadNotificationsCount(),
+    ]);
+    setUnreadMessages(messages);
+    setUnreadSupport(support);
+    setUnreadAlerts(alerts);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshCounts();
+    }, [refreshCounts])
+  );
 
   useEffect(() => {
-    getUnreadAdminMessageCount()
-      .then(setUnreadSupport)
-      .catch(console.error);
-  }, [tab]);
+    let unsubscribe: (() => void) | undefined;
+
+    supabase.auth.getUser().then(({ data }) => {
+      const userId = data.user?.id;
+      if (userId) {
+        unsubscribe = subscribeToUnreadCounts(
+          userId,
+          setUnreadMessages,
+          setUnreadAlerts
+        );
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, []);
+
+  const handleSupportThreadPress = useCallback((thread: SupportThread) => {
+    router.push(`/(mechanic)/support-thread/${thread.thread_id}`);
+  }, [router]);
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
@@ -134,6 +176,7 @@ export default function Inbox() {
               icon="chatbubble"
               isActive={tab === "messages"}
               onPress={() => setTab("messages")}
+              badge={unreadMessages}
             />
           </WalkthroughTarget>
 
@@ -150,13 +193,14 @@ export default function Inbox() {
             icon="notifications"
             isActive={tab === "alerts"}
             onPress={() => setTab("alerts")}
+            badge={unreadAlerts}
           />
         </View>
       </Animated.View>
 
       <View style={{ flex: 1 }}>
         {tab === "messages" && <MessagesListView role="mechanic" />}
-        {tab === "support" && <SupportMessagesView />}
+        {tab === "support" && <SupportMessagesView onThreadPress={handleSupportThreadPress} />}
         {tab === "alerts" && <Notifications />}
       </View>
     </View>
