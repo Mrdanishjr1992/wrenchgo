@@ -172,7 +172,7 @@ export function JobPhotoPicker({
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
         quality: 0.9,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
@@ -202,7 +202,7 @@ export function JobPhotoPicker({
         allowsMultipleSelection: true,
         selectionLimit: maxPhotos - uploadedMedia.length,
         quality: 0.9,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
       });
 
       if (!result.canceled && result.assets) {

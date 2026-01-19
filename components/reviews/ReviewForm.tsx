@@ -239,11 +239,10 @@ export default function ReviewForm({
             <View style={{ alignItems: 'center', marginBottom: spacing.sm }}>
               <StarRating rating={rating} onRate={setRating} size={40} />
             </View>
-            <ThemedText 
-              variant="body" 
-              color={rating > 0 ? 'primary' : 'muted'} 
-              weight={rating > 0 ? 'semibold' : 'regular'}
-              style={{ textAlign: 'center' }}
+            <ThemedText
+              variant="body"
+              color={rating > 0 ? 'primary' : 'muted'}
+              style={{ textAlign: 'center', fontWeight: rating > 0 ? '600' : '400' }}
             >
               {getRatingLabel(rating)}
             </ThemedText>
@@ -323,15 +322,15 @@ export default function ReviewForm({
                   backgroundColor: wouldRecommend === true ? colors.successBg : 'transparent',
                 }}
               >
-                <Ionicons 
-                  name={wouldRecommend === true ? "checkmark-circle" : "checkmark-circle-outline"} 
-                  size={24} 
-                  color={wouldRecommend === true ? colors.success : colors.textMuted} 
+                <Ionicons
+                  name={wouldRecommend === true ? "checkmark-circle" : "checkmark-circle-outline"}
+                  size={24}
+                  color={wouldRecommend === true ? colors.success : colors.textMuted}
                 />
-                <ThemedText 
-                  variant="body" 
-                  weight={wouldRecommend === true ? 'semibold' : 'regular'}
+                <ThemedText
+                  variant="body"
                   color={wouldRecommend === true ? 'success' : 'secondary'}
+                  style={{ fontWeight: wouldRecommend === true ? '600' : '400' }}
                 >
                   Yes
                 </ThemedText>
@@ -351,15 +350,15 @@ export default function ReviewForm({
                   backgroundColor: wouldRecommend === false ? colors.errorBg : 'transparent',
                 }}
               >
-                <Ionicons 
-                  name={wouldRecommend === false ? "close-circle" : "close-circle-outline"} 
-                  size={24} 
-                  color={wouldRecommend === false ? colors.error : colors.textMuted} 
+                <Ionicons
+                  name={wouldRecommend === false ? "close-circle" : "close-circle-outline"}
+                  size={24}
+                  color={wouldRecommend === false ? colors.error : colors.textMuted}
                 />
-                <ThemedText 
-                  variant="body" 
-                  weight={wouldRecommend === false ? 'semibold' : 'regular'}
+                <ThemedText
+                  variant="body"
                   color={wouldRecommend === false ? 'error' : 'secondary'}
+                  style={{ fontWeight: wouldRecommend === false ? '600' : '400' }}
                 >
                   No
                 </ThemedText>
@@ -394,7 +393,7 @@ export default function ReviewForm({
 
         <Animated.View entering={FadeInDown.delay(600).duration(300)}>
           <AppButton
-            label={submitting ? 'Submitting...' : 'Submit Review'}
+            title={submitting ? 'Submitting...' : 'Submit Review'}
             variant="primary"
             size="lg"
             onPress={handleSubmit}

@@ -52,7 +52,7 @@ export default function ContactSupportScreen() {
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: MAX_PHOTOS - screenshots.length,
       quality: 0.8,

@@ -8,6 +8,10 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
+  TouchableOpacity,
+  Modal,
+  Dimensions,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
@@ -153,12 +157,15 @@ function MessageBubble({
   message,
   isFromUser,
   index,
+  onImagePress,
 }: {
   message: ThreadMessage;
   isFromUser: boolean;
   index: number;
+  onImagePress?: (url: string) => void;
 }) {
   const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const hasImage = message.attachment_url && message.attachment_type === 'image';
 
   return (
     <Animated.View
@@ -188,14 +195,33 @@ function MessageBubble({
         borderBottomRightRadius: isFromUser ? radius.xs : radius.xl,
         borderBottomLeftRadius: isFromUser ? radius.xl : radius.xs,
         ...shadows.sm,
+        overflow: 'hidden',
       }}>
-        <Text style={{
-          fontSize: 15,
-          color: isFromUser ? colors.white : colors.textPrimary,
-          lineHeight: 22,
-        }}>
-          {message.body}
-        </Text>
+        {hasImage && (
+          <TouchableOpacity
+            onPress={() => onImagePress?.(message.attachment_url!)}
+            style={{ marginBottom: message.body ? spacing.sm : 0 }}
+          >
+            <Image
+              source={{ uri: message.attachment_url! }}
+              style={{
+                width: 200,
+                height: 150,
+                borderRadius: radius.md,
+              }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+        )}
+        {message.body ? (
+          <Text style={{
+            fontSize: 15,
+            color: isFromUser ? colors.white : colors.textPrimary,
+            lineHeight: 22,
+          }}>
+            {message.body}
+          </Text>
+        ) : null}
       </View>
       <Text style={{
         fontSize: 11,
@@ -271,6 +297,7 @@ export function SupportChatScreen() {
   const [inputText, setInputText] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>(isNewThread ? null : threadId || null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const sendScale = useSharedValue(1);
   const sendAnimatedStyle = useAnimatedStyle(() => ({
@@ -421,6 +448,7 @@ export function SupportChatScreen() {
                   message={msg}
                   isFromUser={msg.sender_type === "user"}
                   index={idx}
+                  onImagePress={setPreviewImage}
                 />
               ))}
             </View>
@@ -504,6 +532,45 @@ export function SupportChatScreen() {
           </AnimatedPressable>
         </View>
       </Animated.View>
+
+      <Modal
+        visible={!!previewImage}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.9)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+          onPress={() => setPreviewImage(null)}
+        >
+          <TouchableOpacity
+            style={{
+              position: 'absolute',
+              top: insets.top + 20,
+              right: 20,
+              zIndex: 10,
+            }}
+            onPress={() => setPreviewImage(null)}
+          >
+            <Ionicons name="close" size={32} color="#fff" />
+          </TouchableOpacity>
+          {previewImage && (
+            <Image
+              source={{ uri: previewImage }}
+              style={{
+                width: Dimensions.get('window').width - 40,
+                height: Dimensions.get('window').height * 0.7,
+              }}
+              resizeMode="contain"
+            />
+          )}
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }

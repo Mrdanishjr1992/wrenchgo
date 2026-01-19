@@ -440,8 +440,9 @@ export function MessagesListView({ role }: MessagesListViewProps) {
             .from("messages")
             .select("*", { count: "exact", head: true })
             .eq("job_id", job.id)
-            .neq("sender_id", userId)
-            .is("read_at", null);
+            .eq("recipient_id", userId)
+            .is("read_at", null)
+            .is("deleted_at", null);
 
           const otherPartyId = isCustomer ? job.accepted_mechanic_id : job.customer_id;
 

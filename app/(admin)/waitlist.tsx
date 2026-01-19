@@ -1,203 +1,197 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, ScrollView, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
-import { adminGetWaitlistHeatmap, WaitlistHeatmap } from '../../src/lib/admin';
+import { adminListWaitlist, AdminWaitlistItem, formatDateTime } from '../../src/lib/admin';
+import { useAdminScope, useAdminFilters, useAdminHubs } from '../../src/lib/admin-filters';
+import { 
+  AdminHeader, 
+  AdminSearchBar,
+  HubSelector,
+  AdminLoadingState, 
+  AdminEmptyState, 
+  AdminErrorState,
+  AdminPagination,
+} from '../../components/admin/AdminFilterComponents';
+import { ThemedText } from '../../src/ui/components/ThemedText';
+import { ThemedCard } from '../../src/ui/components/ThemedCard';
 
 export default function AdminWaitlistScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [heatmap, setHeatmap] = useState<WaitlistHeatmap | null>(null);
+  const scope = useAdminScope();
+  const { hubs, loading: hubsLoading } = useAdminHubs();
+  const { filters, updateFilter, currentPage, nextPage, prevPage } = useAdminFilters();
+  
+  const [items, setItems] = useState<AdminWaitlistItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [periodDays, setPeriodDays] = useState(30);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [hasMore, setHasMore] = useState(false);
 
-  const fetchHeatmap = useCallback(async () => {
-    setLoading(true);
+  const fetchItems = useCallback(async () => {
     try {
-      const data = await adminGetWaitlistHeatmap(undefined, periodDays);
-      setHeatmap(data);
-    } catch (error) {
-      console.error('Error fetching waitlist:', error);
+      setError(null);
+      const data = await adminListWaitlist({
+        hubId: filters.hubId || undefined,
+        search: filters.search || undefined,
+        dateFrom: filters.dateFrom?.toISOString(),
+        dateTo: filters.dateTo?.toISOString(),
+        limit: filters.limit,
+        offset: filters.offset,
+      });
+      setItems(data);
+      setHasMore(data.length === filters.limit);
+    } catch (err: any) {
+      console.error('Error fetching waitlist:', err);
+      setError(err?.message ?? 'Failed to load waitlist');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [periodDays]);
+  }, [filters]);
 
-  useFocusEffect(useCallback(() => { fetchHeatmap(); }, [fetchHeatmap]));
+  useFocusEffect(useCallback(() => { 
+    if (!scope.loading) fetchItems(); 
+  }, [fetchItems, scope.loading]));
 
-  if (loading) {
+  const onRefresh = () => { setRefreshing(true); fetchItems(); };
+  
+  const handleSearch = () => {
+    updateFilter('search', searchInput);
+    setLoading(true);
+  };
+
+  if (scope.loading || loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top }}>
-        <ActivityIndicator size="large" color={colors.accent} />
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Waitlist" onBack={() => router.back()} />
+        <AdminLoadingState />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Waitlist" onBack={() => router.back()} onRefresh={onRefresh} />
+        <AdminErrorState message={error} onRetry={fetchItems} />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.surface,
-      }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1 }}>Waitlist Demand</Text>
-        <TouchableOpacity onPress={fetchHeatmap}>
-          <Ionicons name="refresh" size={24} color={colors.accent} />
-        </TouchableOpacity>
+      <AdminHeader title="Waitlist" onBack={() => router.back()} onRefresh={onRefresh} />
+
+      <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md }}>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md, alignItems: 'center' }}>
+          <ThemedText variant="title">{items.length}</ThemedText>
+          <ThemedText variant="caption">Total</ThemedText>
+        </View>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md, alignItems: 'center' }}>
+          <ThemedText variant="title" style={{ color: '#10B981' }}>
+            {items.filter(i => i.converted_at).length}
+          </ThemedText>
+          <ThemedText variant="caption">Converted</ThemedText>
+        </View>
       </View>
 
-      <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.sm }}>
-          Time Period
-        </Text>
-      </View>
-      <View style={{ flexDirection: 'row', paddingHorizontal: spacing.md, paddingBottom: spacing.md, gap: spacing.sm }}>
-        {[14, 30, 60, 90].map(days => (
-          <TouchableOpacity
-            key={days}
-            onPress={() => setPeriodDays(days)}
-            style={{
-              flex: 1,
-              paddingVertical: spacing.sm,
-              borderRadius: 20,
-              backgroundColor: periodDays === days ? colors.accent : colors.surface,
-              borderWidth: 1,
-              borderColor: periodDays === days ? colors.accent : colors.border,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: periodDays === days ? '#fff' : colors.textSecondary, fontWeight: '600' }}>{days}d</Text>
-          </TouchableOpacity>
-        ))}
+      <View style={{ paddingHorizontal: spacing.md, gap: spacing.md }}>
+        <AdminSearchBar
+          value={searchInput}
+          onChangeText={setSearchInput}
+          onSubmit={handleSearch}
+          placeholder="Search by email or zip..."
+        />
+        
+        {scope.isSuper && !hubsLoading && (
+          <HubSelector
+            hubs={hubs}
+            selectedHubId={filters.hubId}
+            onSelect={(id) => { updateFilter('hubId', id); setLoading(true); }}
+          />
+        )}
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.lg }}>
-        {heatmap && (
-          <>
-            {/* Total */}
-            <View style={{ 
-              backgroundColor: colors.surface, 
-              borderRadius: 16, 
-              padding: spacing.lg, 
-              marginBottom: spacing.lg,
-              alignItems: 'center',
-            }}>
-              <Text style={{ fontSize: 48, fontWeight: '900', color: colors.accent }}>{heatmap.total}</Text>
-              <Text style={{ fontSize: 14, color: colors.textSecondary }}>Total Signups ({periodDays} days)</Text>
-            </View>
-
-            {/* By User Type */}
-            {heatmap.by_user_type && heatmap.by_user_type.length > 0 && (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.sm }}>By User Type</Text>
-                <View style={{ flexDirection: 'row', marginBottom: spacing.lg, gap: spacing.sm }}>
-                  {heatmap.by_user_type.map((item, i) => (
-                    <View key={i} style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, alignItems: 'center' }}>
-                      <Text style={{ fontSize: 24, fontWeight: '900', color: item.user_type === 'customer' ? '#3B82F6' : '#10B981' }}>{item.count}</Text>
-                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4, textTransform: 'capitalize' }}>{item.user_type}s</Text>
+      <ScrollView 
+        style={{ flex: 1, marginTop: spacing.md }} 
+        contentContainerStyle={{ padding: spacing.md, paddingTop: 0 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        {items.length === 0 ? (
+          <AdminEmptyState 
+            icon="people-outline" 
+            title="No waitlist entries" 
+          />
+        ) : (
+          items.map(item => (
+            <ThemedCard key={item.id} style={{ padding: spacing.md, marginBottom: spacing.md }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <View style={{ flex: 1 }}>
+                  <ThemedText variant="body" style={{ fontWeight: '600' }}>{item.email}</ThemedText>
+                  {item.phone && (
+                    <ThemedText variant="caption" style={{ marginTop: 2 }}>{item.phone}</ThemedText>
+                  )}
+                </View>
+                <View style={{ flexDirection: 'row', gap: 4 }}>
+                  {item.user_type && (
+                    <View style={{ backgroundColor: item.user_type === 'mechanic' ? '#3B82F620' : '#10B98120', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <ThemedText variant="caption" style={{ color: item.user_type === 'mechanic' ? '#3B82F6' : '#10B981', fontSize: 10 }}>
+                        {item.user_type.toUpperCase()}
+                      </ThemedText>
                     </View>
-                  ))}
+                  )}
+                  {item.converted_at && (
+                    <View style={{ backgroundColor: '#10B98120', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <ThemedText variant="caption" style={{ color: '#10B981', fontSize: 10 }}>CONVERTED</ThemedText>
+                    </View>
+                  )}
+                  {item.invited_at && !item.converted_at && (
+                    <View style={{ backgroundColor: '#F59E0B20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                      <ThemedText variant="caption" style={{ color: '#F59E0B', fontSize: 10 }}>INVITED</ThemedText>
+                    </View>
+                  )}
                 </View>
-              </>
-            )}
-
-            {/* By Hub */}
-            {heatmap.by_hub && heatmap.by_hub.length > 0 && (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.sm }}>By Nearest Hub</Text>
-                <View style={{ backgroundColor: colors.surface, borderRadius: 12, marginBottom: spacing.lg }}>
-                  {heatmap.by_hub.map((item, i) => (
-                    <TouchableOpacity 
-                      key={i} 
-                      onPress={() => item.hub_id && router.push(`/(admin)/hubs/${item.hub_id}`)}
-                      style={{ 
-                        flexDirection: 'row', 
-                        justifyContent: 'space-between', 
-                        alignItems: 'center',
-                        padding: spacing.md,
-                        borderBottomWidth: i < heatmap.by_hub.length - 1 ? 1 : 0,
-                        borderBottomColor: colors.border,
-                      }}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{item.hub_name || 'No Hub'}</Text>
-                      </View>
-                      <View style={{ 
-                        backgroundColor: colors.accent + '20', 
-                        paddingHorizontal: 12, 
-                        paddingVertical: 4, 
-                        borderRadius: 12,
-                      }}>
-                        <Text style={{ color: colors.accent, fontWeight: '700' }}>{item.count}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
+              </View>
+              
+              <View style={{ flexDirection: 'row', marginTop: spacing.sm, gap: spacing.lg }}>
+                <View>
+                  <ThemedText variant="caption" style={{ fontSize: 11 }}>ZIP</ThemedText>
+                  <ThemedText variant="caption">{item.zip}</ThemedText>
                 </View>
-              </>
-            )}
-
-            {/* By Zip */}
-            {heatmap.by_zip && heatmap.by_zip.length > 0 && (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.sm }}>Top Zip Codes</Text>
-                <View style={{ backgroundColor: colors.surface, borderRadius: 12 }}>
-                  {heatmap.by_zip.slice(0, 15).map((item, i) => {
-                    const maxCount = heatmap.by_zip[0]?.count || 1;
-                    const barWidth = Math.max((item.count / maxCount) * 100, 5);
-                    
-                    return (
-                      <View 
-                        key={i} 
-                        style={{ 
-                          padding: spacing.md,
-                          borderBottomWidth: i < Math.min(heatmap.by_zip.length, 15) - 1 ? 1 : 0,
-                          borderBottomColor: colors.border,
-                        }}
-                      >
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-                          <View>
-                            <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{item.zip}</Text>
-                            {(item.city || item.state) && (
-                              <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                                {[item.city, item.state].filter(Boolean).join(', ')}
-                              </Text>
-                            )}
-                          </View>
-                          <Text style={{ color: colors.textSecondary }}>{item.count} signups</Text>
-                        </View>
-                        <View style={{ 
-                          height: 6, 
-                          backgroundColor: colors.border, 
-                          borderRadius: 3,
-                          overflow: 'hidden',
-                        }}>
-                          <View style={{ 
-                            width: `${barWidth}%`, 
-                            height: '100%', 
-                            backgroundColor: colors.accent,
-                            borderRadius: 3,
-                          }} />
-                        </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-
-            {heatmap.total === 0 && (
-              <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: spacing.xl }}>No waitlist signups in this period</Text>
-            )}
-          </>
+                {item.distance_miles != null && (
+                  <View>
+                    <ThemedText variant="caption" style={{ fontSize: 11 }}>DISTANCE</ThemedText>
+                    <ThemedText variant="caption">{item.distance_miles.toFixed(1)} mi</ThemedText>
+                  </View>
+                )}
+                {item.ring != null && (
+                  <View>
+                    <ThemedText variant="caption" style={{ fontSize: 11 }}>RING</ThemedText>
+                    <ThemedText variant="caption">{item.ring}</ThemedText>
+                  </View>
+                )}
+              </View>
+              
+              <ThemedText variant="caption" style={{ marginTop: spacing.sm, fontSize: 11 }}>
+                Joined {formatDateTime(item.created_at)}
+              </ThemedText>
+            </ThemedCard>
+          ))
+        )}
+        
+        {items.length > 0 && (
+          <AdminPagination
+            currentPage={currentPage}
+            hasMore={hasMore}
+            onPrevious={prevPage}
+            onNext={nextPage}
+            loading={loading}
+          />
         )}
       </ScrollView>
     </View>

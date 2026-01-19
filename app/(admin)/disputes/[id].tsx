@@ -1,125 +1,122 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Alert,
-  ActivityIndicator,
-  Modal,
-} from 'react-native';
-import { router, useLocalSearchParams } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
-import {
-  adminGetDisputeDetail,
-  adminResolveDispute,
-  DisputeDetail,
-  formatSlaRemaining,
-} from '../../../src/lib/disputes';
-import {
-  DISPUTE_STATUS_LABELS,
-  DISPUTE_STATUS_COLORS,
-  DISPUTE_CATEGORY_LABELS,
-  DISPUTE_RESOLUTION_TYPE,
-  DISPUTE_RESOLUTION_LABELS,
-  DISPUTE_PRIORITY_LABELS,
-  DISPUTE_PRIORITY_COLORS,
-  DisputeStatus,
-  DisputePriority,
-  DisputeResolutionType,
-} from '../../../src/constants/disputes';
-import { AdminEvidenceGallery } from '../../../components/media/AdminEvidenceGallery';
+import { adminGetDisputeDetail, formatDateTime } from '../../../src/lib/admin';
 import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 
+const STATUS_COLORS: Record<string, string> = {
+  open: '#F59E0B',
+  under_review: '#3B82F6',
+  evidence_requested: '#8B5CF6',
+  resolved_customer: '#10B981',
+  resolved_mechanic: '#10B981',
+  resolved_split: '#10B981',
+  closed: '#6B7280',
+};
+
+interface DisputeDetail {
+  dispute: {
+    id: string;
+    job_id: string;
+    contract_id: string | null;
+    filed_by: string;
+    filed_by_role: string;
+    filed_against: string;
+    status: string;
+    category: string;
+    description: string;
+    desired_resolution: string | null;
+    evidence_urls: string[] | null;
+    resolved_at: string | null;
+    resolved_by: string | null;
+    resolution_type: string | null;
+    resolution_notes: string | null;
+    customer_refund_cents: number | null;
+    mechanic_adjustment_cents: number | null;
+    internal_notes: string | null;
+    assigned_to: string | null;
+    priority: string | null;
+    response_deadline: string | null;
+    evidence_deadline: string | null;
+    created_at: string;
+    updated_at: string;
+  };
+  job: {
+    id: string;
+    title: string;
+    status: string;
+    customer_id: string;
+    accepted_mechanic_id: string | null;
+  } | null;
+}
+
 export default function AdminDisputeDetailScreen() {
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { colors, text } = useTheme();
   const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<DisputeDetail | null>(null);
   const [loading, setLoading] = useState(true);
-  const [resolving, setResolving] = useState(false);
-  const [showResolveModal, setShowResolveModal] = useState(false);
-  const [resolutionType, setResolutionType] = useState<DisputeResolutionType>(DISPUTE_RESOLUTION_TYPE.NO_ACTION);
-  const [resolutionNotes, setResolutionNotes] = useState('');
-  const [refundAmount, setRefundAmount] = useState('0');
-  const [messageRecipient, setMessageRecipient] = useState<{ id: string; name: string; role: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [messageTarget, setMessageTarget] = useState<'filer' | 'defendant' | null>(null);
 
-  useEffect(() => {
-    fetchDetail();
-  }, [id]);
-
-  const fetchDetail = async () => {
-    if (!id) return;
-    try {
-      const data = await adminGetDisputeDetail(id);
-      setDetail(data);
-    } catch (error) {
-      console.error('Error fetching dispute detail:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleResolve = async () => {
-    if (!resolutionNotes.trim()) {
-      Alert.alert('Error', 'Please provide resolution notes');
-      return;
-    }
-
-    setResolving(true);
-    try {
-      const refundCents = Math.round(parseFloat(refundAmount || '0') * 100);
-      const result = await adminResolveDispute(
-        id!,
-        resolutionType,
-        resolutionNotes,
-        refundCents,
-        0
-      );
-
-      if (result.success) {
-        Alert.alert('Success', 'Dispute resolved successfully', [
-          { text: 'OK', onPress: () => router.back() }
-        ]);
-      } else {
-        Alert.alert('Error', result.error || 'Failed to resolve dispute');
+  useFocusEffect(
+    useCallback(() => {
+      if (id) {
+        setError(null);
+        adminGetDisputeDetail(id)
+          .then(setDetail)
+          .catch((err) => {
+            console.error('Error:', err);
+            setError(err?.message || 'Failed to load dispute');
+          })
+          .finally(() => setLoading(false));
       }
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    } finally {
-      setResolving(false);
-      setShowResolveModal(false);
-    }
-  };
+    }, [id])
+  );
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
-  if (!detail) {
+  if (error || !detail) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: colors.textSecondary }}>Dispute not found</Text>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <Text style={{ color: colors.textSecondary }}>{error || 'Dispute not found'}</Text>
+        <TouchableOpacity onPress={() => router.back()} style={{ marginTop: spacing.lg }}>
+          <Text style={{ color: colors.accent }}>Go Back</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
-  const dispute = detail.dispute;
-  const statusColor = DISPUTE_STATUS_COLORS[dispute.status as DisputeStatus] || colors.textSecondary;
-  const priorityColor = DISPUTE_PRIORITY_COLORS[dispute.priority as DisputePriority] || colors.textSecondary;
-  const isResolved = ['resolved_customer', 'resolved_mechanic', 'resolved_split', 'closed'].includes(dispute.status);
+  const { dispute, job } = detail;
+
+  const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
+    <View style={{ marginBottom: spacing.lg }}>
+      <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, textTransform: 'uppercase', marginBottom: spacing.sm }}>{title}</Text>
+      {children}
+    </View>
+  );
+
+  const InfoRow = ({ label, value }: { label: string; value: string | null | undefined }) => (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6 }}>
+      <Text style={{ color: colors.textSecondary, fontSize: 14 }}>{label}</Text>
+      <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '500', flex: 1, textAlign: 'right' }} numberOfLines={2}>
+        {value || '-'}
+      </Text>
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
-      {/* Header */}
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -131,429 +128,140 @@ export default function AdminDisputeDetailScreen() {
         <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary, flex: 1 }}>Dispute Detail</Text>
-      </View>
-
-      <ScrollView style={{ flex: 1 }}>
-        {/* Status Banner */}
-        <View style={{
-          backgroundColor: statusColor + '20',
-          padding: spacing.md,
-          flexDirection: 'row',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <View style={{ backgroundColor: statusColor, width: 8, height: 8, borderRadius: 4 }} />
-            <Text style={{ color: statusColor, fontWeight: '600' }}>
-              {DISPUTE_STATUS_LABELS[dispute.status as DisputeStatus]}
-            </Text>
-          </View>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>Dispute Details</Text>
           <View style={{
-            backgroundColor: priorityColor + '30',
-            paddingHorizontal: spacing.sm,
+            paddingHorizontal: 8,
             paddingVertical: 2,
             borderRadius: 4,
+            backgroundColor: (STATUS_COLORS[dispute.status] || colors.textSecondary) + '20',
+            alignSelf: 'flex-start',
+            marginTop: 4,
           }}>
-            <Text style={{ color: priorityColor, fontSize: 12, fontWeight: '600' }}>
-              {DISPUTE_PRIORITY_LABELS[dispute.priority as DisputePriority]}
+            <Text style={{ fontSize: 11, color: STATUS_COLORS[dispute.status] || colors.textSecondary, fontWeight: '600' }}>
+              {dispute.status.toUpperCase().replace(/_/g, ' ')}
             </Text>
           </View>
         </View>
+      </View>
 
-        {/* SLA Warning */}
-        {!isResolved && dispute.sla_breached && (
-          <View style={{ backgroundColor: '#EF444420', padding: spacing.md }}>
-            <Text style={{ color: '#EF4444', fontWeight: '600' }}>
-              SLA BREACHED - Mechanic did not respond in time
-            </Text>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: spacing.lg }}>
+        <Section title="Dispute Info">
+          <View style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}>
+            <InfoRow label="Category" value={dispute.category} />
+            <InfoRow label="Priority" value={dispute.priority} />
+            <InfoRow label="Filed By" value={dispute.filed_by_role} />
+            <InfoRow label="Created" value={formatDateTime(dispute.created_at)} />
+            {dispute.response_deadline && <InfoRow label="Response Deadline" value={formatDateTime(dispute.response_deadline)} />}
+            {dispute.evidence_deadline && <InfoRow label="Evidence Deadline" value={formatDateTime(dispute.evidence_deadline)} />}
+            {dispute.assigned_to && <InfoRow label="Assigned To" value={dispute.assigned_to} />}
           </View>
+        </Section>
+
+        <Section title="Message Parties">
+          <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+            <TouchableOpacity
+              onPress={() => setMessageTarget('filer')}
+              style={{
+                flex: 1,
+                backgroundColor: colors.accent,
+                padding: spacing.md,
+                borderRadius: 8,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={16} color="#FFFFFF" />
+              <Text style={{ color: '#FFFFFF', fontWeight: '600', marginLeft: 6 }}>Filer</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setMessageTarget('defendant')}
+              style={{
+                flex: 1,
+                backgroundColor: colors.surface,
+                padding: spacing.md,
+                borderRadius: 8,
+                borderWidth: 1,
+                borderColor: colors.border,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Ionicons name="chatbubble-outline" size={16} color={colors.textPrimary} />
+              <Text style={{ color: colors.textPrimary, fontWeight: '600', marginLeft: 6 }}>Defendant</Text>
+            </TouchableOpacity>
+          </View>
+        </Section>
+
+        <Section title="Description">
+          <View style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}>
+            <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{dispute.description}</Text>
+          </View>
+        </Section>
+
+        {dispute.desired_resolution && (
+          <Section title="Desired Resolution">
+            <View style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{dispute.desired_resolution}</Text>
+            </View>
+          </Section>
         )}
 
-        {/* Main Info */}
-        <View style={{ padding: spacing.md }}>
-          {/* Job Info */}
-          <View style={{
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Job</Text>
-            <Text style={{ ...text.body, fontWeight: '600' }}>{detail.job?.title || 'Unknown Job'}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: 4 }}>
-              Status: {detail.job?.status} | Created: {new Date(detail.job?.created_at).toLocaleDateString()}
-            </Text>
-          </View>
-
-          {/* Parties */}
-          <View style={{
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}>
-            <View style={{ flexDirection: 'row', marginBottom: spacing.md }}>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Filed By</Text>
-                <Text style={{ ...text.body, fontWeight: '600' }}>{detail.customer?.full_name}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Customer</Text>
-                {detail.customer && (
-                  <TouchableOpacity
-                    onPress={() => setMessageRecipient({ id: detail.customer!.id, name: detail.customer!.full_name, role: 'Customer' })}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginTop: spacing.sm,
-                      backgroundColor: '#8B5CF6',
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      alignSelf: 'flex-start',
-                    }}
-                  >
-                    <Ionicons name="chatbubble-outline" size={12} color="#fff" />
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>Message</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary }}>Filed Against</Text>
-                <Text style={{ ...text.body, fontWeight: '600' }}>{detail.mechanic?.full_name}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Mechanic</Text>
-                {detail.mechanic && (
-                  <TouchableOpacity
-                    onPress={() => setMessageRecipient({ id: detail.mechanic!.id, name: detail.mechanic!.full_name, role: 'Mechanic' })}
-                    style={{
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      marginTop: spacing.sm,
-                      backgroundColor: '#8B5CF6',
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: 4,
-                      borderRadius: 6,
-                      alignSelf: 'flex-start',
-                    }}
-                  >
-                    <Ionicons name="chatbubble-outline" size={12} color="#fff" />
-                    <Text style={{ color: '#fff', fontSize: 11, fontWeight: '600', marginLeft: 4 }}>Message</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          </View>
-
-          {/* Dispute Details */}
-          <View style={{
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}>
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Category</Text>
-            <Text style={{ ...text.body, marginBottom: spacing.md }}>
-              {DISPUTE_CATEGORY_LABELS[dispute.category as keyof typeof DISPUTE_CATEGORY_LABELS] || dispute.category}
-            </Text>
-
-            <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Description</Text>
-            <Text style={{ ...text.body, marginBottom: spacing.md }}>{dispute.description}</Text>
-
-            {dispute.desired_resolution && (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Desired Resolution</Text>
-                <Text style={{ ...text.body, marginBottom: spacing.md }}>{dispute.desired_resolution}</Text>
-              </>
-            )}
-
-            {!isResolved && dispute.response_deadline && !dispute.mechanic_response && (
-              <>
-                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Response Deadline</Text>
-                <Text style={{ ...text.body, color: dispute.sla_breached ? '#EF4444' : colors.textPrimary }}>
-                  {formatSlaRemaining(dispute.response_deadline)}
-                </Text>
-              </>
-            )}
-          </View>
-
-          {/* Mechanic Response */}
-          {dispute.mechanic_response && (
-            <View style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-              borderLeftWidth: 3,
-              borderLeftColor: '#10B981',
-            }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Mechanic Response</Text>
-              <Text style={{ ...text.body }}>{dispute.mechanic_response}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: spacing.sm }}>
-                Responded: {new Date(dispute.mechanic_responded_at!).toLocaleString()}
-                {dispute.sla_breached && ' (After deadline)'}
-              </Text>
-            </View>
-          )}
-
-          {/* Resolution (if resolved) */}
-          {isResolved && dispute.resolution_type && (
-            <View style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-              borderLeftWidth: 3,
-              borderLeftColor: '#10B981',
-            }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: 4 }}>Resolution</Text>
-              <Text style={{ ...text.body, fontWeight: '600', marginBottom: 4 }}>
-                {DISPUTE_RESOLUTION_LABELS[dispute.resolution_type as DisputeResolutionType]}
-              </Text>
-              {dispute.resolution_notes && (
-                <Text style={{ ...text.body }}>{dispute.resolution_notes}</Text>
-              )}
-              {(dispute.customer_refund_cents ?? 0) > 0 && (
-                <Text style={{ color: '#10B981', marginTop: spacing.sm }}>
-                  Customer Refund: ${(dispute.customer_refund_cents! / 100).toFixed(2)}
-                </Text>
-              )}
-            </View>
-          )}
-
-          {/* Evidence */}
-          {dispute.evidence_urls && dispute.evidence_urls.length > 0 && (
-            <View style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-            }}>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.sm }}>
-                Evidence ({dispute.evidence_urls.length} files)
-              </Text>
-              {dispute.evidence_urls.map((url, i) => (
-                <TouchableOpacity key={i} style={{ marginBottom: spacing.xs }}>
-                  <Text style={{ color: colors.accent }}>{url}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {/* Timeline */}
-          <View style={{
-            backgroundColor: colors.surface,
-            borderRadius: 12,
-            padding: spacing.md,
-            marginBottom: spacing.md,
-          }}>
-            <Text style={{ ...text.body, fontWeight: '600', marginBottom: spacing.md }}>Timeline</Text>
-            {(detail.events || []).slice(0, 10).map((event: any, i: number) => (
-              <View key={i} style={{
-                flexDirection: 'row',
-                marginBottom: spacing.sm,
-                paddingLeft: spacing.md,
-                borderLeftWidth: 2,
-                borderLeftColor: colors.border,
-              }}>
+        {job && (
+          <Section title="Related Job">
+            <TouchableOpacity
+              onPress={() => router.push(`/(admin)/jobs/${job.id}`)}
+              style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}
+            >
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ ...text.body, fontSize: 13 }}>{event.event_type || event.title || 'Event'}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-                    {new Date(event.created_at).toLocaleString()}
-                  </Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{job.title}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{job.status}</Text>
                 </View>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
               </View>
-            ))}
-          </View>
+            </TouchableOpacity>
+          </Section>
+        )}
 
-          {/* Recent Messages */}
-          {detail.messages && detail.messages.length > 0 && (
-            <View style={{
-              backgroundColor: colors.surface,
-              borderRadius: 12,
-              padding: spacing.md,
-              marginBottom: spacing.md,
-            }}>
-              <Text style={{ ...text.body, fontWeight: '600', marginBottom: spacing.md }}>
-                Recent Messages ({detail.messages.length})
-              </Text>
-              {detail.messages.slice(0, 5).map((msg: any, i: number) => (
-                <View key={i} style={{
-                  padding: spacing.sm,
-                  backgroundColor: colors.background,
-                  borderRadius: 8,
-                  marginBottom: spacing.sm,
-                }}>
-                  <Text style={{ ...text.body, fontSize: 13 }}>{msg.body}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 4 }}>
-                    {new Date(msg.created_at).toLocaleString()}
-                  </Text>
+        {dispute.resolved_at && (
+          <Section title="Resolution">
+            <View style={{ backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md }}>
+              <InfoRow label="Resolved At" value={formatDateTime(dispute.resolved_at)} />
+              <InfoRow label="Resolution Type" value={dispute.resolution_type} />
+              {dispute.resolution_notes && (
+                <View style={{ marginTop: spacing.sm }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Notes</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, marginTop: 2 }}>{dispute.resolution_notes}</Text>
                 </View>
-              ))}
+              )}
             </View>
-          )}
-        </View>
+          </Section>
+        )}
+
+        {dispute.internal_notes && (
+          <Section title="Internal Notes">
+            <View style={{ backgroundColor: '#F59E0B10', borderRadius: 8, padding: spacing.md }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 14 }}>{dispute.internal_notes}</Text>
+            </View>
+          </Section>
+        )}
       </ScrollView>
 
-      {/* Action Button */}
-      {!isResolved && (
-        <View style={{
-          padding: spacing.md,
-          borderTopWidth: 1,
-          borderTopColor: colors.border,
-          backgroundColor: colors.surface,
-        }}>
-          <TouchableOpacity
-            onPress={() => setShowResolveModal(true)}
-            style={{
-              backgroundColor: colors.accent,
-              padding: spacing.md,
-              borderRadius: 8,
-              alignItems: 'center',
-            }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '600' }}>Resolve Dispute</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      {/* Resolve Modal */}
-      <Modal visible={showResolveModal} animationType="slide" transparent>
-        <View style={{
-          flex: 1,
-          backgroundColor: 'rgba(0,0,0,0.5)',
-          justifyContent: 'flex-end',
-        }}>
-          <View style={{
-            backgroundColor: colors.surface,
-            borderTopLeftRadius: 20,
-            borderTopRightRadius: 20,
-            padding: spacing.lg,
-            maxHeight: '80%',
-          }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg }}>
-              <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>Resolve Dispute</Text>
-              <TouchableOpacity onPress={() => setShowResolveModal(false)}>
-                <Ionicons name="close" size={24} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView>
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.sm }}>
-                Resolution Type
-              </Text>
-              {Object.entries(DISPUTE_RESOLUTION_LABELS).map(([key, label]) => (
-                <TouchableOpacity
-                  key={key}
-                  onPress={() => setResolutionType(key as DisputeResolutionType)}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    padding: spacing.md,
-                    backgroundColor: resolutionType === key ? colors.accent + '20' : colors.background,
-                    borderRadius: 8,
-                    marginBottom: spacing.sm,
-                  }}
-                >
-                  <View style={{
-                    width: 20,
-                    height: 20,
-                    borderRadius: 10,
-                    borderWidth: 2,
-                    borderColor: resolutionType === key ? colors.accent : colors.border,
-                    marginRight: spacing.md,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                  }}>
-                    {resolutionType === key && (
-                      <View style={{
-                        width: 10,
-                        height: 10,
-                        borderRadius: 5,
-                        backgroundColor: colors.accent,
-                      }} />
-                    )}
-                  </View>
-                  <Text style={{ ...text.body }}>{label}</Text>
-                </TouchableOpacity>
-              ))}
-
-              {(resolutionType === DISPUTE_RESOLUTION_TYPE.PARTIAL_REFUND ||
-                resolutionType === DISPUTE_RESOLUTION_TYPE.FULL_REFUND) && (
-                <>
-                  <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm }}>
-                    Refund Amount ($)
-                  </Text>
-                  <TextInput
-                    value={refundAmount}
-                    onChangeText={setRefundAmount}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                    placeholderTextColor={colors.textSecondary}
-                    style={{
-                      backgroundColor: colors.background,
-                      borderRadius: 8,
-                      padding: spacing.md,
-                      color: colors.textPrimary,
-                      borderWidth: 1,
-                      borderColor: colors.border,
-                    }}
-                  />
-                </>
-              )}
-
-              <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginTop: spacing.md, marginBottom: spacing.sm }}>
-                Resolution Notes (Required)
-              </Text>
-              <TextInput
-                value={resolutionNotes}
-                onChangeText={setResolutionNotes}
-                placeholder="Explain the resolution decision..."
-                placeholderTextColor={colors.textSecondary}
-                multiline
-                numberOfLines={4}
-                style={{
-                  backgroundColor: colors.background,
-                  borderRadius: 8,
-                  padding: spacing.md,
-                  color: colors.textPrimary,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  minHeight: 100,
-                  textAlignVertical: 'top',
-                }}
-              />
-
-              <TouchableOpacity
-                onPress={handleResolve}
-                disabled={resolving || !resolutionNotes.trim()}
-                style={{
-                  backgroundColor: resolving || !resolutionNotes.trim() ? colors.border : colors.accent,
-                  padding: spacing.md,
-                  borderRadius: 8,
-                  alignItems: 'center',
-                  marginTop: spacing.lg,
-                }}
-              >
-                {resolving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={{ color: '#fff', fontWeight: '600' }}>Confirm Resolution</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
-
-      {messageRecipient && (
-        <AdminMessageModal
-          visible={!!messageRecipient}
-          onClose={() => setMessageRecipient(null)}
-          recipient={messageRecipient}
-          relatedJobId={detail?.job?.id}
-          relatedJobTitle={detail?.job?.title}
-          disputeId={id}
-        />
-      )}
+      <AdminMessageModal
+        visible={messageTarget !== null}
+        onClose={() => setMessageTarget(null)}
+        recipient={{
+          id: messageTarget === 'filer' ? dispute.filed_by : dispute.filed_against,
+          name: messageTarget === 'filer' ? 'Dispute Filer' : 'Defendant',
+          role: messageTarget === 'filer' ? dispute.filed_by_role : (dispute.filed_by_role === 'customer' ? 'mechanic' : 'customer'),
+        }}
+        relatedJobId={dispute.job_id}
+        relatedJobTitle={job?.title}
+        disputeId={dispute.id}
+      />
     </View>
   );
 }

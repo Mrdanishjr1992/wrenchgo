@@ -7,7 +7,6 @@ import {
   Pressable,
   Alert,
   Image,
-  StyleSheet,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -518,10 +517,10 @@ export default function CustomerHome() {
           .maybeSingle(),
         supabase
           .from("messages")
-          .select("id, job_id, jobs!inner(customer_id)", { count: "exact", head: true })
-          .eq("jobs.customer_id", customerId)
+          .select("id", { count: "exact", head: true })
+          .eq("recipient_id", customerId)
           .is("read_at", null)
-          .neq("sender_id", customerId),
+          .is("deleted_at", null),
       ]);
 
       if (jobsRes.error) throw jobsRes.error;
@@ -561,7 +560,6 @@ export default function CustomerHome() {
     return <LoadingSkeleton />;
   }
 
-  const greeting = firstName ? `Hey, ${firstName}` : "Welcome back";
   const timeOfDay = new Date().getHours();
   const greetingPrefix = timeOfDay < 12 ? "Good morning" : timeOfDay < 18 ? "Good afternoon" : "Good evening";
 

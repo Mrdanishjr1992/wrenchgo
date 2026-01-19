@@ -1,287 +1,169 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
-} from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
-import { adminGetDisputes, Dispute, formatSlaRemaining, isSlaSlaCritical } from '../../src/lib/disputes';
-import {
-  DISPUTE_STATUS,
-  DISPUTE_STATUS_LABELS,
-  DISPUTE_STATUS_COLORS,
-  DISPUTE_CATEGORY_LABELS,
-  DISPUTE_PRIORITY,
-  DISPUTE_PRIORITY_LABELS,
-  DISPUTE_PRIORITY_COLORS,
-  DisputeStatus,
-  DisputePriority,
-} from '../../src/constants/disputes';
-
-const OPEN_STATUSES: string[] = [DISPUTE_STATUS.OPEN, DISPUTE_STATUS.UNDER_REVIEW, DISPUTE_STATUS.EVIDENCE_REQUESTED];
+import { adminListDisputes, AdminDispute, formatDateTime } from '../../src/lib/admin';
+import { useAdminScope, useAdminFilters, useAdminHubs, DISPUTE_STATUSES } from '../../src/lib/admin-filters';
+import { 
+  AdminHeader, 
+  FilterRow,
+  AdminLoadingState, 
+  AdminEmptyState, 
+  AdminErrorState,
+  AdminPagination,
+  StatusBadge,
+} from '../../components/admin/AdminFilterComponents';
+import { ThemedText } from '../../src/ui/components/ThemedText';
+import { ThemedCard } from '../../src/ui/components/ThemedCard';
 
 export default function AdminDisputesScreen() {
-  const { colors, text, withAlpha } = useTheme();
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [disputes, setDisputes] = useState<Dispute[]>([]);
+  const scope = useAdminScope();
+  const { filters, updateFilter, currentPage, nextPage, prevPage } = useAdminFilters();
+  
+  const [disputes, setDisputes] = useState<AdminDispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
 
   const fetchDisputes = useCallback(async () => {
     try {
-      const data = await adminGetDisputes(statusFilter || undefined);
+      setError(null);
+      const data = await adminListDisputes({
+        status: filters.status || undefined,
+        dateFrom: filters.dateFrom?.toISOString(),
+        dateTo: filters.dateTo?.toISOString(),
+        limit: filters.limit,
+        offset: filters.offset,
+      });
       setDisputes(data);
-    } catch (error) {
-      console.error('Error fetching disputes:', error);
+      setHasMore(data.length === filters.limit);
+    } catch (err: any) {
+      console.error('Error fetching disputes:', err);
+      setError(err?.message ?? 'Failed to load disputes');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusFilter]);
+  }, [filters]);
 
-  useFocusEffect(
-    useCallback(() => {
-      fetchDisputes();
-    }, [fetchDisputes])
-  );
+  useFocusEffect(useCallback(() => { 
+    if (!scope.loading) fetchDisputes(); 
+  }, [fetchDisputes, scope.loading]));
 
-  // Refetch when filters change
-  useEffect(() => {
-    fetchDisputes();
-  }, [statusFilter]);
+  const onRefresh = () => { setRefreshing(true); fetchDisputes(); };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    fetchDisputes();
-  };
+  const openCount = disputes.filter(d => d.status === 'open' || d.status === 'in_review').length;
 
-  const openCount = disputes.filter(d => OPEN_STATUSES.includes(d.status)).length;
-  const slaBreachedCount = disputes.filter(d => d.sla_breached).length;
-  const highPriorityCount = disputes.filter(d => d.priority === DISPUTE_PRIORITY.HIGH && OPEN_STATUSES.includes(d.status)).length;
-
-  const StatusFilterButton = ({ value, label }: { value: string | null; label: string }) => (
-    <TouchableOpacity
-      onPress={() => setStatusFilter(statusFilter === value ? null : value)}
-      style={{
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm,
-        borderRadius: 20,
-        backgroundColor: statusFilter === value ? colors.accent : colors.surface,
-        borderWidth: 1,
-        borderColor: statusFilter === value ? colors.accent : colors.border,
-        marginRight: spacing.sm,
-      }}
-    >
-      <Text style={{ color: statusFilter === value ? colors.white : colors.textSecondary, fontSize: 13 }}>
-        {label}
-      </Text>
-    </TouchableOpacity>
-  );
-
-  const DisputeCard = ({ dispute }: { dispute: Dispute }) => {
-    const statusColor = DISPUTE_STATUS_COLORS[dispute.status as DisputeStatus] || colors.textSecondary;
-    const priorityColor = DISPUTE_PRIORITY_COLORS[dispute.priority as DisputePriority] || colors.textSecondary;
-    const isOpen = OPEN_STATUSES.includes(dispute.status);
-    const slaCritical = isOpen && isSlaSlaCritical(dispute.response_deadline);
-
+  if (scope.loading || loading) {
     return (
-      <TouchableOpacity
-        onPress={() => router.push(`/(admin)/disputes/${dispute.id}`)}
-        style={{
-          backgroundColor: colors.surface,
-          borderRadius: 12,
-          padding: spacing.md,
-          marginBottom: spacing.md,
-          borderWidth: 1,
-          borderColor: dispute.sla_breached ? colors.error : slaCritical ? colors.warning : colors.border,
-        }}
-      >
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <View style={{
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 2,
-              borderRadius: 4,
-              backgroundColor: statusColor + '20'
-            }}>
-              <Text style={{ color: statusColor, fontSize: 11, fontWeight: '600' }}>
-                {DISPUTE_STATUS_LABELS[dispute.status as DisputeStatus]}
-              </Text>
-            </View>
-            <View style={{
-              paddingHorizontal: spacing.sm,
-              paddingVertical: 2,
-              borderRadius: 4,
-              backgroundColor: priorityColor + '20'
-            }}>
-              <Text style={{ color: priorityColor, fontSize: 11, fontWeight: '600' }}>
-                {DISPUTE_PRIORITY_LABELS[dispute.priority as DisputePriority]}
-              </Text>
-            </View>
-            {dispute.sla_breached && (
-              <View style={{
-                paddingHorizontal: spacing.sm,
-                paddingVertical: 2,
-                borderRadius: 4,
-                backgroundColor: withAlpha(colors.error, 0.12)
-              }}>
-                <Text style={{ color: colors.error, fontSize: 11, fontWeight: '600' }}>SLA BREACHED</Text>
-              </View>
-            )}
-          </View>
-          <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-            {new Date(dispute.created_at).toLocaleDateString()}
-          </Text>
-        </View>
-
-        <Text style={{ ...text.body, fontWeight: '600', marginBottom: 4 }} numberOfLines={1}>
-          {dispute.job_title || 'Job'}
-        </Text>
-
-        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: spacing.sm }} numberOfLines={2}>
-          {dispute.description}
-        </Text>
-
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <View>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-              {DISPUTE_CATEGORY_LABELS[dispute.category as keyof typeof DISPUTE_CATEGORY_LABELS] || dispute.category}
-            </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>
-              By: {dispute.filed_by_name || 'Customer'}
-            </Text>
-          </View>
-
-          {isOpen && dispute.response_deadline && !dispute.mechanic_response && (
-            <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{
-                color: slaCritical ? colors.warning : colors.textSecondary,
-                fontSize: 11,
-                fontWeight: slaCritical ? '600' : '400'
-              }}>
-                {formatSlaRemaining(dispute.response_deadline)}
-              </Text>
-            </View>
-          )}
-        </View>
-      </TouchableOpacity>
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Disputes" onBack={() => router.back()} />
+        <AdminLoadingState />
+      </View>
     );
-  };
+  }
 
-  if (loading) {
+  if (scope.error) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
-        <ActivityIndicator size="large" color={colors.accent} />
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Disputes" onBack={() => router.back()} />
+        <AdminErrorState message={scope.error} />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Disputes" onBack={() => router.back()} onRefresh={onRefresh} />
+        <AdminErrorState message={error} onRetry={fetchDisputes} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }}>
-      {/* Header */}
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.surface,
-      }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1 }}>Disputes</Text>
-        <TouchableOpacity onPress={onRefresh}>
-          <Ionicons name="refresh" size={24} color={colors.accent} />
-        </TouchableOpacity>
-      </View>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
+      <AdminHeader title="Disputes" onBack={() => router.back()} onRefresh={onRefresh} />
 
-      {/* Stats */}
-      <View style={{
-        flexDirection: 'row',
-        padding: spacing.md,
-        gap: spacing.sm,
-      }}>
-        <View style={{
-          flex: 1,
-          backgroundColor: colors.surface,
-          borderRadius: 8,
-          padding: spacing.md,
-          alignItems: 'center',
-        }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: colors.accent }}>{openCount}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Open</Text>
+      <View style={{ flexDirection: 'row', padding: spacing.md, gap: spacing.md }}>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md, alignItems: 'center' }}>
+          <ThemedText variant="title" style={{ color: colors.warning }}>{openCount}</ThemedText>
+          <ThemedText variant="caption">Open</ThemedText>
         </View>
-        <View style={{
-          flex: 1,
-          backgroundColor: colors.surface,
-          borderRadius: 8,
-          padding: spacing.md,
-          alignItems: 'center',
-        }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: colors.error }}>{highPriorityCount}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>High Priority</Text>
-        </View>
-        <View style={{
-          flex: 1,
-          backgroundColor: colors.surface,
-          borderRadius: 8,
-          padding: spacing.md,
-          alignItems: 'center',
-        }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: slaBreachedCount > 0 ? colors.error : colors.textSecondary }}>
-            {slaBreachedCount}
-          </Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>SLA Breached</Text>
+        <View style={{ flex: 1, backgroundColor: colors.surface, borderRadius: 8, padding: spacing.md, alignItems: 'center' }}>
+          <ThemedText variant="title">{disputes.length}</ThemedText>
+          <ThemedText variant="caption">Total</ThemedText>
         </View>
       </View>
 
-      {/* Filters */}
-      <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
-        <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textSecondary, marginBottom: spacing.sm }}>
-          Filter by Status
-        </Text>
-      </View>
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        style={{ maxHeight: 50, paddingHorizontal: spacing.md }}
-        contentContainerStyle={{ alignItems: 'center' }}
-      >
-        <StatusFilterButton value={null} label="All" />
-        <StatusFilterButton value="open" label="Open" />
-        <StatusFilterButton value="under_review" label="Under Review" />
-        <StatusFilterButton value="evidence_requested" label="Evidence Req." />
-        <StatusFilterButton value="resolved_customer" label="Resolved" />
-        <StatusFilterButton value="closed" label="Closed" />
-      </ScrollView>
+      <FilterRow
+        label="Status"
+        options={DISPUTE_STATUSES as any}
+        selected={filters.status}
+        onSelect={(v) => { updateFilter('status', v); setLoading(true); }}
+      />
 
-      {/* Disputes List */}
-      <ScrollView
-        style={{ flex: 1, padding: spacing.md }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
-        }
+      <ScrollView 
+        style={{ flex: 1, marginTop: spacing.md }} 
+        contentContainerStyle={{ padding: spacing.md, paddingTop: 0 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {disputes.length === 0 ? (
-          <View style={{ alignItems: 'center', paddingVertical: spacing.xl }}>
-            <Ionicons name="checkmark-circle-outline" size={48} color={colors.textSecondary} />
-            <Text style={{ ...text.body, color: colors.textSecondary, marginTop: spacing.md }}>
-              No disputes found
-            </Text>
-          </View>
+          <AdminEmptyState 
+            icon="alert-circle-outline" 
+            title="No disputes found" 
+          />
         ) : (
-          disputes.map(dispute => <DisputeCard key={dispute.id} dispute={dispute} />)
+          disputes.map(dispute => (
+            <TouchableOpacity
+              key={dispute.id}
+              onPress={() => router.push(`/(admin)/disputes/${dispute.id}`)}
+              style={{ marginBottom: spacing.md }}
+            >
+              <ThemedCard style={{ padding: spacing.md }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+                  <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+                    <StatusBadge status={dispute.status} />
+                    {dispute.priority && <StatusBadge status={dispute.priority} />}
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </View>
+                
+                <ThemedText variant="body" style={{ fontWeight: '600' }} numberOfLines={1}>
+                  {dispute.job_title || 'Job Dispute'}
+                </ThemedText>
+                
+                <ThemedText variant="caption" style={{ marginTop: 4 }}>
+                  Category: {dispute.category}
+                </ThemedText>
+                
+                <ThemedText variant="caption" style={{ marginTop: spacing.sm, fontSize: 11 }}>
+                  Filed by: {dispute.filed_by_role}
+                </ThemedText>
+                
+                <ThemedText variant="caption" style={{ marginTop: 4, fontSize: 11 }}>
+                  {formatDateTime(dispute.created_at)}
+                </ThemedText>
+              </ThemedCard>
+            </TouchableOpacity>
+          ))
         )}
-        <View style={{ height: spacing.xl }} />
+        
+        {disputes.length > 0 && (
+          <AdminPagination
+            currentPage={currentPage}
+            hasMore={hasMore}
+            onPrevious={prevPage}
+            onNext={nextPage}
+            loading={loading}
+          />
+        )}
       </ScrollView>
     </View>
   );

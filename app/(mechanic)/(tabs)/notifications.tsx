@@ -63,7 +63,7 @@ type JobRow = {
 type MessageRow = {
   id: string;
   job_id: string;
-  content: string | null;
+  body: string | null;
   created_at: string | null;
   sender_id: string | null;
 };
@@ -513,9 +513,10 @@ export default function Notifications() {
       if (jobIds.length > 0) {
         const { data: msgs, error: mErr } = await supabase
           .from("messages")
-          .select("id,job_id,content,created_at,sender_id")
+          .select("id,job_id,body,created_at,sender_id")
           .in("job_id", jobIds)
           .neq("sender_id", userId)
+          .is("deleted_at", null)
           .order("created_at", { ascending: false })
           .limit(50);
 
@@ -617,7 +618,7 @@ export default function Notifications() {
       generated.push({
         id,
         title: "New message",
-        body: m.content ? m.content : "You received a message from a customer.",
+        body: m.body ? m.body : "You received a message from a customer.",
         type: "message",
         entity_type: "job",
         entity_id: m.job_id,

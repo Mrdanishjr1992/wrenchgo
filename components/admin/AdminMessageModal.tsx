@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,17 +10,27 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
-import { adminSendMessage, SendAdminMessageParams } from '../../src/lib/admin-messages';
+import { supabase } from '../../src/lib/supabase';
 
 interface RecipientInfo {
   id: string;
   name: string;
   role?: string;
+}
+
+interface Message {
+  id: string;
+  sender_name: string;
+  sender_type: string;
+  body: string;
+  created_at: string;
+  related_job_title?: string;
 }
 
 interface AdminMessageModalProps {
@@ -48,6 +58,36 @@ export function AdminMessageModal({
   const insets = useSafeAreaInsets();
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const flatListRef = useRef<FlatList>(null);
+
+  useEffect(() => {
+    if (visible && recipient.id) {
+      loadMessageHistory();
+    }
+  }, [visible, recipient.id]);
+
+  const loadMessageHistory = async () => {
+    setLoadingHistory(true);
+    try {
+      const { data, error } = await supabase.rpc('admin_list_user_messages', {
+        p_user_id: recipient.id,
+        p_limit: 50,
+      });
+      if (error) throw error;
+      const sorted = (data || []).sort(
+        (a: Message, b: Message) =>
+          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      setMessages(sorted);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
+    } catch (error: any) {
+      console.error('Failed to load message history:', error);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleSend = async () => {
     if (!body.trim()) {
@@ -57,19 +97,20 @@ export function AdminMessageModal({
 
     setSending(true);
     try {
-      const params: SendAdminMessageParams = {
-        recipientId: recipient.id,
-        body: body.trim(),
-        relatedJobId: relatedJobId,
-        supportRequestId: supportRequestId,
-        disputeId: disputeId,
-      };
+      const { data, error } = await supabase.rpc('admin_send_message', {
+        p_recipient_id: recipient.id,
+        p_body: body.trim(),
+        p_related_job_id: relatedJobId || null,
+        p_support_request_id: supportRequestId || null,
+        p_dispute_id: disputeId || null,
+      });
 
-      await adminSendMessage(params);
-      Alert.alert('Success', 'Message sent successfully');
+      if (error) throw error;
+      if (data && !data.success) throw new Error(data.error || 'Failed to send');
+
       setBody('');
+      await loadMessageHistory();
       onSuccess?.();
-      onClose();
     } catch (error: any) {
       Alert.alert('Error', error.message || 'Failed to send message');
     } finally {
@@ -79,18 +120,84 @@ export function AdminMessageModal({
 
   const handleClose = () => {
     if (body.trim() && !sending) {
-      Alert.alert(
-        'Discard Message?',
-        'Your message will not be saved.',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Discard', style: 'destructive', onPress: () => { setBody(''); onClose(); } },
-        ]
-      );
+      Alert.alert('Discard Message?', 'Your message will not be saved.', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => {
+            setBody('');
+            setMessages([]);
+            onClose();
+          },
+        },
+      ]);
     } else {
       setBody('');
+      setMessages([]);
       onClose();
     }
+  };
+
+  const formatTime = (dateStr: string) => {
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffDays = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24)
+    );
+    if (diffDays === 0) {
+      return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } else if (diffDays === 1) {
+      return 'Yesterday';
+    } else if (diffDays < 7) {
+      return date.toLocaleDateString([], { weekday: 'short' });
+    }
+    return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  };
+
+  const renderMessage = ({ item }: { item: Message }) => {
+    const isAdmin = item.sender_type === 'admin';
+    return (
+      <View
+        style={{
+          alignSelf: isAdmin ? 'flex-end' : 'flex-start',
+          maxWidth: '80%',
+          marginVertical: 4,
+          marginHorizontal: spacing.md,
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: isAdmin ? colors.accent : colors.surface,
+            borderRadius: 16,
+            borderBottomRightRadius: isAdmin ? 4 : 16,
+            borderBottomLeftRadius: isAdmin ? 16 : 4,
+            padding: spacing.sm,
+            paddingHorizontal: spacing.md,
+          }}
+        >
+          <Text
+            style={{
+              color: isAdmin ? '#FFFFFF' : colors.textPrimary,
+              fontSize: 15,
+            }}
+          >
+            {item.body}
+          </Text>
+        </View>
+        <Text
+          style={{
+            fontSize: 11,
+            color: colors.textMuted,
+            marginTop: 2,
+            alignSelf: isAdmin ? 'flex-end' : 'flex-start',
+            marginHorizontal: 4,
+          }}
+        >
+          {formatTime(item.created_at)}
+        </Text>
+      </View>
+    );
   };
 
   return (
@@ -118,142 +225,169 @@ export function AdminMessageModal({
           }}
         >
           <TouchableOpacity onPress={handleClose} disabled={sending}>
-            <Text style={{ color: colors.accent, fontSize: 16 }}>Cancel</Text>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
-          <Text style={{ fontSize: 17, fontWeight: '600', color: colors.textPrimary }}>
-            Send Message
-          </Text>
-          <TouchableOpacity onPress={handleSend} disabled={sending || !body.trim()}>
-            {sending ? (
-              <ActivityIndicator size="small" color={colors.accent} />
-            ) : (
-              <Text
+          <View style={{ alignItems: 'center' }}>
+            <Text
+              style={{
+                fontSize: 17,
+                fontWeight: '600',
+                color: colors.textPrimary,
+              }}
+            >
+              {recipient.name}
+            </Text>
+            {recipient.role && (
+              <Text style={{ fontSize: 12, color: colors.textSecondary }}>
+                {recipient.role}
+              </Text>
+            )}
+          </View>
+          <View style={{ width: 24 }} />
+        </View>
+
+        {(relatedJobTitle || supportRequestId || disputeId) && (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'center',
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+              backgroundColor: colors.surface,
+              borderBottomWidth: 1,
+              borderBottomColor: colors.border,
+            }}
+          >
+            {relatedJobTitle && (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons
+                  name="construct-outline"
+                  size={14}
+                  color={colors.textSecondary}
+                />
+                <Text
+                  style={{
+                    marginLeft: 4,
+                    fontSize: 12,
+                    color: colors.textSecondary,
+                  }}
+                >
+                  {relatedJobTitle}
+                </Text>
+              </View>
+            )}
+            {disputeId && (
+              <View
                 style={{
-                  color: body.trim() ? colors.accent : colors.textMuted,
-                  fontSize: 16,
-                  fontWeight: '600',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginLeft: relatedJobTitle ? spacing.md : 0,
                 }}
               >
-                Send
-              </Text>
+                <Ionicons name="warning-outline" size={14} color="#EF4444" />
+                <Text style={{ marginLeft: 4, fontSize: 12, color: '#EF4444' }}>
+                  Dispute
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {loadingHistory ? (
+          <View
+            style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ActivityIndicator size="large" color={colors.accent} />
+          </View>
+        ) : messages.length === 0 ? (
+          <View
+            style={{
+              flex: 1,
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: spacing.xl,
+            }}
+          >
+            <Ionicons
+              name="chatbubbles-outline"
+              size={48}
+              color={colors.textMuted}
+            />
+            <Text
+              style={{
+                marginTop: spacing.md,
+                color: colors.textSecondary,
+                textAlign: 'center',
+              }}
+            >
+              No previous messages with this user
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderMessage}
+            contentContainerStyle={{ paddingVertical: spacing.md }}
+            onContentSizeChange={() =>
+              flatListRef.current?.scrollToEnd({ animated: false })
+            }
+          />
+        )}
+
+        <View
+          style={{
+            flexDirection: 'row',
+            alignItems: 'flex-end',
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            paddingBottom: insets.bottom + spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            backgroundColor: colors.surface,
+          }}
+        >
+          <TextInput
+            value={body}
+            onChangeText={setBody}
+            placeholder="Type a message..."
+            placeholderTextColor={colors.textMuted}
+            multiline
+            maxLength={4000}
+            style={{
+              flex: 1,
+              backgroundColor: colors.background,
+              borderRadius: 20,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              color: colors.textPrimary,
+              fontSize: 15,
+              maxHeight: 100,
+            }}
+            editable={!sending}
+          />
+          <TouchableOpacity
+            onPress={handleSend}
+            disabled={sending || !body.trim()}
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 20,
+              backgroundColor: body.trim() ? colors.accent : colors.border,
+              alignItems: 'center',
+              justifyContent: 'center',
+              marginLeft: spacing.sm,
+            }}
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="send" size={18} color="#FFFFFF" />
             )}
           </TouchableOpacity>
         </View>
-
-        <ScrollView style={{ flex: 1 }} keyboardShouldPersistTaps="handled">
-          <View style={{ padding: spacing.lg }}>
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 12,
-                padding: spacing.md,
-                marginBottom: spacing.lg,
-              }}
-            >
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>
-                TO
-              </Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <View
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 18,
-                    backgroundColor: colors.accent + '20',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginRight: spacing.sm,
-                  }}
-                >
-                  <Ionicons name="person" size={18} color={colors.accent} />
-                </View>
-                <View>
-                  <Text style={{ fontWeight: '600', color: colors.textPrimary, fontSize: 15 }}>
-                    {recipient.name}
-                  </Text>
-                  {recipient.role && (
-                    <Text style={{ fontSize: 12, color: colors.textSecondary }}>
-                      {recipient.role}
-                    </Text>
-                  )}
-                </View>
-              </View>
-            </View>
-
-            {(relatedJobTitle || supportRequestId || disputeId) && (
-              <View
-                style={{
-                  backgroundColor: colors.surface,
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  marginBottom: spacing.lg,
-                }}
-              >
-                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>
-                  CONTEXT
-                </Text>
-                {relatedJobTitle && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Ionicons name="construct-outline" size={16} color={colors.accent} />
-                    <Text style={{ marginLeft: 6, color: colors.textPrimary, fontSize: 14 }}>
-                      Job: {relatedJobTitle}
-                    </Text>
-                  </View>
-                )}
-                {supportRequestId && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Ionicons name="help-circle-outline" size={16} color={colors.accent} />
-                    <Text style={{ marginLeft: 6, color: colors.textPrimary, fontSize: 14 }}>
-                      Support Request
-                    </Text>
-                  </View>
-                )}
-                {disputeId && (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-                    <Ionicons name="warning-outline" size={16} color="#EF4444" />
-                    <Text style={{ marginLeft: 6, color: colors.textPrimary, fontSize: 14 }}>
-                      Dispute
-                    </Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            <View
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 12,
-                padding: spacing.md,
-              }}
-            >
-              <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: spacing.sm }}>
-                MESSAGE
-              </Text>
-              <TextInput
-                value={body}
-                onChangeText={setBody}
-                placeholder="Type your message here..."
-                placeholderTextColor={colors.textMuted}
-                multiline
-                maxLength={4000}
-                style={{
-                  color: colors.textPrimary,
-                  fontSize: 15,
-                  minHeight: 150,
-                  textAlignVertical: 'top',
-                }}
-                editable={!sending}
-              />
-              <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: 'right', marginTop: spacing.sm }}>
-                {body.length}/4000
-              </Text>
-            </View>
-
-            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' }}>
-              This message will appear in the user's Support inbox
-            </Text>
-          </View>
-        </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
   );

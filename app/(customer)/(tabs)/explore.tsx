@@ -748,7 +748,7 @@ export default function Explore() {
           <ServiceAreaBanner
             allowed={serviceArea.allowed}
             message={serviceArea.message}
-            hubName={serviceArea.hubName}
+            hubName={serviceArea.hubName ?? undefined}
             boundaryStatus={serviceArea.boundaryStatus}
           />
         )}

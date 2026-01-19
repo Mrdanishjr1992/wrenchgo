@@ -22,6 +22,11 @@ export type JobStatus =
   | 'disputed';
 export type QuoteStatus = 'pending' | 'accepted' | 'rejected' | 'expired' | 'withdrawn' | 'declined' | 'expired_conflict';
 export type PaymentStatus = 'pending' | 'processing' | 'succeeded' | 'failed' | 'refunded' | 'partially_refunded';
+export type DisputeStatus = 'open' | 'pending_response' | 'in_review' | 'escalated' | 'resolved' | 'closed';
+export type PayoutStatus = 'pending' | 'scheduled' | 'processing' | 'completed' | 'failed' | 'held';
+export type SupportStatus = 'open' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed';
+export type VerificationStatus = 'pending_verification' | 'active' | 'paused' | 'removed';
+export type ContractStatus = 'active' | 'completed' | 'cancelled' | 'disputed';
 
 // =====================================================
 // CORE TABLES
@@ -41,6 +46,11 @@ export interface Profile {
   home_lat: number | null;
   home_lng: number | null;
   push_token: string | null;
+  service_lat: number | null;
+  service_lng: number | null;
+  service_zip: string | null;
+  hub_id: string | null;
+  location_hash: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -73,6 +83,9 @@ export interface Job {
   location_lat: number | null;
   location_lng: number | null;
   location_address: string | null;
+  job_lat: number | null;
+  job_lng: number | null;
+  hub_id: string | null;
   preferred_time: string | null;
   scheduled_at: string | null;
   estimated_duration_minutes: number;
@@ -119,8 +132,16 @@ export interface Review {
   job_id: string;
   reviewer_id: string;
   reviewee_id: string;
-  rating: number;
+  reviewer_role: UserRole | null;
+  overall_rating: number;
+  performance_rating: number | null;
+  timing_rating: number | null;
+  cost_rating: number | null;
   comment: string | null;
+  is_hidden: boolean;
+  is_visible: boolean;
+  made_visible_at: string | null;
+  visibility_reason: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -143,6 +164,8 @@ export interface MechanicProfile {
   jobs_completed: number;
   stripe_account_id: string | null;
   stripe_onboarding_complete: boolean;
+  verification_status: VerificationStatus;
+  verification_reason: string | null;
   deleted_at: string | null;
   created_at: string;
   updated_at: string;
@@ -187,6 +210,137 @@ export interface MechanicSafety {
   mechanic_id: string;
   safety_key: string;
   created_at: string;
+}
+
+// =====================================================
+// SERVICE AREA TABLES
+// =====================================================
+
+export interface ServiceHub {
+  id: string;
+  name: string;
+  slug: string;
+  zip: string;
+  lat: number;
+  lng: number;
+  max_radius_miles: number;
+  active_radius_miles: number;
+  is_active: boolean;
+  invite_only: boolean;
+  auto_expand_enabled: boolean;
+  launch_date: string | null;
+  graduated_at: string | null;
+  settings: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface Waitlist {
+  id: string;
+  email: string;
+  phone: string | null;
+  zip: string;
+  lat: number | null;
+  lng: number | null;
+  nearest_hub_id: string | null;
+  distance_miles: number | null;
+  ring: number | null;
+  user_type: 'customer' | 'mechanic' | null;
+  service_needed: string | null;
+  services_offered: string[] | null;
+  years_experience: number | null;
+  willing_travel_miles: number | null;
+  invited_at: string | null;
+  converted_at: string | null;
+  created_at: string;
+}
+
+// =====================================================
+// JOB LIFECYCLE TABLES
+// =====================================================
+
+export interface JobContract {
+  id: string;
+  job_id: string;
+  customer_id: string;
+  mechanic_id: string;
+  quote_id: string;
+  agreed_price_cents: number;
+  platform_fee_cents: number;
+  mechanic_payout_cents: number;
+  status: ContractStatus;
+  started_at: string | null;
+  completed_at: string | null;
+  cancelled_at: string | null;
+  cancellation_reason: string | null;
+  cancelled_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Dispute {
+  id: string;
+  job_id: string;
+  contract_id: string | null;
+  filed_by: string;
+  filed_by_role: UserRole;
+  filed_against: string;
+  status: DisputeStatus;
+  category: string;
+  description: string;
+  desired_resolution: string | null;
+  evidence_urls: string[] | null;
+  resolved_at: string | null;
+  resolved_by: string | null;
+  resolution_type: string | null;
+  resolution_notes: string | null;
+  customer_refund_cents: number | null;
+  mechanic_adjustment_cents: number | null;
+  internal_notes: string | null;
+  assigned_to: string | null;
+  priority: string;
+  response_deadline: string | null;
+  evidence_deadline: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Payout {
+  id: string;
+  contract_id: string;
+  mechanic_id: string;
+  gross_amount_cents: number;
+  commission_cents: number;
+  adjustments_cents: number;
+  net_amount_cents: number;
+  status: PayoutStatus;
+  stripe_transfer_id: string | null;
+  stripe_payout_id: string | null;
+  scheduled_for: string | null;
+  processed_at: string | null;
+  failed_at: string | null;
+  failure_reason: string | null;
+  held_at: string | null;
+  hold_reason: string | null;
+  released_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// =====================================================
+// SUPPORT TABLES
+// =====================================================
+
+export interface SupportRequest {
+  id: string;
+  user_id: string | null;
+  job_id: string | null;
+  category: string;
+  message: string;
+  screenshot_url: string | null;
+  metadata: Record<string, unknown> | null;
+  status: SupportStatus;
+  created_at: string;
+  updated_at: string;
 }
 
 // =====================================================
@@ -352,6 +506,47 @@ export interface Payment {
   created_at: string;
   updated_at: string;
 }
+
+// =====================================================
+// DATABASE SCHEMA TYPE (for compile-time validation)
+// =====================================================
+
+export interface DatabaseSchema {
+  profiles: Profile;
+  vehicles: Vehicle;
+  jobs: Job;
+  quote_requests: QuoteRequest;
+  quotes: Quote;
+  reviews: Review;
+  mechanic_profiles: MechanicProfile;
+  skills: Skill;
+  tools: Tool;
+  safety_measures: SafetyMeasure;
+  mechanic_skills: MechanicSkill;
+  mechanic_tools: MechanicTool;
+  mechanic_safety: MechanicSafety;
+  service_hubs: ServiceHub;
+  waitlist: Waitlist;
+  job_contracts: JobContract;
+  disputes: Dispute;
+  payouts: Payout;
+  support_requests: SupportRequest;
+  symptoms: Symptom;
+  symptom_mappings: SymptomMapping;
+  education_cards: EducationCard;
+  symptom_education: SymptomEducation;
+  symptom_questions: SymptomQuestion;
+  messages: Message;
+  notifications: Notification;
+  media_assets: MediaAsset;
+  mechanic_stripe_accounts: MechanicStripeAccount;
+  customer_payment_methods: CustomerPaymentMethod;
+  payments: Payment;
+}
+
+export type TableName = keyof DatabaseSchema;
+export type TableRow<T extends TableName> = DatabaseSchema[T];
+export type TableColumn<T extends TableName> = keyof DatabaseSchema[T];
 
 // =====================================================
 // RPC FUNCTION TYPES

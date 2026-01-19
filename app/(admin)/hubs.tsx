@@ -1,117 +1,165 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
+import { View, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
-import { adminGetHubs, AdminHub } from '../../src/lib/admin';
+import { adminListHubs, AdminHub } from '../../src/lib/admin';
+import { useAdminScope, useAdminFilters } from '../../src/lib/admin-filters';
+import { 
+  AdminHeader, 
+  AdminSearchBar,
+  AdminLoadingState, 
+  AdminEmptyState, 
+  AdminErrorState,
+  AdminPagination,
+} from '../../components/admin/AdminFilterComponents';
+import { ThemedText } from '../../src/ui/components/ThemedText';
+import { ThemedCard } from '../../src/ui/components/ThemedCard';
 
 export default function AdminHubsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
+  const scope = useAdminScope();
+  const { filters, updateFilter, currentPage, nextPage, prevPage } = useAdminFilters();
+  
   const [hubs, setHubs] = useState<AdminHub[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState('');
+  const [hasMore, setHasMore] = useState(false);
 
   const fetchHubs = useCallback(async () => {
     try {
-      const data = await adminGetHubs();
+      setError(null);
+      const data = await adminListHubs({
+        search: filters.search || undefined,
+        limit: filters.limit,
+        offset: filters.offset,
+      });
       setHubs(data);
-    } catch (error) {
-      console.error('Error fetching hubs:', error);
+      setHasMore(data.length === filters.limit);
+    } catch (err: any) {
+      console.error('Error fetching hubs:', err);
+      setError(err?.message ?? 'Failed to load hubs');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [filters]);
 
-  useFocusEffect(useCallback(() => { fetchHubs(); }, [fetchHubs]));
+  useFocusEffect(useCallback(() => { 
+    if (!scope.loading) fetchHubs(); 
+  }, [fetchHubs, scope.loading]));
 
   const onRefresh = () => { setRefreshing(true); fetchHubs(); };
+  
+  const handleSearch = () => {
+    updateFilter('search', searchInput);
+    setLoading(true);
+  };
 
-  if (loading) {
+  if (scope.loading || loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top }}>
-        <ActivityIndicator size="large" color={colors.accent} />
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Hubs" onBack={() => router.back()} />
+        <AdminLoadingState />
+      </View>
+    );
+  }
+
+  if (error) {
+    return (
+      <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top }}>
+        <AdminHeader title="Hubs" onBack={() => router.back()} onRefresh={onRefresh} />
+        <AdminErrorState message={error} onRetry={fetchHubs} />
       </View>
     );
   }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
-      <View style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        padding: spacing.lg,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border,
-        backgroundColor: colors.surface,
-      }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ marginRight: spacing.md }}>
-          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, flex: 1 }}>Service Hubs</Text>
-        <TouchableOpacity onPress={onRefresh}>
-          <Ionicons name="refresh" size={24} color={colors.accent} />
-        </TouchableOpacity>
+      <AdminHeader title="Hubs" onBack={() => router.back()} onRefresh={onRefresh} />
+
+      <View style={{ padding: spacing.md }}>
+        <AdminSearchBar
+          value={searchInput}
+          onChangeText={setSearchInput}
+          onSubmit={handleSearch}
+          placeholder="Search by name, slug, or zip..."
+        />
       </View>
 
       <ScrollView 
         style={{ flex: 1 }} 
-        contentContainerStyle={{ padding: spacing.md }}
+        contentContainerStyle={{ padding: spacing.md, paddingTop: 0 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {hubs.length === 0 ? (
-          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: spacing.xl }}>No hubs found</Text>
+          <AdminEmptyState 
+            icon="location-outline" 
+            title="No hubs found" 
+          />
         ) : (
           hubs.map(hub => (
             <TouchableOpacity
               key={hub.id}
               onPress={() => router.push(`/(admin)/hubs/${hub.id}`)}
-              style={{
-                backgroundColor: colors.surface,
-                borderRadius: 12,
-                padding: spacing.md,
-                marginBottom: spacing.md,
-                borderWidth: 1,
-                borderColor: colors.border,
-              }}
+              style={{ marginBottom: spacing.md }}
             >
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm }}>
-                <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary }}>{hub.name}</Text>
-                <View style={{ flexDirection: 'row', gap: spacing.sm }}>
-                  {hub.invite_only && (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: '#F59E0B20' }}>
-                      <Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: '600' }}>INVITE ONLY</Text>
-                    </View>
-                  )}
-                  {hub.auto_expand_enabled && (
-                    <View style={{ paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4, backgroundColor: '#10B98120' }}>
-                      <Text style={{ color: '#10B981', fontSize: 10, fontWeight: '600' }}>AUTO EXPAND</Text>
-                    </View>
-                  )}
+              <ThemedCard style={{ padding: spacing.md }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <ThemedText variant="body" style={{ fontWeight: '600' }}>{hub.name}</ThemedText>
+                    <ThemedText variant="caption" style={{ marginTop: 2 }}>{hub.slug}</ThemedText>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    {!hub.is_active && (
+                      <View style={{ backgroundColor: '#EF444420', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <ThemedText variant="caption" style={{ color: '#EF4444', fontSize: 10 }}>INACTIVE</ThemedText>
+                      </View>
+                    )}
+                    {hub.invite_only && (
+                      <View style={{ backgroundColor: '#F59E0B20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                        <ThemedText variant="caption" style={{ color: '#F59E0B', fontSize: 10 }}>INVITE ONLY</ThemedText>
+                      </View>
+                    )}
+                    <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                  </View>
                 </View>
-              </View>
-              <Text style={{ fontSize: 13, color: colors.textSecondary }}>
-                {hub.city && hub.state ? `${hub.city}, ${hub.state}` : hub.zip || 'Unknown location'}
-              </Text>
-              <View style={{ flexDirection: 'row', marginTop: spacing.md, gap: spacing.lg }}>
-                <View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: colors.accent }}>{hub.active_mechanics}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>Mechanics</Text>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm }}>
+                  <Ionicons name="location" size={12} color={colors.textSecondary} />
+                  <ThemedText variant="caption" style={{ marginLeft: 4 }}>
+                    {hub.zip}
+                  </ThemedText>
                 </View>
-                <View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>{hub.jobs_last_14d}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>Jobs (14d)</Text>
+
+                <View style={{ flexDirection: 'row', marginTop: spacing.sm, gap: spacing.lg }}>
+                  <View>
+                    <ThemedText variant="caption" style={{ fontSize: 11 }}>ACTIVE RADIUS</ThemedText>
+                    <ThemedText variant="caption">{hub.active_radius_miles} mi</ThemedText>
+                  </View>
+                  <View>
+                    <ThemedText variant="caption" style={{ fontSize: 11 }}>MAX RADIUS</ThemedText>
+                    <ThemedText variant="caption">{hub.max_radius_miles} mi</ThemedText>
+                  </View>
                 </View>
-                <View>
-                  <Text style={{ fontSize: 18, fontWeight: '700', color: colors.textPrimary }}>{hub.active_radius_miles}</Text>
-                  <Text style={{ fontSize: 11, color: colors.textSecondary }}>Radius (mi)</Text>
-                </View>
-              </View>
+              </ThemedCard>
             </TouchableOpacity>
           ))
+        )}
+        
+        {hubs.length > 0 && (
+          <AdminPagination
+            currentPage={currentPage}
+            hasMore={hasMore}
+            onPrevious={prevPage}
+            onNext={nextPage}
+            loading={loading}
+          />
         )}
       </ScrollView>
     </View>

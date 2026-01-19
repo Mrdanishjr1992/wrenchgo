@@ -809,6 +809,7 @@ function ImagePreviewModal({
 export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, backRoute }: ChatRoomProps) {
   const router = useRouter();
   const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);

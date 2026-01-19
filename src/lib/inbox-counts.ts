@@ -8,8 +8,9 @@ export async function getUnreadMessagesCount(): Promise<number> {
   const { count, error } = await supabase
     .from('messages')
     .select('*', { count: 'exact', head: true })
-    .neq('sender_id', userId)
-    .is('read_at', null);
+    .eq('recipient_id', userId)
+    .is('read_at', null)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('Error fetching unread messages count:', error);
@@ -28,7 +29,8 @@ export async function getUnreadNotificationsCount(): Promise<number> {
     .from('notifications')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', userId)
-    .eq('is_read', false);
+    .eq('is_read', false)
+    .is('deleted_at', null);
 
   if (error) {
     console.error('Error fetching unread notifications count:', error);
@@ -51,6 +53,7 @@ export function subscribeToUnreadCounts(
         event: '*',
         schema: 'public',
         table: 'messages',
+        filter: `recipient_id=eq.${userId}`,
       },
       () => {
         getUnreadMessagesCount().then(onMessagesChange);

@@ -93,7 +93,7 @@ export function PreJobPhotoPicker({
       const result = await ImagePicker.launchCameraAsync({
         allowsEditing: false,
         quality: 0.9,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
       });
 
       if (!result.canceled && result.assets?.[0]?.uri) {
@@ -120,7 +120,7 @@ export function PreJobPhotoPicker({
         allowsMultipleSelection: true,
         selectionLimit: remaining,
         quality: 0.9,
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {

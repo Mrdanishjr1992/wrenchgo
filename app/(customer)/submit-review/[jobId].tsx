@@ -131,10 +131,10 @@ export default function SubmitReviewScreen() {
         <ThemedText variant="body" color="muted" style={{ textAlign: 'center', marginBottom: spacing.lg }}>
           {error || 'Could not find review information for this job'}
         </ThemedText>
-        <AppButton 
-          label="Go Back" 
-          variant="secondary" 
-          onPress={() => router.back()} 
+        <AppButton
+          title="Go Back"
+          variant="secondary"
+          onPress={() => router.back()}
         />
       </View>
     );

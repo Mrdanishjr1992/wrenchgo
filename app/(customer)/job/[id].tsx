@@ -6,9 +6,6 @@ import {
   Alert,
   Pressable,
   ScrollView,
-  LayoutAnimation,
-  Platform,
-  UIManager,
   RefreshControl,
   Dimensions,
   FlatList,
@@ -20,22 +17,18 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import * as ImagePicker from "expo-image-picker";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withTiming,
   withSpring,
-  interpolate,
-  Extrapolate,
   FadeIn,
-  FadeInRight,
+  FadeInDown,
   SlideInRight,
 } from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
-import { createCard } from "../../../src/ui/styles";
 import { CancelQuoteModal } from "../../../src/components/CancelQuoteModal";
 import { UserProfileCard } from "../../../components/profile/UserProfileCardQuotes";
 import { ProfileCardModal } from "../../../components/profile/ProfileCardModal";
@@ -47,14 +40,12 @@ import type { JobContract, JobProgress, Invoice } from "../../../src/types/job-l
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
 import { canFileComeback, customerFileComeback, getDisputeForJob, ComebackEligibility, Dispute } from "../../../src/lib/disputes";
 import { DISPUTE_DEFAULTS } from "../../../src/constants/disputes";
-import { spacing } from "../../../src/ui/theme";
 import * as Crypto from "expo-crypto";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
-const QUOTE_CARD_WIDTH = SCREEN_WIDTH - 80;
+const QUOTE_CARD_WIDTH = SCREEN_WIDTH - 48;
 
-// Note: setLayoutAnimationEnabledExperimental is a no-op in New Architecture
-// Removed to suppress warning
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type JobIntake = {
   symptom?: { key: string; label: string };
@@ -162,8 +153,7 @@ export default function CustomerJobDetails() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
 
-  const { colors, text, spacing } = useTheme();
-  const card = useMemo(() => createCard(colors), [colors]);
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -174,16 +164,18 @@ export default function CustomerJobDetails() {
   const [quotes, setQuotes] = useState<Quote[]>([]);
   const [expandedQuote, setExpandedQuote] = useState<string | null>(null);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showAcceptModal, setShowAcceptModal] = useState<string | null>(null);
+  const [showDeclineModal, setShowDeclineModal] = useState<string | null>(null);
   const [selectedMechanicId, setSelectedMechanicId] = useState<string | null>(null);
   const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
   const [detailsExpanded, setDetailsExpanded] = useState(false);
   const [invoiceExpanded, setInvoiceExpanded] = useState(false);
+  const [currentQuoteIndex, setCurrentQuoteIndex] = useState(0);
 
   const [contract, setContract] = useState<JobContract | null>(null);
   const [progress, setProgress] = useState<JobProgress | null>(null);
   const [invoice, setInvoice] = useState<Invoice | null>(null);
 
-  // Comeback/Report Issue state
   const [comebackEligibility, setComebackEligibility] = useState<ComebackEligibility | null>(null);
   const [existingDispute, setExistingDispute] = useState<Dispute | null>(null);
   const [showReportIssueModal, setShowReportIssueModal] = useState(false);
@@ -207,10 +199,10 @@ export default function CustomerJobDetails() {
 
   const statusConfig = (status: string) => {
     const s = (status || "").toLowerCase();
-    if (s === "searching") return { color: colors.textMuted, icon: "search" as const, label: "Searching" };
+    if (s === "searching") return { color: colors.info, icon: "search" as const, label: "Searching" };
     if (s === "quoted") return { color: colors.warning, icon: "pricetags" as const, label: "Quoted" };
-    if (s === "accepted") return { color: colors.accent, icon: "checkmark-circle" as const, label: "Accepted" };
-    if (s === "work_in_progress") return { color: colors.accent, icon: "construct" as const, label: "In Progress" };
+    if (s === "accepted") return { color: colors.primary, icon: "checkmark-circle" as const, label: "Accepted" };
+    if (s === "work_in_progress") return { color: colors.primary, icon: "construct" as const, label: "In Progress" };
     if (s === "completed") return { color: colors.success, icon: "checkmark-done-circle" as const, label: "Completed" };
     if (s === "canceled" || s.includes("canceled")) return { color: colors.error, icon: "close-circle" as const, label: "Canceled" };
     return { color: colors.textMuted, icon: "ellipse" as const, label: status };
@@ -391,7 +383,7 @@ export default function CustomerJobDetails() {
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsMultipleSelection: true,
       selectionLimit: MAX_EVIDENCE_PHOTOS - evidencePhotos.length,
       quality: 0.8,
@@ -445,18 +437,53 @@ export default function CustomerJobDetails() {
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="large" color={colors.accent} />
+        <View style={{ alignItems: "center" }}>
+          <View style={{
+            width: 80,
+            height: 80,
+            borderRadius: 40,
+            backgroundColor: withAlpha(colors.primary, 0.1),
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: spacing.lg,
+          }}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: colors.textSecondary }}>Loading job details...</Text>
+        </View>
       </View>
     );
   }
 
   if (!job) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: spacing.lg }}>
-        <Ionicons name="alert-circle-outline" size={48} color={colors.textMuted} />
-        <Text style={{ ...text.section, marginTop: spacing.md }}>Job not found</Text>
-        <Pressable onPress={() => router.back()} style={{ marginTop: spacing.lg }}>
-          <Text style={{ color: colors.accent, fontWeight: "700" }}>Go Back</Text>
+      <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", padding: spacing.xl }}>
+        <View style={{
+          width: 80,
+          height: 80,
+          borderRadius: 40,
+          backgroundColor: withAlpha(colors.error, 0.1),
+          alignItems: "center",
+          justifyContent: "center",
+          marginBottom: spacing.lg,
+        }}>
+          <Ionicons name="alert-circle-outline" size={40} color={colors.error} />
+        </View>
+        <Text style={{ fontSize: 20, fontWeight: "700", color: colors.textPrimary, marginBottom: spacing.sm }}>Job not found</Text>
+        <Text style={{ fontSize: 14, color: colors.textMuted, textAlign: "center", marginBottom: spacing.lg }}>
+          This job may have been removed or you don't have access.
+        </Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={({ pressed }) => ({
+            backgroundColor: colors.primary,
+            paddingHorizontal: spacing.xl,
+            paddingVertical: spacing.md,
+            borderRadius: radius.lg,
+            opacity: pressed ? 0.9 : 1,
+          })}
+        >
+          <Text style={{ color: colors.buttonText, fontWeight: "700", fontSize: 15 }}>Go Back</Text>
         </Pressable>
       </View>
     );
@@ -474,9 +501,9 @@ export default function CustomerJobDetails() {
     const needsPayment = quote.status === "accepted" && !contract && quote.price_cents != null;
     const isExpanded = expandedQuote === quote.id;
 
-    const inputRange = [(index - 1) * QUOTE_CARD_WIDTH, index * QUOTE_CARD_WIDTH, (index + 1) * QUOTE_CARD_WIDTH];
-    const scale = scrollX.interpolate({ inputRange, outputRange: [0.9, 1, 0.9], extrapolate: "clamp" });
-    const opacity = scrollX.interpolate({ inputRange, outputRange: [0.6, 1, 0.6], extrapolate: "clamp" });
+    const inputRange = [(index - 1) * (QUOTE_CARD_WIDTH + 16), index * (QUOTE_CARD_WIDTH + 16), (index + 1) * (QUOTE_CARD_WIDTH + 16)];
+    const scale = scrollX.interpolate({ inputRange, outputRange: [0.95, 1, 0.95], extrapolate: "clamp" });
+    const cardOpacity = scrollX.interpolate({ inputRange, outputRange: [0.7, 1, 0.7], extrapolate: "clamp" });
 
     const notes = quote.notes || "";
     const hasDriveFee = notes.toLowerCase().includes("drive fee");
@@ -497,178 +524,232 @@ export default function CustomerJobDetails() {
       .trim();
 
     return (
-      <RNAnimated.View style={{ width: QUOTE_CARD_WIDTH, marginHorizontal: 8, transform: [{ scale }], opacity }}>
-        <View
-          style={[
-            card,
-            {
-              padding: spacing.md,
-              borderColor: isAccepted ? colors.accent : colors.border,
-              borderWidth: isAccepted ? 2 : 1,
-            },
-          ]}
-        >
+      <RNAnimated.View style={{ width: QUOTE_CARD_WIDTH, marginHorizontal: 8, transform: [{ scale }], opacity: cardOpacity }}>
+        <View style={{
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          overflow: "hidden",
+          borderWidth: isAccepted ? 2 : 0,
+          borderColor: isAccepted ? colors.primary : "transparent",
+          ...shadows.md,
+        }}>
           {isAccepted && (
-            <View
+            <View style={{
+              backgroundColor: colors.primary,
+              paddingVertical: 6,
+              paddingHorizontal: 12,
+              alignItems: "center",
+            }}>
+              <Text style={{ color: colors.buttonText, fontSize: 11, fontWeight: "800", letterSpacing: 0.5 }}>
+                ACCEPTED
+              </Text>
+            </View>
+          )}
+
+          <View style={{ padding: spacing.lg }}>
+            <Pressable
+              onPress={() => setSelectedMechanicId(quote.mechanic_id)}
+              style={{ marginBottom: spacing.md }}
+            >
+              <UserProfileCard
+                userId={quote.mechanic_id}
+                variant="mini"
+                context="quote_list"
+                onPressViewProfile={() => setSelectedMechanicId(quote.mechanic_id)}
+              />
+            </Pressable>
+
+            <View style={{
+              backgroundColor: withAlpha(colors.primary, 0.06),
+              borderRadius: radius.lg,
+              padding: spacing.md,
+              alignItems: "center",
+              marginBottom: spacing.md,
+            }}>
+              <Text style={{ fontSize: 12, color: colors.textMuted, marginBottom: 4 }}>
+                {isRange ? "Price Range" : "Total Price"}
+              </Text>
+              <Text style={{ fontSize: 36, fontWeight: "900", color: colors.primary, letterSpacing: -1 }}>
+                {isRange && rangeLow && rangeHigh ? `$${rangeLow} - $${rangeHigh}` : money(quote.price_cents)}
+              </Text>
+              {quote.estimated_hours && (
+                <View style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  marginTop: 6,
+                  backgroundColor: withAlpha(colors.textMuted, 0.1),
+                  paddingHorizontal: 10,
+                  paddingVertical: 4,
+                  borderRadius: 12,
+                }}>
+                  <Ionicons name="time-outline" size={12} color={colors.textMuted} />
+                  <Text style={{ fontSize: 12, color: colors.textMuted, fontWeight: "600" }}>
+                    Est. {quote.estimated_hours < 1 ? `${Math.round(quote.estimated_hours * 60)} min` : `${quote.estimated_hours.toFixed(1)} hrs`}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            <Pressable
+              onPress={() => setExpandedQuote(isExpanded ? null : quote.id)}
               style={{
-                position: "absolute",
-                top: -1,
-                right: 16,
-                backgroundColor: colors.accent,
-                paddingHorizontal: 12,
-                paddingVertical: 4,
-                borderBottomLeftRadius: 8,
-                borderBottomRightRadius: 8,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: spacing.sm,
+                gap: 6,
               }}
             >
-              <Text style={{ color: "#000", fontSize: 10, fontWeight: "900" }}>ACCEPTED</Text>
-            </View>
-          )}
-
-          <View style={{ marginBottom: spacing.sm }}>
-            <UserProfileCard
-              userId={quote.mechanic_id}
-              variant="mini"
-              context="quote_list"
-              onPressViewProfile={() => setSelectedMechanicId(quote.mechanic_id)}
-            />
-          </View>
-
-          <View style={{ alignItems: "center", marginVertical: spacing.md }}>
-            <Text style={{ ...text.muted, fontSize: 12 }}>
-              {isRange ? "Price Range" : "Total Price"}
-            </Text>
-            <Text style={{ fontSize: 32, fontWeight: "900", color: colors.accent, marginTop: 4 }}>
-              {isRange && rangeLow && rangeHigh ? `$${rangeLow} - $${rangeHigh}` : money(quote.price_cents)}
-            </Text>
-            {quote.estimated_hours && (
-              <Text style={{ ...text.muted, fontSize: 12, marginTop: 4 }}>
-                Est. {quote.estimated_hours < 1 ? `${Math.round(quote.estimated_hours * 60)} min` : `${quote.estimated_hours.toFixed(1)} hrs`}
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textSecondary }}>
+                {isExpanded ? "Hide Breakdown" : "View Breakdown"}
               </Text>
-            )}
-          </View>
-
-          <Pressable
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setExpandedQuote(isExpanded ? null : quote.id);
-            }}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              paddingVertical: 8,
-              borderTopWidth: 1,
-              borderTopColor: colors.border,
-            }}
-          >
-            <Text style={{ ...text.muted, fontSize: 12, fontWeight: "700" }}>
-              {isExpanded ? "Hide Breakdown" : "View Breakdown"}
-            </Text>
-            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={16} color={colors.textMuted} style={{ marginLeft: 4 }} />
-          </Pressable>
-
-          {isExpanded && (
-            <View style={{ paddingTop: spacing.sm, gap: spacing.xs }}>
-              <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, gap: 8 }}>
-                {isRange && rangeLow !== null && rangeHigh !== null ? (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={text.body}>Labor (range)</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>${rangeLow - totalFees} - ${rangeHigh - totalFees}</Text>
-                  </View>
-                ) : (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={text.body}>Labor</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>${(laborCents / 100).toFixed(0)}</Text>
-                  </View>
-                )}
-                {hasDriveFee && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={text.body}>Drive fee</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>${driveFee}</Text>
-                  </View>
-                )}
-                {hasDiagnosticFee && (
-                  <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                    <Text style={text.body}>Diagnostic fee</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>${diagnosticFee}</Text>
-                  </View>
-                )}
-                {(hasDriveFee || hasDiagnosticFee) && (
-                  <>
-                    <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={{ ...text.body, fontWeight: "900" }}>Total</Text>
-                      <Text style={{ ...text.body, fontWeight: "900", color: colors.accent }}>
-                        {isRange && rangeLow && rangeHigh ? `$${rangeLow} - $${rangeHigh}` : money(quote.price_cents)}
-                      </Text>
-                    </View>
-                  </>
-                )}
-              </View>
-
-              {cleanNotes ? (
-                <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
-                  <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>MECHANIC NOTE</Text>
-                  <Text style={text.body}>{cleanNotes}</Text>
-                </View>
-              ) : null}
-            </View>
-          )}
-
-          {needsPayment ? (
-            <Pressable
-              onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${quote.id}` as any)}
-              disabled={busy}
-              style={({ pressed }) => ({
-                backgroundColor: colors.accent,
-                paddingVertical: 14,
-                borderRadius: 12,
-                alignItems: "center",
-                marginTop: spacing.md,
-                opacity: busy ? 0.5 : pressed ? 0.8 : 1,
-              })}
-            >
-              <Text style={{ fontWeight: "900", color: "#000" }}>Proceed to Payment</Text>
+              <Ionicons
+                name={isExpanded ? "chevron-up" : "chevron-down"}
+                size={16}
+                color={colors.textSecondary}
+              />
             </Pressable>
-          ) : canAccept ? (
-            <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
-              <Pressable
-                onPress={() => rejectQuote(quote.id)}
-                disabled={busy}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  backgroundColor: colors.surface,
-                  borderWidth: 1,
-                  borderColor: colors.border,
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  opacity: busy ? 0.5 : pressed ? 0.8 : 1,
-                })}
-              >
-                <Text style={{ fontWeight: "700", color: colors.textPrimary }}>Decline</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => acceptQuote(quote.id)}
-                disabled={busy}
-                style={({ pressed }) => ({
-                  flex: 2,
-                  backgroundColor: colors.accent,
-                  paddingVertical: 14,
-                  borderRadius: 12,
-                  alignItems: "center",
-                  opacity: busy ? 0.5 : pressed ? 0.8 : 1,
-                })}
-              >
-                <Text style={{ fontWeight: "900", color: "#000" }}>{busy ? "Processing..." : "Accept Quote"}</Text>
-              </Pressable>
-            </View>
-          ) : null}
 
-          <Text style={{ ...text.muted, fontSize: 11, textAlign: "center", marginTop: spacing.sm }}>
-            Received {fmtRelative(quote.created_at)}
-          </Text>
+            {isExpanded && (
+              <Animated.View entering={FadeInDown.duration(200)} style={{ marginTop: spacing.sm }}>
+                <View style={{
+                  backgroundColor: colors.bg,
+                  borderRadius: radius.lg,
+                  padding: spacing.md,
+                  gap: 10,
+                }}>
+                  {isRange && rangeLow !== null && rangeHigh !== null ? (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(colors.primary, 0.1), alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="construct-outline" size={14} color={colors.primary} />
+                        </View>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary }}>Labor (range)</Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textPrimary }}>${rangeLow - totalFees} - ${rangeHigh - totalFees}</Text>
+                    </View>
+                  ) : (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(colors.primary, 0.1), alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="construct-outline" size={14} color={colors.primary} />
+                        </View>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary }}>Labor</Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textPrimary }}>${(laborCents / 100).toFixed(0)}</Text>
+                    </View>
+                  )}
+                  {hasDriveFee && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(colors.info, 0.1), alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="car-outline" size={14} color={colors.info} />
+                        </View>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary }}>Drive fee</Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textPrimary }}>${driveFee}</Text>
+                    </View>
+                  )}
+                  {hasDiagnosticFee && (
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                        <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: withAlpha(colors.warning, 0.1), alignItems: "center", justifyContent: "center" }}>
+                          <Ionicons name="search-outline" size={14} color={colors.warning} />
+                        </View>
+                        <Text style={{ fontSize: 14, color: colors.textSecondary }}>Diagnostic fee</Text>
+                      </View>
+                      <Text style={{ fontSize: 14, fontWeight: "700", color: colors.textPrimary }}>${diagnosticFee}</Text>
+                    </View>
+                  )}
+                  {(hasDriveFee || hasDiagnosticFee) && (
+                    <>
+                      <View style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }} />
+                      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                        <Text style={{ fontSize: 15, fontWeight: "800", color: colors.textPrimary }}>Total</Text>
+                        <Text style={{ fontSize: 15, fontWeight: "800", color: colors.primary }}>
+                          {isRange && rangeLow && rangeHigh ? `$${rangeLow} - $${rangeHigh}` : money(quote.price_cents)}
+                        </Text>
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                {cleanNotes ? (
+                  <View style={{
+                    backgroundColor: colors.bg,
+                    borderRadius: radius.lg,
+                    padding: spacing.md,
+                    marginTop: spacing.sm,
+                  }}>
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                      <Ionicons name="chatbubble-outline" size={12} color={colors.textMuted} />
+                      <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, letterSpacing: 0.5 }}>MECHANIC NOTE</Text>
+                    </View>
+                    <Text style={{ fontSize: 14, color: colors.textSecondary, lineHeight: 20 }}>{cleanNotes}</Text>
+                  </View>
+                ) : null}
+              </Animated.View>
+            )}
+
+            {needsPayment ? (
+              <Pressable
+                onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${quote.id}` as any)}
+                disabled={busy}
+                style={({ pressed }) => ({
+                  backgroundColor: pressed ? withAlpha(colors.primary, 0.9) : colors.primary,
+                  paddingVertical: 16,
+                  borderRadius: radius.lg,
+                  alignItems: "center",
+                  marginTop: spacing.md,
+                  opacity: busy ? 0.5 : 1,
+                  ...shadows.sm,
+                })}
+              >
+                <Text style={{ fontWeight: "800", color: colors.buttonText, fontSize: 16 }}>Proceed to Payment</Text>
+              </Pressable>
+            ) : canAccept ? (
+              <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.md }}>
+                <Pressable
+                  onPress={() => setShowDeclineModal(quote.id)}
+                  disabled={busy}
+                  style={({ pressed }) => ({
+                    flex: 1,
+                    backgroundColor: "transparent",
+                    borderWidth: 1.5,
+                    borderColor: colors.border,
+                    paddingVertical: 14,
+                    borderRadius: radius.lg,
+                    alignItems: "center",
+                    opacity: busy ? 0.5 : pressed ? 0.8 : 1,
+                  })}
+                >
+                  <Text style={{ fontWeight: "700", color: colors.textSecondary, fontSize: 15 }}>Decline</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => setShowAcceptModal(quote.id)}
+                  disabled={busy}
+                  style={({ pressed }) => ({
+                    flex: 2,
+                    backgroundColor: pressed ? withAlpha(colors.primary, 0.9) : colors.primary,
+                    paddingVertical: 14,
+                    borderRadius: radius.lg,
+                    alignItems: "center",
+                    opacity: busy ? 0.5 : 1,
+                    ...shadows.sm,
+                  })}
+                >
+                  <Text style={{ fontWeight: "800", color: colors.buttonText, fontSize: 15 }}>
+                    {busy ? "Processing..." : "Accept Quote"}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            <Text style={{ fontSize: 11, color: colors.textMuted, textAlign: "center", marginTop: spacing.sm }}>
+              Received {fmtRelative(quote.created_at)}
+            </Text>
+          </View>
         </View>
       </RNAnimated.View>
     );
@@ -682,191 +763,276 @@ export default function CustomerJobDetails() {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
-        contentContainerStyle={{ paddingBottom: spacing.xl }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        contentContainerStyle={{ paddingBottom: spacing.xl + insets.bottom }}
         showsVerticalScrollIndicator={false}
       >
-        <LinearGradient colors={[colors.accent, colors.accent + "CC"]} style={{ paddingTop: insets.top, paddingBottom: spacing.xl }}>
-          <View style={{ paddingHorizontal: spacing.md, paddingTop: spacing.sm }}>
-            <Pressable
-              onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/jobs" as any))}
-              hitSlop={12}
-              style={{ flexDirection: "row", alignItems: "center", gap: 4, marginBottom: spacing.md }}
-            >
-              <Ionicons name="chevron-back" size={20} color="#000" />
-              <Text style={{ color: "#000", fontWeight: "700" }}>Back</Text>
-            </Pressable>
+        <View style={{
+          backgroundColor: colors.surface,
+          paddingTop: insets.top,
+          borderBottomLeftRadius: radius.xl,
+          borderBottomRightRadius: radius.xl,
+          ...shadows.sm,
+        }}>
+          <View style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.lg }}>
+            <View style={{ flexDirection: "row", alignItems: "center", marginBottom: spacing.md }}>
+              <Pressable
+                onPress={() => (router.canGoBack() ? router.back() : router.replace("/(customer)/(tabs)/jobs" as any))}
+                hitSlop={12}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Ionicons name="chevron-back" size={24} color={colors.textPrimary} />
+                <Text style={{ color: colors.textSecondary, fontWeight: "600", fontSize: 15 }}>Back</Text>
+              </Pressable>
+            </View>
 
-            <Text style={{ fontSize: 24, fontWeight: "900", color: "#000", marginBottom: 8 }}>
+            <Text style={{
+              fontSize: 26,
+              fontWeight: "800",
+              color: colors.textPrimary,
+              marginBottom: spacing.sm,
+              letterSpacing: -0.5,
+            }}>
               {getDisplayTitle(job.title)}
             </Text>
 
             {intake?.vehicle && (
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: spacing.sm }}>
-                <Ionicons name="car-outline" size={16} color="#000" />
-                <Text style={{ color: "#000", fontWeight: "600" }}>
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 8,
+                marginBottom: spacing.md,
+              }}>
+                <View style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: withAlpha(colors.primary, 0.1),
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Ionicons name="car-sport" size={14} color={colors.primary} />
+                </View>
+                <Text style={{ color: colors.textSecondary, fontWeight: "600", fontSize: 14 }}>
                   {intake.vehicle.year} {intake.vehicle.make} {intake.vehicle.model}
                 </Text>
               </View>
             )}
 
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 8,
-                backgroundColor: "rgba(0,0,0,0.15)",
-                alignSelf: "flex-start",
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20,
-              }}
-            >
-              <Ionicons name={statusInfo.icon} size={14} color="#000" />
-              <Text style={{ color: "#000", fontWeight: "700", fontSize: 12 }}>{statusInfo.label.toUpperCase()}</Text>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 8,
+              backgroundColor: withAlpha(statusInfo.color, 0.12),
+              alignSelf: "flex-start",
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              borderRadius: 20,
+            }}>
+              <Ionicons name={statusInfo.icon} size={14} color={statusInfo.color} />
+              <Text style={{ color: statusInfo.color, fontWeight: "700", fontSize: 12, letterSpacing: 0.3 }}>
+                {statusInfo.label.toUpperCase()}
+              </Text>
             </View>
           </View>
-        </LinearGradient>
+        </View>
 
-        <View style={{ paddingHorizontal: spacing.md, marginTop: -spacing.lg }}>
+        <View style={{ paddingHorizontal: spacing.lg, marginTop: spacing.lg }}>
           {job.accepted_mechanic_id && (
-            <Pressable
-              onPress={openChat}
-              style={({ pressed }) => [
-                card,
-                {
-                  padding: spacing.md,
+            <Animated.View entering={FadeInDown.delay(100).duration(300)}>
+              <Pressable
+                onPress={openChat}
+                style={({ pressed }) => ({
+                  backgroundColor: colors.primary,
+                  borderRadius: radius.xl,
+                  padding: spacing.lg,
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "space-between",
-                  backgroundColor: colors.accent,
-                  borderColor: colors.accent,
                   marginBottom: spacing.md,
-                },
-                pressed && { opacity: 0.9 },
-              ]}
-            >
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-                <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: "rgba(0,0,0,0.15)", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="chatbubbles" size={22} color="#000" />
+                  opacity: pressed ? 0.9 : 1,
+                  ...shadows.md,
+                })}
+              >
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 14 }}>
+                  <View style={{
+                    width: 48,
+                    height: 48,
+                    borderRadius: 24,
+                    backgroundColor: withAlpha("#000", 0.15),
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    <Ionicons name="chatbubbles" size={24} color={colors.buttonText} />
+                  </View>
+                  <View>
+                    <Text style={{ fontWeight: "800", color: colors.buttonText, fontSize: 16 }}>Chat with Mechanic</Text>
+                    <Text style={{ color: withAlpha(colors.buttonText, 0.8), fontSize: 13, marginTop: 2 }}>
+                      Message your assigned mechanic
+                    </Text>
+                  </View>
                 </View>
-                <View>
-                  <Text style={{ fontWeight: "900", color: "#000", fontSize: 16 }}>Chat with Mechanic</Text>
-                  <Text style={{ color: "rgba(0,0,0,0.7)", fontSize: 12, marginTop: 2 }}>Message your assigned mechanic</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={24} color="#000" />
-            </Pressable>
+                <Ionicons name="chevron-forward" size={24} color={colors.buttonText} />
+              </Pressable>
+            </Animated.View>
           )}
 
-          <Pressable
-            onPress={() => {
-              LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-              setDetailsExpanded(!detailsExpanded);
-            }}
-            style={[card, { padding: spacing.md, marginBottom: spacing.md }]}
-          >
-            <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="document-text-outline" size={18} color={colors.accent} />
+          <Animated.View entering={FadeInDown.delay(150).duration(300)}>
+            <Pressable
+              onPress={() => setDetailsExpanded(!detailsExpanded)}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: radius.xl,
+                padding: spacing.lg,
+                marginBottom: spacing.md,
+                ...shadows.sm,
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                  <View style={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 20,
+                    backgroundColor: withAlpha(colors.primary, 0.1),
+                    alignItems: "center",
+                    justifyContent: "center"
+                  }}>
+                    <Ionicons name="document-text-outline" size={20} color={colors.primary} />
+                  </View>
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Job Details</Text>
                 </View>
-                <Text style={text.section}>Job Details</Text>
+                <Animated.View style={detailsChevronStyle}>
+                  <Ionicons name="chevron-down" size={22} color={colors.textMuted} />
+                </Animated.View>
               </View>
-              <Animated.View style={detailsChevronStyle}>
-                <Ionicons name="chevron-down" size={20} color={colors.textMuted} />
-              </Animated.View>
-            </View>
 
-            {!detailsExpanded && (
-              <Text style={{ ...text.muted, marginTop: spacing.sm }} numberOfLines={1}>
-                {intake?.symptom?.label || "Tap to view details"}
-              </Text>
-            )}
+              {!detailsExpanded && (
+                <Text style={{ color: colors.textMuted, marginTop: spacing.sm, fontSize: 14 }} numberOfLines={1}>
+                  {intake?.symptom?.label || "Tap to view details"}
+                </Text>
+              )}
 
-            {detailsExpanded && intake && (
-              <View style={{ marginTop: spacing.md, gap: spacing.sm }}>
-                {intake.symptom?.label && (
-                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md }}>
-                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>ISSUE</Text>
-                    <Text style={{ ...text.body, fontWeight: "700" }}>{intake.symptom.label}</Text>
-                  </View>
-                )}
-
-                {intake.answers && Object.keys(intake.answers).length > 0 && (
-                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, gap: 8 }}>
-                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>DETAILS</Text>
-                    {Object.entries(intake.answers).map(([key, value]) => (
-                      <View key={key} style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={{ ...text.muted, flex: 1 }}>{questionMap[key] || key}</Text>
-                        <Text style={{ ...text.body, fontWeight: "700" }}>{value}</Text>
+              {detailsExpanded && intake && (
+                <View style={{ marginTop: spacing.lg, gap: spacing.md }}>
+                  {intake.symptom?.label && (
+                    <View style={{ backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                        <Ionicons name="warning-outline" size={12} color={colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, letterSpacing: 0.5 }}>ISSUE</Text>
                       </View>
-                    ))}
-                  </View>
-                )}
+                      <Text style={{ fontSize: 15, fontWeight: "700", color: colors.textPrimary }}>{intake.symptom.label}</Text>
+                    </View>
+                  )}
 
-                {context && (
-                  <View style={{ backgroundColor: colors.surface, borderRadius: 12, padding: spacing.md, gap: 8 }}>
-                    <Text style={{ ...text.muted, fontSize: 11, fontWeight: "700", marginBottom: 4 }}>CONTEXT</Text>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={text.muted}>Can move vehicle</Text>
-                      <Text style={{ ...text.body, fontWeight: "700" }}>{canMoveText}</Text>
+                  {intake.answers && Object.keys(intake.answers).length > 0 && (
+                    <View style={{ backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md, gap: 10 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <Ionicons name="list-outline" size={12} color={colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, letterSpacing: 0.5 }}>DETAILS</Text>
+                      </View>
+                      {Object.entries(intake.answers).map(([key, value]) => (
+                        <View key={key} style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ color: colors.textMuted, flex: 1, fontSize: 14 }}>{questionMap[key] || key}</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>{value}</Text>
+                        </View>
+                      ))}
                     </View>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={text.muted}>Location</Text>
-                      <Text style={{ ...text.body, fontWeight: "700" }}>{locationText}</Text>
-                    </View>
-                    <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                      <Text style={text.muted}>Time preference</Text>
-                      <Text style={{ ...text.body, fontWeight: "700" }}>{timeText}</Text>
-                    </View>
-                    {context.mileage && (
+                  )}
+
+                  {context && (
+                    <View style={{ backgroundColor: colors.bg, borderRadius: radius.lg, padding: spacing.md, gap: 10 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <Ionicons name="information-circle-outline" size={12} color={colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: colors.textMuted, letterSpacing: 0.5 }}>CONTEXT</Text>
+                      </View>
                       <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-                        <Text style={text.muted}>Mileage</Text>
-                        <Text style={{ ...text.body, fontWeight: "700" }}>{context.mileage}</Text>
+                        <Text style={{ color: colors.textMuted, fontSize: 14 }}>Can move vehicle</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>{canMoveText}</Text>
                       </View>
-                    )}
-                    {context.additional_details && (
-                      <View style={{ marginTop: 4 }}>
-                        <Text style={text.muted}>Additional details</Text>
-                        <Text style={{ ...text.body, marginTop: 4 }}>{context.additional_details}</Text>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 14 }}>Location</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>{locationText}</Text>
                       </View>
-                    )}
-                  </View>
-                )}
-              </View>
-            )}
-          </Pressable>
+                      <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                        <Text style={{ color: colors.textMuted, fontSize: 14 }}>Time preference</Text>
+                        <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>{timeText}</Text>
+                      </View>
+                      {context.mileage && (
+                        <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 14 }}>Mileage</Text>
+                          <Text style={{ fontSize: 14, fontWeight: "600", color: colors.textPrimary }}>{context.mileage}</Text>
+                        </View>
+                      )}
+                      {context.additional_details && (
+                        <View style={{ marginTop: 4 }}>
+                          <Text style={{ color: colors.textMuted, fontSize: 14 }}>Additional details</Text>
+                          <Text style={{ fontSize: 14, color: colors.textSecondary, marginTop: 4, lineHeight: 20 }}>{context.additional_details}</Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+                </View>
+              )}
+            </Pressable>
+          </Animated.View>
 
           {quotes.length > 0 && !job.accepted_mechanic_id && (
-            <View style={{ marginBottom: spacing.md }}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm, paddingHorizontal: 4 }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Text style={text.section}>Quotes</Text>
-                  <View style={{ backgroundColor: colors.accent, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 2 }}>
-                    <Text style={{ color: "#000", fontSize: 12, fontWeight: "900" }}>{pendingQuotes.length}</Text>
+            <Animated.View entering={FadeInDown.delay(200).duration(300)} style={{ marginBottom: spacing.md }}>
+              <View style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: spacing.md,
+                paddingHorizontal: 4
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Text style={{ fontSize: 18, fontWeight: "700", color: colors.textPrimary }}>Quotes</Text>
+                  <View style={{
+                    backgroundColor: colors.primary,
+                    borderRadius: 12,
+                    paddingHorizontal: 10,
+                    paddingVertical: 4
+                  }}>
+                    <Text style={{ color: colors.buttonText, fontSize: 12, fontWeight: "800" }}>{pendingQuotes.length}</Text>
                   </View>
                 </View>
-                <Text style={{ ...text.muted, fontSize: 12 }}>Swipe to browse</Text>
+                {pendingQuotes.length > 1 && (
+                  <Text style={{ color: colors.textMuted, fontSize: 13 }}>
+                    {currentQuoteIndex + 1} of {pendingQuotes.length}
+                  </Text>
+                )}
               </View>
 
               <RNAnimated.FlatList
-                data={quotes}
+                data={pendingQuotes}
                 keyExtractor={(item) => item.id}
                 horizontal
                 showsHorizontalScrollIndicator={false}
                 snapToInterval={QUOTE_CARD_WIDTH + 16}
                 decelerationRate="fast"
-                contentContainerStyle={{ paddingHorizontal: 32 }}
-                onScroll={RNAnimated.event([{ nativeEvent: { contentOffset: { x: scrollX } } }], { useNativeDriver: true })}
+                contentContainerStyle={{ paddingHorizontal: 16 }}
+                onScroll={RNAnimated.event(
+                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                  { useNativeDriver: true }
+                )}
+                onMomentumScrollEnd={(e) => {
+                  const index = Math.round(e.nativeEvent.contentOffset.x / (QUOTE_CARD_WIDTH + 16));
+                  setCurrentQuoteIndex(Math.max(0, Math.min(index, pendingQuotes.length - 1)));
+                }}
                 renderItem={({ item, index }) => <QuoteCard quote={item} index={index} />}
               />
 
-              {quotes.length > 1 && (
-                <View style={{ flexDirection: "row", justifyContent: "center", marginTop: spacing.sm, gap: 6 }}>
-                  {quotes.map((_, i) => {
-                    const inputRange = [(i - 1) * QUOTE_CARD_WIDTH, i * QUOTE_CARD_WIDTH, (i + 1) * QUOTE_CARD_WIDTH];
-                    const dotWidth = scrollX.interpolate({ inputRange, outputRange: [8, 16, 8], extrapolate: "clamp" });
+              {pendingQuotes.length > 1 && (
+                <View style={{ flexDirection: "row", justifyContent: "center", marginTop: spacing.md, gap: 8 }}>
+                  {pendingQuotes.map((_, i) => {
+                    const inputRange = [(i - 1) * (QUOTE_CARD_WIDTH + 16), i * (QUOTE_CARD_WIDTH + 16), (i + 1) * (QUOTE_CARD_WIDTH + 16)];
+                    const dotWidth = scrollX.interpolate({ inputRange, outputRange: [8, 20, 8], extrapolate: "clamp" });
                     const dotOpacity = scrollX.interpolate({ inputRange, outputRange: [0.3, 1, 0.3], extrapolate: "clamp" });
                     return (
                       <RNAnimated.View
@@ -875,7 +1041,7 @@ export default function CustomerJobDetails() {
                           width: dotWidth,
                           height: 8,
                           borderRadius: 4,
-                          backgroundColor: colors.accent,
+                          backgroundColor: colors.primary,
                           opacity: dotOpacity,
                         }}
                       />
@@ -883,41 +1049,75 @@ export default function CustomerJobDetails() {
                   })}
                 </View>
               )}
-            </View>
+            </Animated.View>
           )}
 
           {quotes.length === 0 && !job.accepted_mechanic_id && (
-            <View style={[card, { padding: spacing.xl, alignItems: "center", marginBottom: spacing.md }]}>
-              <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center", marginBottom: spacing.md }}>
-                <Ionicons name="time-outline" size={32} color={colors.accent} />
+            <Animated.View
+              entering={FadeInDown.delay(200).duration(300)}
+              style={{
+                backgroundColor: colors.surface,
+                borderRadius: radius.xl,
+                padding: spacing.xl,
+                alignItems: "center",
+                marginBottom: spacing.md,
+                ...shadows.sm,
+              }}
+            >
+              <View style={{
+                width: 72,
+                height: 72,
+                borderRadius: 36,
+                backgroundColor: withAlpha(colors.primary, 0.1),
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: spacing.lg
+              }}>
+                <Ionicons name="time-outline" size={36} color={colors.primary} />
               </View>
-              <Text style={{ ...text.section, textAlign: "center" }}>Waiting for Quotes</Text>
-              <Text style={{ ...text.muted, textAlign: "center", marginTop: spacing.sm }}>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: colors.textPrimary, textAlign: "center" }}>
+                Waiting for Quotes
+              </Text>
+              <Text style={{
+                color: colors.textMuted,
+                textAlign: "center",
+                marginTop: spacing.sm,
+                fontSize: 14,
+                lineHeight: 20,
+                paddingHorizontal: spacing.md,
+              }}>
                 Mechanics are reviewing your request. Quotes will appear here automatically.
               </Text>
-            </View>
+            </Animated.View>
           )}
 
           {job.accepted_mechanic_id && acceptedQuote && (
             <>
               {!contract && (
-                <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.warning + "20", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="card-outline" size={18} color={colors.warning} />
+                <View style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.xl,
+                  padding: spacing.lg,
+                  marginBottom: spacing.md,
+                  ...shadows.sm,
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.md }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withAlpha(colors.warning, 0.1), alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="card-outline" size={20} color={colors.warning} />
                     </View>
-                    <Text style={text.section}>Payment Required</Text>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Payment Required</Text>
                   </View>
-                  <Text style={{ ...text.muted, marginBottom: spacing.md }}>
+                  <Text style={{ color: colors.textMuted, marginBottom: spacing.lg, fontSize: 14, lineHeight: 20 }}>
                     Complete payment to confirm your booking and notify the mechanic.
                   </Text>
                   <Pressable
                     onPress={() => router.push(`/(customer)/payment/${id}?quoteId=${acceptedQuote.id}` as any)}
                     style={({ pressed }) => ({
-                      backgroundColor: pressed ? colors.accent + "DD" : colors.accent,
+                      backgroundColor: pressed ? withAlpha(colors.primary, 0.9) : colors.primary,
                       paddingVertical: 14,
-                      borderRadius: 12,
+                      borderRadius: radius.lg,
                       alignItems: "center",
+                      ...shadows.sm,
                     })}
                   >
                     <Text style={{ color: colors.buttonText, fontWeight: "700", fontSize: 16 }}>Complete Payment</Text>
@@ -926,24 +1126,36 @@ export default function CustomerJobDetails() {
               )}
 
               {contract && (
-                <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="trending-up-outline" size={18} color={colors.accent} />
+                <View style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.xl,
+                  padding: spacing.lg,
+                  marginBottom: spacing.md,
+                  ...shadows.sm,
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.md }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withAlpha(colors.primary, 0.1), alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="trending-up-outline" size={20} color={colors.primary} />
                     </View>
-                    <Text style={text.section}>Job Progress</Text>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Job Progress</Text>
                   </View>
                   <JobProgressTracker progress={progress} status={job.status} role="customer" />
                 </View>
               )}
 
               {contract && job.status !== "completed" && job.status !== "canceled" && (
-                <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-                    <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#f59e0b20", alignItems: "center", justifyContent: "center" }}>
-                      <Ionicons name="hand-left-outline" size={18} color="#f59e0b" />
+                <View style={{
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.xl,
+                  padding: spacing.lg,
+                  marginBottom: spacing.md,
+                  ...shadows.sm,
+                }}>
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.md }}>
+                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withAlpha(colors.warning, 0.1), alignItems: "center", justifyContent: "center" }}>
+                      <Ionicons name="hand-left-outline" size={20} color={colors.warning} />
                     </View>
-                    <Text style={text.section}>Actions Required</Text>
+                    <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Actions Required</Text>
                   </View>
                   <JobActions
                     jobId={id}
@@ -959,20 +1171,23 @@ export default function CustomerJobDetails() {
 
               {invoice && (
                 <Pressable
-                  onPress={() => {
-                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                    setInvoiceExpanded(!invoiceExpanded);
+                  onPress={() => setInvoiceExpanded(!invoiceExpanded)}
+                  style={{
+                    backgroundColor: colors.surface,
+                    borderRadius: radius.xl,
+                    padding: spacing.lg,
+                    marginBottom: spacing.md,
+                    ...shadows.sm,
                   }}
-                  style={[card, { padding: spacing.md, marginBottom: spacing.md }]}
                 >
                   <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                      <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: "#10B98120", alignItems: "center", justifyContent: "center" }}>
-                        <Ionicons name="receipt-outline" size={18} color="#10B981" />
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withAlpha(colors.success, 0.1), alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="receipt-outline" size={20} color={colors.success} />
                       </View>
-                      <Text style={text.section}>Invoice</Text>
+                      <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Invoice</Text>
                     </View>
-                    <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textMuted} />
+                    <Ionicons name={invoiceExpanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textMuted} />
                   </View>
 
                   {!invoiceExpanded && (() => {
@@ -986,7 +1201,7 @@ export default function CustomerJobDetails() {
                     const pendingTotal = invoice.pending_items.reduce((sum, i) => sum + i.total_cents, 0);
 
                     return (
-                      <Text style={{ ...text.body, color: colors.accent, fontWeight: "900", marginTop: spacing.sm }}>
+                      <Text style={{ fontSize: 16, color: colors.primary, fontWeight: "800", marginTop: spacing.md }}>
                         Total: ${(totalDue / 100).toFixed(2)}
                         {pendingTotal > 0 && (
                           <Text style={{ color: colors.textMuted, fontWeight: "500" }}>
@@ -998,7 +1213,7 @@ export default function CustomerJobDetails() {
                   })()}
 
                   {invoiceExpanded && (
-                    <View style={{ marginTop: spacing.sm }}>
+                    <View style={{ marginTop: spacing.md }}>
                       <InvoiceView
                         invoice={invoice}
                         role="customer"
@@ -1011,12 +1226,18 @@ export default function CustomerJobDetails() {
                 </Pressable>
               )}
 
-              <View style={[card, { padding: spacing.md, marginBottom: spacing.md }]}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: spacing.sm }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="person-outline" size={18} color={colors.accent} />
+              <View style={{
+                backgroundColor: colors.surface,
+                borderRadius: radius.xl,
+                padding: spacing.lg,
+                marginBottom: spacing.md,
+                ...shadows.sm,
+              }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 12, marginBottom: spacing.md }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: withAlpha(colors.primary, 0.1), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="person-outline" size={20} color={colors.primary} />
                   </View>
-                  <Text style={text.section}>Your Mechanic</Text>
+                  <Text style={{ fontSize: 17, fontWeight: "700", color: colors.textPrimary }}>Your Mechanic</Text>
                 </View>
 
                 <UserProfileCard
@@ -1146,7 +1367,7 @@ export default function CustomerJobDetails() {
             maxHeight: '80%',
           }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.lg }}>
-              <Text style={{ ...text.section }}>Report an Issue</Text>
+              <Text style={{ fontSize: 18, fontWeight: "700", color: colors.textPrimary }}>Report an Issue</Text>
               <Pressable onPress={() => setShowReportIssueModal(false)}>
                 <Ionicons name="close" size={24} color={colors.textPrimary} />
               </Pressable>
@@ -1167,7 +1388,7 @@ export default function CustomerJobDetails() {
                 </Text>
               </View>
 
-              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginBottom: spacing.sm }}>
                 What's the issue? *
               </Text>
               <TextInput
@@ -1190,7 +1411,7 @@ export default function CustomerJobDetails() {
                 }}
               />
 
-              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginBottom: spacing.sm }}>
                 What would you like to happen?
               </Text>
               <TextInput
@@ -1213,7 +1434,7 @@ export default function CustomerJobDetails() {
                 }}
               />
 
-              <Text style={{ ...text.xs, color: colors.textSecondary, marginBottom: spacing.sm }}>
+              <Text style={{ fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginBottom: spacing.sm }}>
                 Evidence Photos ({evidencePhotos.length}/{MAX_EVIDENCE_PHOTOS}) - Optional
               </Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: spacing.lg }}>
@@ -1303,6 +1524,186 @@ export default function CustomerJobDetails() {
                 )}
               </Pressable>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Accept Quote Confirmation Modal */}
+      <Modal visible={!!showAcceptModal} animationType="fade" transparent>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: spacing.lg,
+        }}>
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+            padding: spacing.xl,
+            width: '100%',
+            maxWidth: 340,
+            ...shadows.lg,
+          }}>
+            <View style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: withAlpha(colors.primary, 0.1),
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'center',
+              marginBottom: spacing.lg,
+            }}>
+              <Ionicons name="checkmark-circle" size={32} color={colors.primary} />
+            </View>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '800',
+              color: colors.textPrimary,
+              textAlign: 'center',
+              marginBottom: spacing.sm,
+            }}>
+              Accept This Quote?
+            </Text>
+            <Text style={{
+              fontSize: 14,
+              color: colors.textMuted,
+              textAlign: 'center',
+              marginBottom: spacing.xl,
+              lineHeight: 20,
+            }}>
+              You'll proceed to payment after accepting. Other quotes will be automatically declined.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Pressable
+                onPress={() => setShowAcceptModal(null)}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  backgroundColor: 'transparent',
+                  borderWidth: 1.5,
+                  borderColor: colors.border,
+                  paddingVertical: 14,
+                  borderRadius: radius.lg,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Text style={{ fontWeight: '700', color: colors.textSecondary, fontSize: 15 }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (showAcceptModal) {
+                    acceptQuote(showAcceptModal);
+                    setShowAcceptModal(null);
+                  }
+                }}
+                disabled={busy}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  backgroundColor: colors.primary,
+                  paddingVertical: 14,
+                  borderRadius: radius.lg,
+                  alignItems: 'center',
+                  opacity: busy ? 0.5 : pressed ? 0.9 : 1,
+                  ...shadows.sm,
+                })}
+              >
+                <Text style={{ fontWeight: '800', color: colors.buttonText, fontSize: 15 }}>
+                  {busy ? 'Processing...' : 'Accept'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Decline Quote Confirmation Modal */}
+      <Modal visible={!!showDeclineModal} animationType="fade" transparent>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.5)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: spacing.lg,
+        }}>
+          <View style={{
+            backgroundColor: colors.surface,
+            borderRadius: radius.xl,
+            padding: spacing.xl,
+            width: '100%',
+            maxWidth: 340,
+            ...shadows.lg,
+          }}>
+            <View style={{
+              width: 64,
+              height: 64,
+              borderRadius: 32,
+              backgroundColor: withAlpha(colors.error, 0.1),
+              alignItems: 'center',
+              justifyContent: 'center',
+              alignSelf: 'center',
+              marginBottom: spacing.lg,
+            }}>
+              <Ionicons name="close-circle" size={32} color={colors.error} />
+            </View>
+            <Text style={{
+              fontSize: 20,
+              fontWeight: '800',
+              color: colors.textPrimary,
+              textAlign: 'center',
+              marginBottom: spacing.sm,
+            }}>
+              Decline This Quote?
+            </Text>
+            <Text style={{
+              fontSize: 14,
+              color: colors.textMuted,
+              textAlign: 'center',
+              marginBottom: spacing.xl,
+              lineHeight: 20,
+            }}>
+              This action cannot be undone. The mechanic will be notified that you've declined their quote.
+            </Text>
+            <View style={{ flexDirection: 'row', gap: spacing.sm }}>
+              <Pressable
+                onPress={() => setShowDeclineModal(null)}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  backgroundColor: 'transparent',
+                  borderWidth: 1.5,
+                  borderColor: colors.border,
+                  paddingVertical: 14,
+                  borderRadius: radius.lg,
+                  alignItems: 'center',
+                  opacity: pressed ? 0.7 : 1,
+                })}
+              >
+                <Text style={{ fontWeight: '700', color: colors.textSecondary, fontSize: 15 }}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  if (showDeclineModal) {
+                    rejectQuote(showDeclineModal);
+                    setShowDeclineModal(null);
+                  }
+                }}
+                disabled={busy}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  backgroundColor: colors.error,
+                  paddingVertical: 14,
+                  borderRadius: radius.lg,
+                  alignItems: 'center',
+                  opacity: busy ? 0.5 : pressed ? 0.9 : 1,
+                  ...shadows.sm,
+                })}
+              >
+                <Text style={{ fontWeight: '800', color: '#fff', fontSize: 15 }}>
+                  {busy ? 'Processing...' : 'Decline'}
+                </Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </Modal>
