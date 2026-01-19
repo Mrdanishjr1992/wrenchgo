@@ -2,19 +2,15 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminGetPayouts, AdminPayout, formatCents, formatDateTime } from '../../src/lib/admin';
-
-const STATUS_COLORS: Record<string, string> = {
-  pending: '#F59E0B',
-  processing: '#3B82F6',
-  completed: '#10B981',
-  failed: '#EF4444',
-};
+import { getStatusColor } from '../../src/lib/admin-colors';
 
 export default function AdminPayoutsScreen() {
-  const { colors } = useTheme();
+  const { colors, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
   const [payouts, setPayouts] = useState<AdminPayout[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,14 +51,14 @@ export default function AdminPayoutsScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -119,9 +115,9 @@ export default function AdminPayoutsScreen() {
                   paddingHorizontal: spacing.sm,
                   paddingVertical: 2,
                   borderRadius: 4,
-                  backgroundColor: (STATUS_COLORS[p.status] || colors.textSecondary) + '20',
+                  backgroundColor: withAlpha(getStatusColor(p.status, colors), 0.12),
                 }}>
-                  <Text style={{ color: STATUS_COLORS[p.status] || colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                  <Text style={{ color: getStatusColor(p.status, colors), fontSize: 11, fontWeight: '600' }}>
                     {p.status.toUpperCase()}
                   </Text>
                 </View>
@@ -132,7 +128,7 @@ export default function AdminPayoutsScreen() {
               </Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm }}>
                 <Text style={{ fontSize: 12, color: colors.textSecondary }}>Created: {formatDateTime(p.created_at)}</Text>
-                {p.processed_at && <Text style={{ fontSize: 12, color: '#10B981' }}>Processed {formatDateTime(p.processed_at)}</Text>}
+                {p.processed_at && <Text style={{ fontSize: 12, color: colors.success }}>Processed {formatDateTime(p.processed_at)}</Text>}
               </View>
             </TouchableOpacity>
           ))

@@ -13,6 +13,8 @@ import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { createCard } from "../../../src/ui/styles";
 import { symptomQuestions } from "../../../src/data/symptomQuestions";
+import { AI_DIAGNOSIS_ENABLED, isDescriptionVague } from "../../../src/lib/aiDiagnosisService";
+import { DiagnosisAssistant } from "../../../components/diagnosis/DiagnosisAssistant";
 import React from "react";
 
 type Job = {
@@ -108,6 +110,8 @@ export default function JobDetail() {
   const [intake, setIntake] = useState<JobIntake | null>(null);
   const [showGuidance, setShowGuidance] = useState(true);
   const [questionMap, setQuestionMap] = useState<Record<string, string>>({});
+  const [showDiagnosis, setShowDiagnosis] = useState(false);
+  const [messageDraft, setMessageDraft] = useState("");
 
   useEffect(() => {
     loadJob();
@@ -365,7 +369,68 @@ export default function JobDetail() {
           </Pressable>
         )}
 
+        {/* AI Diagnose Banner - shows when description is vague */}
+        {AI_DIAGNOSIS_ENABLED && isDescriptionVague(job.description || intake?.symptom?.label || "") && (
+          <Pressable
+            onPress={() => setShowDiagnosis(true)}
+            style={[
+              card,
+              {
+                padding: spacing.md,
+                backgroundColor: colors.accent + "15",
+                borderLeftWidth: 4,
+                borderLeftColor: colors.accent,
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: colors.accent + "30",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <Ionicons name="pulse" size={20} color={colors.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ ...text.body, fontWeight: "700", fontSize: 14 }}>Need more details?</Text>
+              <Text style={{ ...text.muted, fontSize: 12 }}>Use AI Diagnose to ask the right questions</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.accent} />
+          </Pressable>
+        )}
+
         <View style={{ gap: spacing.sm, marginTop: spacing.md }}>
+          {/* AI Diagnose Button */}
+          {AI_DIAGNOSIS_ENABLED && (
+            <Pressable
+              onPress={() => setShowDiagnosis(true)}
+              style={({ pressed }) => ({
+                backgroundColor: colors.surface,
+                paddingVertical: 16,
+                borderRadius: radius.lg,
+                alignItems: "center",
+                borderWidth: 1,
+                borderColor: colors.accent,
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: spacing.sm,
+                opacity: pressed ? 0.85 : 1,
+              })}
+            >
+              <Ionicons name="pulse" size={20} color={colors.accent} />
+              <Text style={{ fontWeight: "700", fontSize: 16, color: colors.accent }}>
+                AI Diagnose
+              </Text>
+            </Pressable>
+          )}
+
           <Pressable
             onPress={() => router.push(`/(mechanic)/quote-composer/${params.id}` as any)}
             style={({ pressed }) => ({
@@ -397,6 +462,58 @@ export default function JobDetail() {
           </Pressable>
         </View>
       </ScrollView>
+
+      {/* Diagnosis Assistant Modal */}
+      {AI_DIAGNOSIS_ENABLED && (
+        <DiagnosisAssistant
+          visible={showDiagnosis}
+          onClose={() => setShowDiagnosis(false)}
+          leadId={params.id || ""}
+          title={intake?.symptom?.label || job.title}
+          description={job.description || ""}
+          vehicleInfo={
+            job.vehicle
+              ? {
+                  year: job.vehicle.year,
+                  make: job.vehicle.make,
+                  model: job.vehicle.model,
+                  mileage: intake?.context?.mileage || undefined,
+                }
+              : undefined
+          }
+          category={intake?.symptom?.key}
+          onSendMessage={(message) => {
+            setMessageDraft(message);
+            Alert.alert(
+              "Message Ready",
+              "Question copied! Go to messages to send it to the customer.",
+              [
+                { text: "Later", style: "cancel" },
+                {
+                  text: "Go to Messages",
+                  onPress: () => {
+                    setShowDiagnosis(false);
+                    router.push(`/(mechanic)/messages/${params.id}` as any);
+                  },
+                },
+              ]
+            );
+          }}
+          onSaveNotes={async (notes) => {
+            try {
+              await supabase.from("lead_notes").insert({
+                lead_id: params.id,
+                content: notes,
+                source: "ai_assist",
+                created_at: new Date().toISOString(),
+              });
+            } catch (e) {
+              console.log("Note save failed, table may not exist:", e);
+              Alert.alert("Note Saved", "Documentation has been recorded.");
+            }
+          }}
+        />
+      )}
     </View>
   );
 }

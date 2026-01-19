@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import {
@@ -22,6 +23,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminSupportDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<AdminSupportRequestDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -82,7 +84,7 @@ export default function AdminSupportDetailScreen() {
   const contract = detail.contract;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

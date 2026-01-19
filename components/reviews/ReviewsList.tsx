@@ -1,8 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import { View, FlatList, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '@/src/ui/theme-context';
 import type { Review } from '@/src/lib/reviews';
+import { ThemedText } from '@/src/ui/components/ThemedText';
+import { ThemedCard } from '@/src/ui/components/ThemedCard';
+import { ThemedBadge } from '@/src/ui/components/ThemedBadge';
+import { Skeleton } from '@/src/ui/components/Skeleton';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 interface ReviewsListProps {
   reviews: Review[];
@@ -27,15 +32,16 @@ export function ReviewsList({
   revieweeRole = 'mechanic',
   scrollEnabled = true,
 }: ReviewsListProps) {
-  const { colors } = useTheme();
+  const { spacing } = useTheme();
 
-  const renderReview = ({ item }: { item: Review }) => (
-    <ReviewCard
-      review={item}
-      colors={colors}
-      onReport={onReportReview}
-      revieweeRole={revieweeRole}
-    />
+  const renderReview = ({ item, index }: { item: Review; index: number }) => (
+    <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
+      <ReviewCard
+        review={item}
+        onReport={onReportReview}
+        revieweeRole={revieweeRole}
+      />
+    </Animated.View>
   );
 
   return (
@@ -48,53 +54,84 @@ export function ReviewsList({
       ListHeaderComponent={ListHeaderComponent}
       scrollEnabled={scrollEnabled}
       nestedScrollEnabled={!scrollEnabled}
+      contentContainerStyle={{ paddingHorizontal: spacing.md }}
       ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-          <View style={[styles.emptyIconCircle, { backgroundColor: colors.primary + '15' }]}>
-            <Ionicons name="star-outline" size={40} color={colors.primary} />
-          </View>
-          <Text style={[styles.emptyTitle, { color: colors.textPrimary }]}>
-            {mechanicName ? `${mechanicName} is new to WrenchGo` : 'New to WrenchGo'}
-          </Text>
-          <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-            Reviews will appear after completed jobs
-          </Text>
-          <View style={[styles.emptyHint, { backgroundColor: colors.textMuted + '08', borderColor: colors.border }]}>
-            <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
-            <Text style={[styles.emptyHintText, { color: colors.textSecondary }]}>
-              Be the first to leave a review
-            </Text>
-          </View>
-        </View>
+        <EmptyReviewsState mechanicName={mechanicName} />
       }
+      ListFooterComponent={loading ? <ReviewCardSkeleton /> : null}
     />
+  );
+}
+
+function EmptyReviewsState({ mechanicName }: { mechanicName?: string }) {
+  const { colors, spacing, radius } = useTheme();
+  
+  return (
+    <View style={{ alignItems: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg }}>
+      <View style={{ 
+        width: 80, 
+        height: 80, 
+        borderRadius: 40, 
+        backgroundColor: colors.primaryBg, 
+        alignItems: 'center', 
+        justifyContent: 'center',
+        marginBottom: spacing.lg
+      }}>
+        <Ionicons name="star-outline" size={36} color={colors.primary} />
+      </View>
+      <ThemedText variant="title" style={{ marginBottom: spacing.xs, textAlign: 'center' }}>
+        {mechanicName ? `${mechanicName} is new to WrenchGo` : 'New to WrenchGo'}
+      </ThemedText>
+      <ThemedText variant="body" color="muted" style={{ textAlign: 'center', marginBottom: spacing.lg }}>
+        Reviews will appear after completed jobs
+      </ThemedText>
+      <View style={{ 
+        flexDirection: 'row', 
+        alignItems: 'center', 
+        gap: spacing.xs,
+        backgroundColor: colors.surface2,
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm,
+        borderRadius: radius.full
+      }}>
+        <Ionicons name="information-circle-outline" size={16} color={colors.textMuted} />
+        <ThemedText variant="caption" color="muted">Be the first to leave a review</ThemedText>
+      </View>
+    </View>
+  );
+}
+
+export function ReviewCardSkeleton() {
+  const { spacing } = useTheme();
+  
+  return (
+    <ThemedCard style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
+        <View>
+          <Skeleton width={120} height={16} style={{ marginBottom: spacing.xs }} />
+          <Skeleton width={80} height={12} />
+        </View>
+        <Skeleton width={24} height={24} borderRadius={12} />
+      </View>
+      <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
+        {[1, 2, 3, 4, 5].map((i) => (
+          <Skeleton key={i} width={16} height={16} borderRadius={8} />
+        ))}
+      </View>
+      <Skeleton width="100%" height={40} />
+    </ThemedCard>
   );
 }
 
 interface ReviewCardProps {
   review: Review;
-  colors: any;
   onReport?: (reviewId: string) => void;
   revieweeRole: 'mechanic' | 'customer';
 }
 
-function ReviewCard({ review, colors, onReport, revieweeRole }: ReviewCardProps) {
+function ReviewCard({ review, onReport, revieweeRole }: ReviewCardProps) {
+  const { colors, spacing, radius } = useTheme();
   const reviewerName = review.reviewer?.full_name || review.reviewer_name || 'Anonymous';
-
-  const renderStars = (rating: number) => {
-    const stars = [];
-    for (let i = 0; i < 5; i++) {
-      stars.push(
-        <Ionicons
-          key={i}
-          name={i < rating ? 'star' : 'star-outline'}
-          size={16}
-          color="#FFB800"
-        />
-      );
-    }
-    return stars;
-  };
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -110,89 +147,94 @@ function ReviewCard({ review, colors, onReport, revieweeRole }: ReviewCardProps)
     return `${Math.floor(diffDays / 365)} years ago`;
   };
 
+  const renderStars = (rating: number) => (
+    <View style={{ flexDirection: 'row', gap: 2 }}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Ionicons
+          key={star}
+          name={star <= rating ? 'star' : 'star-outline'}
+          size={16}
+          color={colors.warning}
+        />
+      ))}
+    </View>
+  );
+
   return (
-    <View style={[styles.reviewCard, {
-      backgroundColor: colors.surface,
-      borderColor: colors.border,
-      shadowColor: colors.textPrimary,
-    }]}>
-      <View style={styles.reviewHeader}>
-        <View style={styles.reviewerInfo}>
-          <Text style={[styles.reviewerName, { color: colors.textPrimary }]}>{reviewerName}</Text>
-          <Text style={[styles.reviewDate, { color: colors.textSecondary }]}>
-            {formatDate(review.created_at)}
-          </Text>
+    <ThemedCard style={{ marginBottom: spacing.md }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: spacing.sm }}>
+        <View style={{ flex: 1 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
+            <View style={{ 
+              width: 40, 
+              height: 40, 
+              borderRadius: 20, 
+              backgroundColor: colors.primaryBg, 
+              alignItems: 'center', 
+              justifyContent: 'center' 
+            }}>
+              <ThemedText variant="body" color="primary" style={{ fontWeight: '600' }}>
+                {reviewerName.charAt(0).toUpperCase()}
+              </ThemedText>
+            </View>
+            <View>
+              <ThemedText variant="body" style={{ fontWeight: '600' }}>{reviewerName}</ThemedText>
+              <ThemedText variant="caption" color="muted">{formatDate(review.created_at)}</ThemedText>
+            </View>
+          </View>
         </View>
         {onReport && (
-          <TouchableOpacity onPress={() => onReport(review.id)} style={styles.reportButton}>
-            <Ionicons name="flag-outline" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
+          <Pressable 
+            onPress={() => onReport(review.id)} 
+            hitSlop={8}
+            style={{ padding: spacing.xs }}
+          >
+            <Ionicons name="flag-outline" size={18} color={colors.textMuted} />
+          </Pressable>
         )}
       </View>
 
-      <View style={styles.overallRating}>
-        <View style={styles.stars}>{renderStars(review.overall_rating)}</View>
-        <Text style={[styles.ratingValue, { color: colors.textPrimary }]}>
-          {review.overall_rating}.0
-        </Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md }}>
+        {renderStars(review.overall_rating)}
+        <ThemedText variant="title">{review.overall_rating}.0</ThemedText>
       </View>
 
-      <View style={[styles.categoryRatings, { borderColor: colors.border }]}>
+      <View style={{ 
+        flexDirection: 'row', 
+        backgroundColor: colors.surface2, 
+        borderRadius: radius.md, 
+        padding: spacing.sm,
+        marginBottom: spacing.md
+      }}>
         {revieweeRole === 'mechanic' ? (
           <>
-            <CategoryRating
-              icon="speedometer-outline"
-              label="Quality"
-              value={review.performance_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
-            <CategoryRating
-              icon="time-outline"
-              label="Timeliness"
-              value={review.timing_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
-            <CategoryRating
-              icon="cash-outline"
-              label="Value"
-              value={review.cost_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
+            <CategoryRating icon="speedometer-outline" label="Quality" value={review.performance_rating} />
+            <CategoryRating icon="time-outline" label="Timeliness" value={review.timing_rating} />
+            <CategoryRating icon="cash-outline" label="Value" value={review.cost_rating} />
           </>
         ) : (
           <>
-            <CategoryRating
-              icon="chatbubble-outline"
-              label="Communication"
-              value={review.communication_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
-            <CategoryRating
-              icon="time-outline"
-              label="Punctuality"
-              value={review.punctuality_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
-            <CategoryRating
-              icon="card-outline"
-              label="Payment"
-              value={review.payment_rating}
-              iconColor={colors.textSecondary}
-              textColor={colors.textPrimary}
-            />
+            <CategoryRating icon="chatbubble-outline" label="Communication" value={review.communication_rating} />
+            <CategoryRating icon="time-outline" label="Punctuality" value={review.punctuality_rating} />
+            <CategoryRating icon="card-outline" label="Payment" value={review.payment_rating} />
           </>
         )}
       </View>
 
       {review.comment && (
-        <Text style={[styles.comment, { color: colors.textPrimary }]}>{review.comment}</Text>
+        <View style={{ 
+          backgroundColor: colors.bg, 
+          borderRadius: radius.md, 
+          padding: spacing.sm,
+          borderLeftWidth: 3,
+          borderLeftColor: colors.primary
+        }}>
+          <ThemedText variant="body" style={{ fontStyle: 'italic' }}>
+            "{review.comment}"
+          </ThemedText>
+        </View>
       )}
-    </View>
+    </ThemedCard>
   );
 }
 
@@ -200,23 +242,23 @@ interface CategoryRatingProps {
   icon: keyof typeof Ionicons.glyphMap;
   label: string;
   value: number | null;
-  iconColor: string;
-  textColor: string;
 }
 
-function CategoryRating({ icon, label, value, iconColor, textColor }: CategoryRatingProps) {
+function CategoryRating({ icon, label, value }: CategoryRatingProps) {
+  const { colors } = useTheme();
   const displayValue = value ?? 0;
+  
   return (
-    <View style={styles.categoryRating}>
-      <Ionicons name={icon} size={14} color={iconColor} />
-      <Text style={[styles.categoryLabel, { color: iconColor }]}>{label}</Text>
-      <View style={styles.categoryStars}>
-        {[...Array(5)].map((_, i) => (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <Ionicons name={icon} size={16} color={colors.textMuted} />
+      <ThemedText variant="caption" color="muted" style={{ marginTop: 2, marginBottom: 2 }}>{label}</ThemedText>
+      <View style={{ flexDirection: 'row', gap: 1 }}>
+        {[1, 2, 3, 4, 5].map((star) => (
           <Ionicons
-            key={i}
-            name={i < displayValue ? 'star' : 'star-outline'}
+            key={star}
+            name={star <= displayValue ? 'star' : 'star-outline'}
             size={10}
-            color="#FFB800"
+            color={colors.warning}
           />
         ))}
       </View>
@@ -224,110 +266,4 @@ function CategoryRating({ icon, label, value, iconColor, textColor }: CategoryRa
   );
 }
 
-const styles = StyleSheet.create({
-  reviewCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginVertical: 8,
-    borderWidth: 1,
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
-  },
-  reviewerInfo: {
-    flex: 1,
-  },
-  reviewerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  reviewDate: {
-    fontSize: 12,
-  },
-  reportButton: {
-    padding: 4,
-  },
-  overallRating: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  stars: {
-    flexDirection: 'row',
-    marginRight: 8,
-  },
-  ratingValue: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  categoryRatings: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    paddingVertical: 8,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-  },
-  categoryRating: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  categoryLabel: {
-    fontSize: 10,
-    marginTop: 2,
-    marginBottom: 2,
-  },
-  categoryStars: {
-    flexDirection: 'row',
-  },
-  comment: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 48,
-    paddingHorizontal: 24,
-  },
-  emptyIconCircle: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  emptySubtext: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  emptyHint: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    gap: 6,
-  },
-  emptyHintText: {
-    fontSize: 13,
-    fontWeight: '500',
-  },
-});
+export default ReviewsList;

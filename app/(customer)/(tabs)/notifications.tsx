@@ -18,6 +18,7 @@ import Animated, {
   useSharedValue,
   withSpring,
 } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
@@ -66,6 +67,14 @@ type MessageRow = {
   content: string | null;
   created_at: string | null;
   sender_id: string | null;
+};
+
+type PaymentRow = {
+  id: string;
+  job_id: string | null;
+  amount_cents: number | null;
+  status: string | null;
+  created_at: string | null;
 };
 
 function timeAgo(iso: string): string {
@@ -444,6 +453,7 @@ export default function Notifications() {
 
   const localReadSetRef = useRef<Set<string>>(new Set());
   const { colors, spacing } = useTheme();
+  const insets = useSafeAreaInsets();
 
   const loadFromNotificationsTable = useCallback(async (userId: string) => {
     const { data, error } = await supabase
@@ -464,41 +474,63 @@ export default function Notifications() {
   }, []);
 
   const loadGenerated = useCallback(async (userId: string) => {
-    const { data: jobs, error: jErr } = await supabase
-      .from("jobs")
-      .select("id,title,status,updated_at,created_at")
-      .eq("customer_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(50);
+    let jobRows: JobRow[] = [];
+    let quoteRows: QuoteRequestRow[] = [];
+    let messagesRows: MessageRow[] = [];
+    let paymentRows: PaymentRow[] = [];
 
-    if (jErr) throw jErr;
+    try {
+      const { data: jobs, error: jErr } = await supabase
+        .from("jobs")
+        .select("id,title,status,updated_at,created_at")
+        .eq("customer_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(50);
 
-    const jobRows = (jobs as JobRow[]) ?? [];
+      if (!jErr) jobRows = (jobs as JobRow[]) ?? [];
+    } catch {}
+
     const jobIds = jobRows.map((j) => j.id);
 
-    const { data: qr, error: qrErr } = jobIds.length > 0
-      ? await supabase
+    try {
+      if (jobIds.length > 0) {
+        const { data: qr, error: qrErr } = await supabase
           .from("quotes")
           .select("id,job_id,status,created_at,mechanic_id,price_cents")
           .in("job_id", jobIds)
           .order("created_at", { ascending: false })
-          .limit(50)
-      : { data: [], error: null };
+          .limit(50);
 
-    if (qrErr) throw qrErr;
+        if (!qrErr) quoteRows = (qr as QuoteRequestRow[]) ?? [];
+      }
+    } catch {}
 
-    const { data: msgs, error: mErr } = jobIds.length > 0
-      ? await supabase
+    try {
+      if (jobIds.length > 0) {
+        const { data: msgs, error: mErr } = await supabase
           .from("messages")
           .select("id,job_id,content,created_at,sender_id")
           .in("job_id", jobIds)
           .neq("sender_id", userId)
           .order("created_at", { ascending: false })
-          .limit(50)
-      : { data: [], error: null };
+          .limit(50);
 
-    const messagesRows = mErr ? ([] as MessageRow[]) : ((msgs as MessageRow[]) ?? []);
-    const quoteRows = (qr as QuoteRequestRow[]) ?? [];
+        if (!mErr) messagesRows = (msgs as MessageRow[]) ?? [];
+      }
+    } catch {}
+
+    try {
+      if (jobIds.length > 0) {
+        const { data: payments, error: pErr } = await supabase
+          .from("payments")
+          .select("id,job_id,amount_cents,status,created_at")
+          .in("job_id", jobIds)
+          .order("created_at", { ascending: false })
+          .limit(30);
+
+        if (!pErr) paymentRows = (payments as PaymentRow[]) ?? [];
+      }
+    } catch {}
 
     const jobTitleById = new Map<string, string>();
     jobRows.forEach((j) => jobTitleById.set(j.id, getDisplayTitle(j.title) || "Job"));
@@ -582,6 +614,47 @@ export default function Notifications() {
       });
     }
 
+    for (const p of paymentRows) {
+      const when = safeIso(p.created_at);
+      const id = `gen-payment-${p.id}`;
+      const isRead = localReadSetRef.current.has(id);
+      const status = (p.status || "").toLowerCase();
+      const amount = p.amount_cents ? `$${(p.amount_cents / 100).toFixed(2)}` : "";
+      const titleBase = p.job_id ? jobTitleById.get(p.job_id) || "your service" : "your service";
+
+      let title = "Payment update";
+      let body: string | null = null;
+
+      if (status === "pending" || status === "processing") {
+        title = "Payment processing";
+        body = amount ? `${amount} payment for ${titleBase} is being processed.` : `Payment for ${titleBase} is being processed.`;
+      } else if (status === "succeeded" || status === "completed") {
+        title = "Payment successful!";
+        body = amount ? `${amount} payment for ${titleBase} was successful.` : `Payment for ${titleBase} was successful.`;
+      } else if (status === "failed") {
+        title = "Payment failed";
+        body = `There was an issue with your payment for ${titleBase}. Please try again.`;
+      } else if (status === "refunded") {
+        title = "Payment refunded";
+        body = amount ? `${amount} has been refunded for ${titleBase}.` : `Your payment for ${titleBase} has been refunded.`;
+      } else {
+        title = "Payment update";
+        body = amount ? `Payment of ${amount}: ${status}` : `Payment status: ${status}`;
+      }
+
+      generated.push({
+        id,
+        title,
+        body,
+        type: "payment",
+        entity_type: "job",
+        entity_id: p.job_id,
+        is_read: isRead,
+        created_at: when,
+        source: "generated",
+      });
+    }
+
     generated.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at));
     return generated.slice(0, 100);
   }, []);
@@ -605,16 +678,29 @@ export default function Notifications() {
         setItems(rows);
       } catch (err: any) {
         if (pgRelationMissing(err)) {
-          const rows = await loadGenerated(userId);
-          setUsingNotificationsTable(false);
-          setItems(rows);
+          try {
+            const rows = await loadGenerated(userId);
+            setUsingNotificationsTable(false);
+            setItems(rows);
+          } catch (genErr: any) {
+            if (pgRelationMissing(genErr)) {
+              setItems([]);
+              setUsingNotificationsTable(false);
+            } else {
+              throw genErr;
+            }
+          }
         } else {
           throw err;
         }
       }
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : "Failed to load.";
-      Alert.alert("Notifications error", errorMessage);
+      if (pgRelationMissing(e)) {
+        setItems([]);
+      } else {
+        Alert.alert("Notifications error", errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -735,7 +821,7 @@ export default function Notifications() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <LoadingSkeleton />
       </View>
     );
@@ -743,14 +829,14 @@ export default function Notifications() {
 
   if (items.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <EmptyState />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+    <View style={{ flex: 1, backgroundColor: colors.bg, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
@@ -776,7 +862,7 @@ export default function Notifications() {
         }
         contentContainerStyle={{
           paddingTop: spacing.md,
-          paddingBottom: spacing.xxxl,
+          paddingBottom: insets.bottom + spacing.xxxl,
         }}
         stickySectionHeadersEnabled={false}
         showsVerticalScrollIndicator={false}

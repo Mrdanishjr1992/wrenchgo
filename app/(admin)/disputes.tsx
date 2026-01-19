@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminGetDisputes, Dispute, formatSlaRemaining, isSlaSlaCritical } from '../../src/lib/disputes';
@@ -27,7 +28,8 @@ import {
 const OPEN_STATUSES: string[] = [DISPUTE_STATUS.OPEN, DISPUTE_STATUS.UNDER_REVIEW, DISPUTE_STATUS.EVIDENCE_REQUESTED];
 
 export default function AdminDisputesScreen() {
-  const { colors, text } = useTheme();
+  const { colors, text, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
   const [disputes, setDisputes] = useState<Dispute[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -78,7 +80,7 @@ export default function AdminDisputesScreen() {
         marginRight: spacing.sm,
       }}
     >
-      <Text style={{ color: statusFilter === value ? '#fff' : colors.textSecondary, fontSize: 13 }}>
+      <Text style={{ color: statusFilter === value ? colors.white : colors.textSecondary, fontSize: 13 }}>
         {label}
       </Text>
     </TouchableOpacity>
@@ -99,39 +101,39 @@ export default function AdminDisputesScreen() {
           padding: spacing.md,
           marginBottom: spacing.md,
           borderWidth: 1,
-          borderColor: dispute.sla_breached ? '#EF4444' : slaCritical ? '#F59E0B' : colors.border,
+          borderColor: dispute.sla_breached ? colors.error : slaCritical ? colors.warning : colors.border,
         }}
       >
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.sm }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-            <View style={{ 
-              paddingHorizontal: spacing.sm, 
-              paddingVertical: 2, 
-              borderRadius: 4, 
-              backgroundColor: statusColor + '20' 
+            <View style={{
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              borderRadius: 4,
+              backgroundColor: statusColor + '20'
             }}>
               <Text style={{ color: statusColor, fontSize: 11, fontWeight: '600' }}>
                 {DISPUTE_STATUS_LABELS[dispute.status as DisputeStatus]}
               </Text>
             </View>
-            <View style={{ 
-              paddingHorizontal: spacing.sm, 
-              paddingVertical: 2, 
-              borderRadius: 4, 
-              backgroundColor: priorityColor + '20' 
+            <View style={{
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              borderRadius: 4,
+              backgroundColor: priorityColor + '20'
             }}>
               <Text style={{ color: priorityColor, fontSize: 11, fontWeight: '600' }}>
                 {DISPUTE_PRIORITY_LABELS[dispute.priority as DisputePriority]}
               </Text>
             </View>
             {dispute.sla_breached && (
-              <View style={{ 
-                paddingHorizontal: spacing.sm, 
-                paddingVertical: 2, 
-                borderRadius: 4, 
-                backgroundColor: '#EF444420' 
+              <View style={{
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 2,
+                borderRadius: 4,
+                backgroundColor: withAlpha(colors.error, 0.12)
               }}>
-                <Text style={{ color: '#EF4444', fontSize: 11, fontWeight: '600' }}>SLA BREACHED</Text>
+                <Text style={{ color: colors.error, fontSize: 11, fontWeight: '600' }}>SLA BREACHED</Text>
               </View>
             )}
           </View>
@@ -157,11 +159,11 @@ export default function AdminDisputesScreen() {
               By: {dispute.filed_by_name || 'Customer'}
             </Text>
           </View>
-          
+
           {isOpen && dispute.response_deadline && !dispute.mechanic_response && (
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={{ 
-                color: slaCritical ? '#F59E0B' : colors.textSecondary, 
+              <Text style={{
+                color: slaCritical ? colors.warning : colors.textSecondary,
                 fontSize: 11,
                 fontWeight: slaCritical ? '600' : '400'
               }}>
@@ -176,14 +178,14 @@ export default function AdminDisputesScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }}>
       {/* Header */}
       <View style={{
         flexDirection: 'row',
@@ -225,7 +227,7 @@ export default function AdminDisputesScreen() {
           padding: spacing.md,
           alignItems: 'center',
         }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: '#EF4444' }}>{highPriorityCount}</Text>
+          <Text style={{ fontSize: 24, fontWeight: '900', color: colors.error }}>{highPriorityCount}</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>High Priority</Text>
         </View>
         <View style={{
@@ -235,7 +237,7 @@ export default function AdminDisputesScreen() {
           padding: spacing.md,
           alignItems: 'center',
         }}>
-          <Text style={{ fontSize: 24, fontWeight: '900', color: slaBreachedCount > 0 ? '#EF4444' : colors.textSecondary }}>
+          <Text style={{ fontSize: 24, fontWeight: '900', color: slaBreachedCount > 0 ? colors.error : colors.textSecondary }}>
             {slaBreachedCount}
           </Text>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>SLA Breached</Text>

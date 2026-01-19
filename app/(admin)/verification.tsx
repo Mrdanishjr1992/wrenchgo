@@ -12,7 +12,6 @@ import {
   Image,
   Linking,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -82,7 +81,7 @@ interface MechanicDetails {
 
 export default function AdminVerificationScreen() {
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [mechanics, setMechanics] = useState<PendingMechanic[]>([]);
@@ -260,9 +259,9 @@ export default function AdminVerificationScreen() {
           <Ionicons
             name={mechanic.docs_complete ? 'checkmark-circle' : 'document-outline'}
             size={14}
-            color={mechanic.docs_complete ? '#10b981' : colors.textMuted}
+            color={mechanic.docs_complete ? colors.success : colors.textMuted}
           />
-          <Text style={{ fontSize: 12, color: mechanic.docs_complete ? '#10b981' : colors.textMuted }}>
+          <Text style={{ fontSize: 12, color: mechanic.docs_complete ? colors.success : colors.textMuted }}>
             {mechanic.docs_count}/4 docs
           </Text>
         </View>
@@ -274,7 +273,7 @@ export default function AdminVerificationScreen() {
         <TouchableOpacity
           onPress={(e) => {
             e.stopPropagation();
-            router.push(`/(admin)/mechanic/${mechanic.id}` as any);
+            router.push(`/(admin)/mechanics/${mechanic.id}` as any);
           }}
           style={{
             flexDirection: 'row',
@@ -295,10 +294,10 @@ export default function AdminVerificationScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case VERIFICATION_STATUS.ACTIVE: return '#10b981';
-      case VERIFICATION_STATUS.PENDING_VERIFICATION: return '#f59e0b';
-      case VERIFICATION_STATUS.PAUSED: return '#6366f1';
-      case VERIFICATION_STATUS.REMOVED: return '#ef4444';
+      case VERIFICATION_STATUS.ACTIVE: return colors.success;
+      case VERIFICATION_STATUS.PENDING_VERIFICATION: return colors.warning;
+      case VERIFICATION_STATUS.PAUSED: return colors.primary;
+      case VERIFICATION_STATUS.REMOVED: return colors.error;
       default: return colors.textMuted;
     }
   };
@@ -420,21 +419,21 @@ export default function AdminVerificationScreen() {
                       paddingHorizontal: 8,
                       paddingVertical: 3,
                       borderRadius: 8,
-                      backgroundColor: doc.status === DOC_STATUS.APPROVED ? '#10b98120' :
-                        doc.status === DOC_STATUS.REJECTED ? '#ef444420' : '#f59e0b20',
+                      backgroundColor: doc.status === DOC_STATUS.APPROVED ? withAlpha(colors.success, 0.12) :
+                        doc.status === DOC_STATUS.REJECTED ? withAlpha(colors.error, 0.12) : withAlpha(colors.warning, 0.12),
                     }}>
                       <Text style={{
                         fontSize: 11,
                         fontWeight: '600',
-                        color: doc.status === DOC_STATUS.APPROVED ? '#10b981' :
-                          doc.status === DOC_STATUS.REJECTED ? '#ef4444' : '#f59e0b',
+                        color: doc.status === DOC_STATUS.APPROVED ? colors.success :
+                          doc.status === DOC_STATUS.REJECTED ? colors.error : colors.warning,
                       }}>
                         {doc.status.toUpperCase()}
                       </Text>
                     </View>
                   </View>
                   {doc.doc_type === 'selfie_with_id' && (
-                    <Text style={{ fontSize: 12, color: colors.info || '#3b82f6', marginTop: 4, fontStyle: 'italic' }}>
+                    <Text style={{ fontSize: 12, color: colors.info || colors.primary, marginTop: 4, fontStyle: 'italic' }}>
                       Compare selfie to ID front.
                     </Text>
                   )}
@@ -461,25 +460,25 @@ export default function AdminVerificationScreen() {
                         onPress={() => handleReviewDocument(doc.id, 'approve')}
                         style={{
                           flex: 1,
-                          backgroundColor: '#10b98120',
+                          backgroundColor: withAlpha(colors.success, 0.12),
                           paddingVertical: 10,
                           borderRadius: 8,
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#10b981' }}>Approve</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.success }}>Approve</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={() => handleReviewDocument(doc.id, 'reject')}
                         style={{
                           flex: 1,
-                          backgroundColor: '#ef444420',
+                          backgroundColor: withAlpha(colors.error, 0.12),
                           paddingVertical: 10,
                           borderRadius: 8,
                           alignItems: 'center',
                         }}
                       >
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#ef4444' }}>Reject</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: colors.error }}>Reject</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -707,14 +706,14 @@ export default function AdminVerificationScreen() {
                 flex: 1,
                 paddingVertical: 12,
                 borderRadius: 8,
-                backgroundColor: currentAction === 'approve' ? '#10b981' : '#ef4444',
+                backgroundColor: currentAction === 'approve' ? colors.success : colors.error,
                 alignItems: 'center',
               }}
             >
               {actionLoading ? (
-                <ActivityIndicator size="small" color="#fff" />
+                <ActivityIndicator size="small" color={colors.white} />
               ) : (
-                <Text style={{ fontSize: 15, fontWeight: '600', color: '#fff' }}>
+                <Text style={{ fontSize: 15, fontWeight: '600', color: colors.white }}>
                   {currentAction === 'approve' ? 'Approve' : 'Reject'}
                 </Text>
               )}

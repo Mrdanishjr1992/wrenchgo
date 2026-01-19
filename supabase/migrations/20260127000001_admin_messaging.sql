@@ -132,7 +132,7 @@ BEGIN
   IF p_related_job_id IS NOT NULL THEN
     SELECT EXISTS(
       SELECT 1 FROM public.jobs j
-      LEFT JOIN public.contracts c ON c.job_id = j.id
+      LEFT JOIN public.job_contracts c ON c.job_id = j.id
       WHERE j.id = p_related_job_id
         AND (j.customer_id = p_recipient_id OR c.mechanic_id = p_recipient_id)
     ) INTO v_job_participant;

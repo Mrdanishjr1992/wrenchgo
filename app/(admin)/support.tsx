@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminListSupportRequests, AdminSupportRequestEnriched, formatDateTime } from '../../src/lib/admin';
@@ -16,6 +17,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 export default function AdminSupportScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [requests, setRequests] = useState<AdminSupportRequestEnriched[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -60,14 +62,14 @@ export default function AdminSupportScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

@@ -26,6 +26,7 @@ import React from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { useSharedValue, useAnimatedStyle, withTiming } from "react-native-reanimated";
 import { symptomQuestions } from "../../../src/data/symptomQuestions";
+import { AI_DIAGNOSIS_ENABLED, isDescriptionVague, getDiagnosis, DiagnosisInput } from "../../../src/lib/aiDiagnosisService";
 
 type QuoteType = "diagnostic_only" | "range" | "fixed";
 
@@ -90,6 +91,8 @@ export default function QuoteComposer() {
 
   const expandRotation = useSharedValue(0);
   const expandHeight = useSharedValue(0);
+  const [showDiagnosticNudge, setShowDiagnosticNudge] = useState(false);
+  const [aiRecommendsDiagnostic, setAiRecommendsDiagnostic] = useState(false);
 
   const chevronStyle = useAnimatedStyle(() => ({
     transform: [{ rotate: `${expandRotation.value}deg` }],
@@ -146,6 +149,24 @@ export default function QuoteComposer() {
       };
 
       setJob(jobData);
+
+      // Check AI diagnosis recommendation
+      if (AI_DIAGNOSIS_ENABLED) {
+        try {
+          const diagInput: DiagnosisInput = {
+            leadId: params.id || "",
+            title: data.title || "",
+            description: data.description || "",
+          };
+          const diagnosis = await getDiagnosis(diagInput);
+          if (diagnosis.quote_guidance.recommend_diagnostic_first) {
+            setAiRecommendsDiagnostic(true);
+            setShowDiagnosticNudge(true);
+          }
+        } catch (e) {
+          console.log("AI diagnosis check failed:", e);
+        }
+      }
     } catch (e: any) {
       Alert.alert("Error", e?.message ?? "Failed to load job");
       router.back();
@@ -591,6 +612,45 @@ export default function QuoteComposer() {
               );
             })}
           </View>
+
+          {/* AI Diagnostic Nudge Banner */}
+          {showDiagnosticNudge && aiRecommendsDiagnostic && quoteType !== "diagnostic_only" && (
+            <Pressable
+              onPress={() => {
+                setQuoteType("diagnostic_only");
+                setShowDiagnosticNudge(false);
+              }}
+              style={{
+                backgroundColor: "#f59e0b20",
+                padding: spacing.md,
+                borderRadius: radius.md,
+                marginTop: spacing.md,
+                borderLeftWidth: 4,
+                borderLeftColor: "#f59e0b",
+              }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, flex: 1 }}>
+                  <Ionicons name="bulb" size={20} color="#f59e0b" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: "#f59e0b", fontWeight: "700", fontSize: 14 }}>
+                      AI Suggests Diagnostic First
+                    </Text>
+                    <Text style={{ color: colors.textMuted, fontSize: 12, marginTop: 2 }}>
+                      This issue is uncertain. Consider charging a diagnostic fee first.
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  onPress={() => setShowDiagnosticNudge(false)}
+                  hitSlop={8}
+                  style={{ padding: 4 }}
+                >
+                  <Ionicons name="close" size={18} color={colors.textMuted} />
+                </Pressable>
+              </View>
+            </Pressable>
+          )}
         </View>
 
         {quoteType && (

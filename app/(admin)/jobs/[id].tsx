@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import { adminGetJobDetail, AdminJobDetail, formatCents, formatDateTime } from '../../../src/lib/admin';
@@ -10,6 +11,7 @@ import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 export default function AdminJobDetailScreen() {
   const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<AdminJobDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [messageRecipient, setMessageRecipient] = useState<{ id: string; name: string; role: string } | null>(null);
@@ -58,7 +60,7 @@ export default function AdminJobDetailScreen() {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

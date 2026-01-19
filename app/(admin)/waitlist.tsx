@@ -2,12 +2,14 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminGetWaitlistHeatmap, WaitlistHeatmap } from '../../src/lib/admin';
 
 export default function AdminWaitlistScreen() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [heatmap, setHeatmap] = useState<WaitlistHeatmap | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodDays, setPeriodDays] = useState(30);
@@ -28,14 +30,14 @@ export default function AdminWaitlistScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

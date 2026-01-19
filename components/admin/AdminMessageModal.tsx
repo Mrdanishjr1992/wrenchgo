@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminSendMessage, SendAdminMessageParams } from '../../src/lib/admin-messages';
@@ -44,6 +45,7 @@ export function AdminMessageModal({
   onSuccess,
 }: AdminMessageModalProps) {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
 
@@ -107,7 +109,9 @@ export function AdminMessageModal({
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            padding: spacing.lg,
+            paddingTop: insets.top + spacing.md,
+            paddingBottom: spacing.md,
+            paddingHorizontal: spacing.lg,
             borderBottomWidth: 1,
             borderBottomColor: colors.border,
             backgroundColor: colors.surface,

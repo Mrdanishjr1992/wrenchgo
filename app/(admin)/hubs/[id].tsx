@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import { adminGetHubHealth, HubHealth } from '../../../src/lib/admin';
@@ -9,6 +10,7 @@ import { adminGetHubHealth, HubHealth } from '../../../src/lib/admin';
 export default function AdminHubDetailScreen() {
   const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
+  const insets = useSafeAreaInsets();
   const [health, setHealth] = useState<HubHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [periodDays, setPeriodDays] = useState(14);
@@ -65,7 +67,7 @@ export default function AdminHubDetailScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

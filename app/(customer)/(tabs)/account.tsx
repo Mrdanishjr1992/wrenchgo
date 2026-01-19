@@ -36,6 +36,8 @@ import { useStripe } from "@stripe/stripe-react-native";
 import { acceptInvitation, hasUsedReferral } from "../../../src/lib/promos";
 import { checkIsAdmin } from "../../../src/lib/verification";
 import { LinearGradient } from "expo-linear-gradient";
+import { ThemedCard } from "../../../src/ui/components/ThemedCard";
+import { ThemedText } from "../../../src/ui/components/ThemedText";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -1558,27 +1560,36 @@ export default function CustomerAccount() {
         )}
 
         {isAdmin && (
-          <Pressable
+          <ThemedCard
+            pressable
             onPress={() => router.push('/(admin)')}
-            style={({ pressed }) => [
-              card,
-              {
-                paddingVertical: 16,
-                paddingHorizontal: 16,
-                borderRadius: radius.lg,
-                backgroundColor: colors.primary,
-                opacity: pressed ? 0.9 : 1,
-                flexDirection: "row",
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: spacing.md,
+            }}
+          >
+            <View
+              style={{
+                width: 42,
+                height: 42,
+                borderRadius: 12,
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 10,
-                marginBottom: spacing.md,
-              },
-            ]}
-          >
-            <Ionicons name="shield-checkmark" size={18} color={colors.white} />
-            <Text style={{ fontWeight: "900", color: colors.white }}>ADMIN PANEL</Text>
-          </Pressable>
+                backgroundColor: colors.info + "20",
+              }}
+            >
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.info} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText variant="body" style={{ fontWeight: '700' }}>Admin Panel</ThemedText>
+              <ThemedText variant="caption" color="muted">
+                Manage mechanic verifications
+              </ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </ThemedCard>
         )}
 
         <Pressable

@@ -88,59 +88,6 @@ function StatusBadge({ status, colors, withAlpha }: { status: string; colors: an
   );
 }
 
-function StatCard({ 
-  icon, 
-  label, 
-  value, 
-  color,
-  isActive,
-}: { 
-  icon: keyof typeof Ionicons.glyphMap;
-  label: string;
-  value: number;
-  color: string;
-  isActive?: boolean;
-}) {
-  const { colors, spacing, radius, withAlpha } = useTheme();
-  
-  return (
-    <View style={{
-      flex: 1,
-      backgroundColor: isActive ? withAlpha(color, 0.15) : colors.surface,
-      borderRadius: radius.xl,
-      padding: spacing.md,
-      alignItems: "center",
-      borderWidth: isActive ? 2 : 1,
-      borderColor: isActive ? withAlpha(color, 0.3) : colors.border,
-    }}>
-      <View style={{
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        backgroundColor: withAlpha(color, 0.15),
-        alignItems: "center",
-        justifyContent: "center",
-        marginBottom: spacing.xs,
-      }}>
-        <Ionicons name={icon} size={18} color={color} />
-      </View>
-      <Text style={{
-        fontSize: 24,
-        fontWeight: "800",
-        color: colors.textPrimary,
-        marginBottom: 2,
-      }}>{value}</Text>
-      <Text style={{
-        fontSize: 11,
-        fontWeight: "600",
-        color: colors.textMuted,
-        textTransform: "uppercase",
-        letterSpacing: 0.5,
-      }}>{label}</Text>
-    </View>
-  );
-}
-
 function JobCard({ 
   item, 
   onPress,
@@ -515,6 +462,7 @@ export default function CustomerJobs() {
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
   const [customerId, setCustomerId] = useState<string | null>(null);
   const [showFinancials, setShowFinancials] = useState(false);
+  const [activeTab, setActiveTab] = useState<"active" | "waiting" | "completed">("active");
 
   const load = useCallback(async () => {
     try {
@@ -708,6 +656,14 @@ export default function CustomerJobs() {
     [jobs]
   );
 
+  const tabs = [
+    { key: "active" as const, label: "Active", icon: "flash" as const, count: activeJobs.length, color: colors.primary },
+    { key: "waiting" as const, label: "Waiting", icon: "time" as const, count: waitingJobs.length, color: colors.warning },
+    { key: "completed" as const, label: "Done", icon: "checkmark-circle" as const, count: completedJobs.length, color: colors.success },
+  ];
+
+  const currentJobs = activeTab === "active" ? activeJobs : activeTab === "waiting" ? waitingJobs : completedJobs;
+
   if (loading) {
     return <LoadingSkeleton />;
   }
@@ -718,10 +674,10 @@ export default function CustomerJobs() {
         <ScrollView
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl 
-              refreshing={refreshing} 
-              onRefresh={onRefresh} 
-              tintColor={colors.primary} 
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
             />
           }
         >
@@ -745,42 +701,66 @@ export default function CustomerJobs() {
             </Animated.View>
           </View>
 
+          {/* Segmented Tab Toggle */}
           <View style={{
             flexDirection: "row",
-            gap: spacing.sm,
-            paddingHorizontal: spacing.lg,
+            marginHorizontal: spacing.lg,
+            backgroundColor: colors.surface2,
+            borderRadius: radius.xl,
+            padding: 4,
             marginBottom: spacing.md,
           }}>
-            <Animated.View entering={FadeInDown.delay(100).duration(300)} style={{ flex: 1 }}>
-              <StatCard
-                icon="flash"
-                label="Active"
-                value={activeJobs.length}
-                color={colors.primary}
-                isActive={activeJobs.length > 0}
-              />
-            </Animated.View>
-            <Animated.View entering={FadeInDown.delay(150).duration(300)} style={{ flex: 1 }}>
-              <StatCard
-                icon="time"
-                label="Waiting"
-                value={waitingJobs.length}
-                color={colors.warning}
-                isActive={waitingJobs.length > 0}
-              />
-            </Animated.View>
-            <Animated.View entering={FadeInDown.delay(200).duration(300)} style={{ flex: 1 }}>
-              <StatCard
-                icon="checkmark-circle"
-                label="Done"
-                value={completedJobs.length}
-                color={colors.success}
-              />
-            </Animated.View>
+            {tabs.map((tab) => {
+              const isActive = activeTab === tab.key;
+              return (
+                <Pressable
+                  key={tab.key}
+                  onPress={() => setActiveTab(tab.key)}
+                  style={{
+                    flex: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                    paddingVertical: spacing.sm,
+                    borderRadius: radius.lg,
+                    backgroundColor: isActive ? colors.surface : "transparent",
+                    ...(isActive ? shadows.sm : {}),
+                  }}
+                >
+                  <Ionicons
+                    name={tab.icon}
+                    size={16}
+                    color={isActive ? tab.color : colors.textMuted}
+                  />
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: isActive ? "700" : "500",
+                    color: isActive ? tab.color : colors.textMuted,
+                  }}>{tab.label}</Text>
+                  {tab.count > 0 && (
+                    <View style={{
+                      backgroundColor: isActive ? withAlpha(tab.color, 0.15) : colors.surface,
+                      paddingHorizontal: 6,
+                      paddingVertical: 2,
+                      borderRadius: 10,
+                      minWidth: 20,
+                      alignItems: "center",
+                    }}>
+                      <Text style={{
+                        fontSize: 11,
+                        fontWeight: "700",
+                        color: isActive ? tab.color : colors.textMuted,
+                      }}>{tab.count}</Text>
+                    </View>
+                  )}
+                </Pressable>
+              );
+            })}
           </View>
 
           {customerId && completedJobs.length > 0 && (
-            <Animated.View 
+            <Animated.View
               entering={FadeInDown.delay(250).duration(300)}
               style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}
             >
@@ -830,14 +810,47 @@ export default function CustomerJobs() {
 
           {jobs.length === 0 ? (
             <EmptyState onAction={() => router.push("/explore")} />
+          ) : currentJobs.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl }}>
+              <View style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: withAlpha(tabs.find(t => t.key === activeTab)?.color || colors.primary, 0.1),
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: spacing.md,
+              }}>
+                <Ionicons
+                  name={tabs.find(t => t.key === activeTab)?.icon || "flash"}
+                  size={28}
+                  color={tabs.find(t => t.key === activeTab)?.color || colors.primary}
+                />
+              </View>
+              <Text style={{
+                fontSize: 17,
+                fontWeight: "600",
+                color: colors.textPrimary,
+                marginBottom: spacing.xs,
+              }}>No {activeTab} jobs</Text>
+              <Text style={{
+                fontSize: 14,
+                color: colors.textMuted,
+                textAlign: "center",
+              }}>
+                {activeTab === "active" && "Jobs you've accepted will appear here"}
+                {activeTab === "waiting" && "Jobs waiting for quotes will appear here"}
+                {activeTab === "completed" && "Your completed jobs will appear here"}
+              </Text>
+            </View>
           ) : (
             <View style={{ paddingHorizontal: spacing.lg }}>
-              {reviewPrompts.length > 0 && (
+              {activeTab === "active" && reviewPrompts.length > 0 && (
                 <>
                   <SectionDivider title="Pending Reviews" count={reviewPrompts.length} />
                   <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
                     {reviewPrompts.map((prompt, index) => (
-                      <Animated.View 
+                      <Animated.View
                         key={prompt.id}
                         entering={FadeInDown.delay(300 + index * 50).duration(300)}
                       >
@@ -853,65 +866,16 @@ export default function CustomerJobs() {
                 </>
               )}
 
-              {activeJobs.length > 0 && (
-                <>
-                  <SectionDivider title="Active Jobs" count={activeJobs.length} />
-                  {activeJobs.map((item, index) => (
-                    <JobCard
-                      key={item.id}
-                      item={item}
-                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
-                      onCancel={() => handleCancelJob(item.id)}
-                      canceling={canceling === item.id}
-                      delay={350 + index * 50}
-                    />
-                  ))}
-                </>
-              )}
-
-              {waitingJobs.length > 0 && (
-                <>
-                  <SectionDivider title="Waiting for Quotes" count={waitingJobs.length} />
-                  {waitingJobs.map((item, index) => (
-                    <JobCard
-                      key={item.id}
-                      item={item}
-                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
-                      onCancel={() => handleCancelJob(item.id)}
-                      canceling={canceling === item.id}
-                      delay={400 + index * 50}
-                    />
-                  ))}
-                </>
-              )}
-
-              {completedJobs.length > 0 && (
-                <>
-                  <SectionDivider title="Completed" count={completedJobs.length} />
-                  {completedJobs.slice(0, 5).map((item, index) => (
-                    <JobCard
-                      key={item.id}
-                      item={item}
-                      onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
-                      onCancel={() => {}}
-                      canceling={false}
-                      delay={450 + index * 50}
-                    />
-                  ))}
-                  {completedJobs.length > 5 && (
-                    <Pressable
-                      onPress={() => {}}
-                      style={{ paddingVertical: spacing.md, alignItems: "center" }}
-                    >
-                      <Text style={{
-                        fontSize: 14,
-                        fontWeight: "600",
-                        color: colors.primary,
-                      }}>View all {completedJobs.length} completed jobs</Text>
-                    </Pressable>
-                  )}
-                </>
-              )}
+              {currentJobs.map((item, index) => (
+                <JobCard
+                  key={item.id}
+                  item={item}
+                  onPress={() => router.push(`/(customer)/job/${item.id}` as any)}
+                  onCancel={() => handleCancelJob(item.id)}
+                  canceling={canceling === item.id}
+                  delay={350 + index * 50}
+                />
+              ))}
             </View>
           )}
 

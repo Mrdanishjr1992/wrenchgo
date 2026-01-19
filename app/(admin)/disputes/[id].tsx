@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import {
@@ -37,6 +38,7 @@ import { AdminMessageModal } from '../../../components/admin/AdminMessageModal';
 export default function AdminDisputeDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors, text } = useTheme();
+  const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<DisputeDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [resolving, setResolving] = useState(false);
@@ -116,7 +118,7 @@ export default function AdminDisputeDetailScreen() {
   const isResolved = ['resolved_customer', 'resolved_mechanic', 'resolved_split', 'closed'].includes(dispute.status);
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       {/* Header */}
       <View style={{
         flexDirection: 'row',

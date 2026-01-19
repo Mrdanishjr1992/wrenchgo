@@ -2,6 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../../src/ui/theme-context';
 import { spacing } from '../../../src/ui/theme';
 import { adminGetCustomerDetails, AdminCustomerDetail, formatCents, formatDateTime } from '../../../src/lib/admin';
@@ -18,6 +19,7 @@ const STATUS_COLORS: Record<string, string> = {
 export default function AdminCustomerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [detail, setDetail] = useState<AdminCustomerDetail | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -57,7 +59,7 @@ export default function AdminCustomerDetailScreen() {
   const profile = detail.profile;
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',

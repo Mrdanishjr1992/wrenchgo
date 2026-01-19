@@ -31,7 +31,7 @@ export default function ReviewList({ reviews, emptyMessage = 'No reviews yet' }:
           key={star}
           name={star <= rating ? 'star' : 'star-outline'}
           size={16}
-          color={star <= rating ? '#FFB800' : colors.border}
+          color={star <= rating ? colors.warning : colors.border}
         />
       ))}
     </View>

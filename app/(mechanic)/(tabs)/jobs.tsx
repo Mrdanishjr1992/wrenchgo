@@ -1,16 +1,22 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
+  Text,
   ScrollView,
-  Pressable,
   Alert,
+  Pressable,
   RefreshControl,
-  Dimensions,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import Animated, {
+  FadeInDown,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { getDisplayTitle } from "../../../src/lib/format-symptom";
@@ -20,16 +26,8 @@ import ReviewPromptBanner from "../../../components/reviews/ReviewPromptBanner";
 import { FinancialSummary } from "../../../components/financials";
 import { formatCents, PAYOUT_STATUS_LABELS, PAYOUT_STATUS_COLORS } from "../../../src/lib/financials";
 import { WalkthroughTarget, WALKTHROUGH_TARGET_IDS } from "../../../src/onboarding";
-import { ThemedText } from "../../../src/ui/components/ThemedText";
-import { ThemedCard } from "../../../src/ui/components/ThemedCard";
-import { ThemedBadge } from "../../../src/ui/components/ThemedBadge";
-import { Skeleton } from "../../../src/ui/components/Skeleton";
-import { AppButton } from "../../../src/ui/components/AppButton";
-import Animated, { FadeInDown } from "react-native-reanimated";
 
-const { width: SCREEN_WIDTH } = Dimensions.get("window");
-
-type TabKey = "active" | "waiting" | "completed";
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type Job = {
   id: string;
@@ -57,9 +55,595 @@ type WaitingJob = {
   quoteStatus: string;
 };
 
+function StatusBadge({ status, colors, withAlpha }: { status: string; colors: any; withAlpha: any }) {
+  const s = (status || "").toLowerCase();
+  
+  const config = useMemo(() => {
+    if (s === "accepted" || s === "scheduled") {
+      return { label: "Assigned", color: colors.primary, icon: "flash" as const };
+    }
+    if (s === "work_in_progress" || s === "in_progress") {
+      return { label: "In Progress", color: colors.primary, icon: "construct" as const };
+    }
+    if (s === "completed") return { label: "Completed", color: colors.success, icon: "checkmark-circle" as const };
+    if (s === "canceled" || s === "cancelled") return { label: "Canceled", color: colors.error, icon: "close-circle" as const };
+    return { label: "Pending", color: colors.warning, icon: "time" as const };
+  }, [s, colors]);
+
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      backgroundColor: withAlpha(config.color, 0.12),
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 20,
+    }}>
+      <Ionicons name={config.icon} size={12} color={config.color} />
+      <Text style={{ fontSize: 11, fontWeight: "700", color: config.color }}>{config.label}</Text>
+    </View>
+  );
+}
+
+
+function JobCard({ 
+  item, 
+  onPress,
+  delay = 0,
+}: { 
+  item: Job;
+  onPress: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const isCompleted = item.status === "completed";
+  const payoutColor = item.payout_status ? PAYOUT_STATUS_COLORS[item.payout_status] : null;
+  const payoutLabel = item.payout_status ? PAYOUT_STATUS_LABELS[item.payout_status] : null;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const fmtDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Yesterday";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          marginBottom: spacing.md,
+          overflow: "hidden",
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{ padding: spacing.lg }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            marginBottom: spacing.sm,
+          }}>
+            <StatusBadge status={item.status || "pending"} colors={colors} withAlpha={withAlpha} />
+            <Text style={{
+              fontSize: 12,
+              color: colors.textMuted,
+            }}>{fmtDate(item.created_at)}</Text>
+          </View>
+
+          <Text style={{
+            fontSize: 17,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: spacing.xs,
+            lineHeight: 22,
+          }} numberOfLines={2}>{getDisplayTitle(item.title) || "Service Request"}</Text>
+
+          {item.preferred_time && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              marginBottom: spacing.sm,
+            }}>
+              <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
+              <Text style={{
+                fontSize: 13,
+                color: colors.textSecondary,
+              }}>{item.preferred_time}</Text>
+            </View>
+          )}
+
+          {item.customer_name && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              backgroundColor: withAlpha(colors.primary, 0.08),
+              padding: spacing.sm,
+              borderRadius: radius.md,
+              marginBottom: spacing.sm,
+            }}>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: withAlpha(colors.primary, 0.15),
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <Ionicons name="person" size={16} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  marginBottom: 1,
+                }}>Customer</Text>
+                <Text style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.textPrimary,
+                }}>{item.customer_name}</Text>
+              </View>
+            </View>
+          )}
+
+          {isCompleted && item.mechanic_payout_cents && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: colors.successBg,
+              padding: spacing.md,
+              borderRadius: radius.lg,
+              marginBottom: spacing.sm,
+            }}>
+              <View>
+                <Text style={{
+                  fontSize: 11,
+                  color: colors.success,
+                  fontWeight: "600",
+                  marginBottom: 2,
+                }}>EARNINGS</Text>
+                <Text style={{
+                  fontSize: 20,
+                  fontWeight: "800",
+                  color: colors.success,
+                }}>{formatCents(item.mechanic_payout_cents)}</Text>
+              </View>
+              {payoutLabel && payoutColor && (
+                <View style={{
+                  backgroundColor: payoutColor + "20",
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: spacing.sm,
+                  borderRadius: radius.md,
+                }}>
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: "700",
+                    color: payoutColor,
+                  }}>{payoutLabel}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
+          {isCompleted && item.has_pending_review && !item.has_reviewed && (
+            <Pressable
+              onPress={(e) => {
+                e.stopPropagation();
+              }}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                backgroundColor: colors.warningBg,
+                padding: spacing.sm,
+                borderRadius: radius.md,
+                marginBottom: spacing.sm,
+              }}
+            >
+              <Ionicons name="star" size={14} color={colors.warning} />
+              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.warning }}>Review Customer</Text>
+            </Pressable>
+          )}
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+              <Ionicons name="time-outline" size={14} color={colors.textMuted} />
+              <Text style={{
+                fontSize: 13,
+                color: colors.textMuted,
+              }}>{item.preferred_time || "Flexible timing"}</Text>
+            </View>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+            }}>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: colors.primary,
+              }}>View Details</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+            </View>
+          </View>
+        </View>
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function WaitingJobCard({ 
+  item, 
+  onPress,
+  delay = 0,
+}: { 
+  item: WaitingJob;
+  onPress: () => void;
+  delay?: number;
+}) {
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
+  const scale = useSharedValue(1);
+  const priceText = item.quotePriceCents ? `$${(item.quotePriceCents / 100).toFixed(0)}` : "TBD";
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const fmtDate = (iso: string) => {
+    try {
+      const d = new Date(iso);
+      const now = new Date();
+      const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays === 0) return "Today";
+      if (diffDays === 1) return "Yesterday";
+      if (diffDays < 7) return `${diffDays} days ago`;
+      return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    } catch {
+      return "";
+    }
+  };
+
+  return (
+    <Animated.View entering={FadeInDown.delay(delay).duration(300)}>
+      <AnimatedPressable
+        onPress={onPress}
+        onPressIn={() => { scale.value = withSpring(0.98, { damping: 15 }); }}
+        onPressOut={() => { scale.value = withSpring(1, { damping: 15 }); }}
+        style={[animatedStyle, {
+          backgroundColor: colors.surface,
+          borderRadius: radius.xl,
+          marginBottom: spacing.md,
+          overflow: "hidden",
+          ...shadows.sm,
+        }]}
+      >
+        <View style={{ padding: spacing.lg }}>
+          <View style={{
+            flexDirection: "row",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            marginBottom: spacing.sm,
+          }}>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              backgroundColor: withAlpha(colors.warning, 0.12),
+              paddingHorizontal: 10,
+              paddingVertical: 5,
+              borderRadius: 20,
+            }}>
+              <Ionicons name="pricetag" size={12} color={colors.warning} />
+              <Text style={{ fontSize: 11, fontWeight: "700", color: colors.warning }}>Quote Sent</Text>
+            </View>
+            <Text style={{
+              fontSize: 12,
+              color: colors.textMuted,
+            }}>{fmtDate(item.created_at)}</Text>
+          </View>
+
+          <Text style={{
+            fontSize: 17,
+            fontWeight: "700",
+            color: colors.textPrimary,
+            marginBottom: spacing.xs,
+            lineHeight: 22,
+          }} numberOfLines={2}>{getDisplayTitle(item.title) || "Service Request"}</Text>
+
+          {item.customer_name && (
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
+              backgroundColor: withAlpha(colors.primary, 0.08),
+              padding: spacing.sm,
+              borderRadius: radius.md,
+              marginBottom: spacing.sm,
+            }}>
+              <View style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: withAlpha(colors.primary, 0.15),
+                alignItems: "center",
+                justifyContent: "center",
+              }}>
+                <Ionicons name="person" size={16} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{
+                  fontSize: 11,
+                  color: colors.textMuted,
+                  marginBottom: 1,
+                }}>Customer</Text>
+                <Text style={{
+                  fontSize: 14,
+                  fontWeight: "600",
+                  color: colors.textPrimary,
+                }}>{item.customer_name}</Text>
+              </View>
+            </View>
+          )}
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            backgroundColor: colors.warningBg,
+            padding: spacing.md,
+            borderRadius: radius.lg,
+            marginBottom: spacing.sm,
+          }}>
+            <View>
+              <Text style={{
+                fontSize: 11,
+                color: colors.warning,
+                fontWeight: "600",
+                marginBottom: 2,
+              }}>YOUR QUOTE</Text>
+              <Text style={{
+                fontSize: 20,
+                fontWeight: "800",
+                color: colors.warning,
+              }}>{priceText}</Text>
+            </View>
+            <View style={{
+              backgroundColor: colors.warning,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm,
+              borderRadius: radius.md,
+            }}>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "700",
+                color: colors.white,
+              }}>Pending</Text>
+            </View>
+          </View>
+
+          <View style={{
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingTop: spacing.sm,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+          }}>
+            <Text style={{
+              fontSize: 13,
+              color: colors.textMuted,
+            }}>Waiting for customer response</Text>
+            <View style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 4,
+            }}>
+              <Text style={{
+                fontSize: 13,
+                fontWeight: "600",
+                color: colors.warning,
+              }}>View Quote</Text>
+              <Ionicons name="chevron-forward" size={16} color={colors.warning} />
+            </View>
+          </View>
+        </View>
+      </AnimatedPressable>
+    </Animated.View>
+  );
+}
+
+function EmptyState({ onAction, type }: { onAction?: () => void; type: "active" | "waiting" | "completed" }) {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  
+  const config = {
+    active: {
+      icon: "flash" as const,
+      title: "No active jobs",
+      subtitle: "When customers accept your quotes, active jobs will appear here",
+      action: "View Leads",
+    },
+    waiting: {
+      icon: "time" as const,
+      title: "No pending quotes",
+      subtitle: "Quotes you send will appear here while waiting for customer response",
+      action: "Browse Leads",
+    },
+    completed: {
+      icon: "checkmark-circle" as const,
+      title: "No completed jobs yet",
+      subtitle: "Your completed jobs and earnings will show up here",
+      action: null,
+    },
+  };
+
+  const { icon, title, subtitle, action } = config[type];
+  
+  return (
+    <Animated.View 
+      entering={FadeIn.delay(200).duration(400)}
+      style={{
+        alignItems: "center",
+        paddingVertical: spacing.xxxl,
+        paddingHorizontal: spacing.xl,
+      }}
+    >
+      <View style={{
+        width: 80,
+        height: 80,
+        borderRadius: 40,
+        backgroundColor: withAlpha(colors.primary, 0.1),
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: spacing.lg,
+      }}>
+        <Ionicons name={icon} size={36} color={colors.primary} />
+      </View>
+      
+      <Text style={{
+        fontSize: 20,
+        fontWeight: "700",
+        color: colors.textPrimary,
+        marginBottom: spacing.xs,
+      }}>{title}</Text>
+      
+      <Text style={{
+        fontSize: 15,
+        color: colors.textMuted,
+        textAlign: "center",
+        lineHeight: 22,
+        marginBottom: spacing.lg,
+      }}>{subtitle}</Text>
+      
+      {action && onAction && (
+        <Pressable
+          onPress={onAction}
+          style={({ pressed }) => ({
+            backgroundColor: colors.accent,
+            paddingVertical: spacing.md,
+            paddingHorizontal: spacing.xl,
+            borderRadius: radius.xl,
+            opacity: pressed ? 0.9 : 1,
+            transform: [{ scale: pressed ? 0.98 : 1 }],
+          })}
+        >
+          <Text style={{
+            fontSize: 15,
+            fontWeight: "700",
+            color: colors.buttonText,
+          }}>{action}</Text>
+        </Pressable>
+      )}
+    </Animated.View>
+  );
+}
+
+function SectionDivider({ title, count }: { title: string; count: number }) {
+  const { colors, spacing } = useTheme();
+  
+  return (
+    <View style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.md,
+    }}>
+      <Text style={{
+        fontSize: 13,
+        fontWeight: "700",
+        color: colors.textMuted,
+        letterSpacing: 0.5,
+        textTransform: "uppercase",
+      }}>{title}</Text>
+      <View style={{
+        backgroundColor: colors.surface2,
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+      }}>
+        <Text style={{
+          fontSize: 12,
+          fontWeight: "700",
+          color: colors.textMuted,
+        }}>{count}</Text>
+      </View>
+    </View>
+  );
+}
+
+function LoadingSkeleton() {
+  const { colors, spacing, radius, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
+  
+  const shimmer = {
+    backgroundColor: withAlpha(colors.textMuted, 0.08),
+    borderRadius: radius.md,
+  };
+
+  return (
+    <View style={{ flex: 1, backgroundColor: colors.bg }}>
+      <View style={{ 
+        paddingTop: insets.top + spacing.lg, 
+        paddingHorizontal: spacing.lg,
+        paddingBottom: spacing.xl,
+      }}>
+        <View style={[shimmer, { width: 120, height: 32, marginBottom: spacing.xs }]} />
+        <View style={[shimmer, { width: 180, height: 16 }]} />
+      </View>
+      
+      <View style={{ 
+        flexDirection: "row", 
+        gap: spacing.sm, 
+        paddingHorizontal: spacing.lg,
+        marginBottom: spacing.xl,
+      }}>
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+        <View style={[shimmer, { flex: 1, height: 100, borderRadius: radius.xl }]} />
+      </View>
+      
+      <View style={{ paddingHorizontal: spacing.lg }}>
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl, marginBottom: spacing.md }]} />
+        <View style={[shimmer, { height: 140, borderRadius: radius.xl }]} />
+      </View>
+    </View>
+  );
+}
+
 export default function MechanicJobs() {
   const router = useRouter();
-  const { colors, spacing, radius, shadows } = useTheme();
+  const { colors, spacing, radius, shadows, withAlpha } = useTheme();
   const insets = useSafeAreaInsets();
 
   const [loading, setLoading] = useState(true);
@@ -69,33 +653,7 @@ export default function MechanicJobs() {
   const [reviewPrompts, setReviewPrompts] = useState<ReviewPrompt[]>([]);
   const [mechanicId, setMechanicId] = useState<string | null>(null);
   const [showFinancials, setShowFinancials] = useState(false);
-  const [activeTab, setActiveTab] = useState<TabKey>("active");
-
-  const statusBadgeVariant = useCallback((status: string): "primary" | "success" | "warning" | "error" | "default" => {
-    const s = (status || "").toLowerCase();
-    if (s === "accepted" || s === "scheduled" || s === "in_progress" || s === "work_in_progress") return "primary";
-    if (s === "completed") return "success";
-    if (s === "canceled") return "error";
-    if (s === "pending" || s === "quoted" || s === "searching") return "warning";
-    return "default";
-  }, []);
-
-  const statusLabel = (status: string) => {
-    const s = (status || "").toLowerCase();
-    if (s === "accepted") return "Assigned";
-    if (s === "scheduled") return "On the Way";
-    if (s === "in_progress" || s === "work_in_progress") return "In Progress";
-    if (s === "completed") return "Completed";
-    return status || "Unknown";
-  };
-
-  const fmtDate = (iso: string) => {
-    try {
-      return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
-    } catch {
-      return "";
-    }
-  };
+  const [activeTab, setActiveTab] = useState<"active" | "waiting" | "completed">("active");
 
   const load = useCallback(async () => {
     try {
@@ -302,340 +860,74 @@ export default function MechanicJobs() {
     }, [load])
   );
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
     setRefreshing(false);
   }, [load]);
 
-  const active = useMemo(
+  const activeJobs = useMemo(
     () => jobs.filter((j) => ["accepted", "scheduled", "in_progress", "work_in_progress"].includes((j.status || "").toLowerCase())),
     [jobs]
   );
-  const completed = useMemo(
+  const completedJobs = useMemo(
     () => jobs.filter((j) => (j.status || "").toLowerCase() === "completed"),
     [jobs]
   );
 
-  const tabs: { key: TabKey; label: string; count: number; icon: keyof typeof Ionicons.glyphMap }[] = [
-    { key: "active", label: "Active", count: active.length, icon: "flash" },
-    { key: "waiting", label: "Waiting", count: waitingJobs.length, icon: "time" },
-    { key: "completed", label: "Done", count: completed.length, icon: "checkmark-circle" },
+  const tabs = [
+    { key: "active" as const, label: "Active", icon: "flash" as const, count: activeJobs.length, color: colors.primary },
+    { key: "waiting" as const, label: "Waiting", icon: "time" as const, count: waitingJobs.length, color: colors.warning },
+    { key: "completed" as const, label: "Done", icon: "checkmark-circle" as const, count: completedJobs.length, color: colors.success },
   ];
 
-  const JobCardSkeleton = () => (
-    <ThemedCard style={{ marginBottom: spacing.md }}>
-      <View style={{ flexDirection: "row", justifyContent: "space-between", marginBottom: spacing.sm }}>
-        <Skeleton width={80} height={20} borderRadius={radius.full} />
-        <Skeleton width={60} height={14} />
-      </View>
-      <Skeleton width="80%" height={18} style={{ marginBottom: spacing.xs }} />
-      <Skeleton width="50%" height={14} style={{ marginBottom: spacing.md }} />
-      <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-        <Skeleton width={32} height={32} borderRadius={16} />
-        <Skeleton width={100} height={14} />
-      </View>
-    </ThemedCard>
-  );
+  const currentJobs = activeTab === "active" ? activeJobs : activeTab === "completed" ? completedJobs : [];
 
-  const JobCard = ({ item, index }: { item: Job; index: number }) => {
-    const isCompleted = item.status === "completed";
-    const payoutColor = item.payout_status ? PAYOUT_STATUS_COLORS[item.payout_status] : null;
-    const payoutLabel = item.payout_status ? PAYOUT_STATUS_LABELS[item.payout_status] : null;
-
-    return (
-      <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
-        <ThemedCard
-          pressable
-          onPress={() => router.push(`/(mechanic)/job-details/${item.id}` as any)}
-          style={{ marginBottom: spacing.md }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
-            <ThemedBadge label={statusLabel(item.status)} variant={statusBadgeVariant(item.status)} size="sm" />
-            <ThemedText variant="caption" color="muted">{fmtDate(item.created_at)}</ThemedText>
-          </View>
-
-          <ThemedText variant="h4" numberOfLines={2} style={{ marginBottom: spacing.xs }}>
-            {getDisplayTitle(item.title) || "Job"}
-          </ThemedText>
-
-          {item.preferred_time && (
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs, marginBottom: spacing.sm }}>
-              <Ionicons name="calendar-outline" size={14} color={colors.textMuted} />
-              <ThemedText variant="caption" color="muted">{item.preferred_time}</ThemedText>
-            </View>
-          )}
-
-          {item.customer_name && (
-            <View style={{ 
-              flexDirection: "row", 
-              alignItems: "center", 
-              gap: spacing.sm, 
-              backgroundColor: colors.surface2, 
-              borderRadius: radius.md, 
-              padding: spacing.sm,
-              marginBottom: spacing.sm 
-            }}>
-              <View style={{ 
-                width: 32, 
-                height: 32, 
-                borderRadius: 16, 
-                backgroundColor: colors.primaryBg, 
-                alignItems: "center", 
-                justifyContent: "center" 
-              }}>
-                <Ionicons name="person" size={16} color={colors.primary} />
-              </View>
-              <ThemedText variant="body" weight="medium" numberOfLines={1}>{item.customer_name}</ThemedText>
-            </View>
-          )}
-
-          {isCompleted && item.mechanic_payout_cents && (
-            <View style={{ 
-              flexDirection: "row", 
-              gap: spacing.sm, 
-              marginBottom: spacing.sm 
-            }}>
-              <View style={{ 
-                flex: 1, 
-                backgroundColor: colors.successBg, 
-                borderRadius: radius.md, 
-                padding: spacing.sm 
-              }}>
-                <ThemedText variant="caption" color="muted">Earnings</ThemedText>
-                <ThemedText variant="h3" color="success">{formatCents(item.mechanic_payout_cents)}</ThemedText>
-              </View>
-              {payoutLabel && payoutColor && (
-                <View style={{ 
-                  backgroundColor: payoutColor + "15", 
-                  borderRadius: radius.md, 
-                  padding: spacing.sm, 
-                  justifyContent: "center",
-                  alignItems: "center"
-                }}>
-                  <ThemedText variant="caption" style={{ color: payoutColor }}>{payoutLabel}</ThemedText>
-                </View>
-              )}
-            </View>
-          )}
-
-          {isCompleted && item.has_pending_review && !item.has_reviewed && (
-            <AppButton
-              label="Review Customer"
-              variant="warning"
-              size="sm"
-              icon={<Ionicons name="star" size={14} color={colors.warning} />}
-              onPress={() => router.push(`/(mechanic)/review/${item.id}` as any)}
-              style={{ marginBottom: spacing.sm }}
-            />
-          )}
-
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
-            <ThemedText variant="body" color="primary" weight="semibold">View Details</ThemedText>
-            <Ionicons name="chevron-forward" size={16} color={colors.primary} style={{ marginLeft: spacing.xxs }} />
-          </View>
-        </ThemedCard>
-      </Animated.View>
-    );
-  };
-
-  const WaitingJobCard = ({ item, index }: { item: WaitingJob; index: number }) => {
-    const priceText = item.quotePriceCents ? `$${(item.quotePriceCents / 100).toFixed(0)}` : "TBD";
-
-    return (
-      <Animated.View entering={FadeInDown.delay(index * 50).duration(300)}>
-        <ThemedCard
-          pressable
-          onPress={() => router.push(`/(mechanic)/quote-sent/${item.id}` as any)}
-          style={{ marginBottom: spacing.md }}
-        >
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: spacing.sm }}>
-            <ThemedBadge label="Quote Sent" variant="warning" size="sm" />
-            <ThemedText variant="caption" color="muted">{fmtDate(item.created_at)}</ThemedText>
-          </View>
-
-          <ThemedText variant="h4" numberOfLines={2} style={{ marginBottom: spacing.xs }}>
-            {getDisplayTitle(item.title) || "Job"}
-          </ThemedText>
-
-          <ThemedText variant="caption" color="muted" style={{ marginBottom: spacing.sm }}>
-            Waiting for customer response
-          </ThemedText>
-
-          {item.customer_name && (
-            <View style={{ 
-              flexDirection: "row", 
-              alignItems: "center", 
-              gap: spacing.sm, 
-              backgroundColor: colors.surface2, 
-              borderRadius: radius.md, 
-              padding: spacing.sm,
-              marginBottom: spacing.sm 
-            }}>
-              <View style={{ 
-                width: 32, 
-                height: 32, 
-                borderRadius: 16, 
-                backgroundColor: colors.primaryBg, 
-                alignItems: "center", 
-                justifyContent: "center" 
-              }}>
-                <Ionicons name="person" size={16} color={colors.primary} />
-              </View>
-              <ThemedText variant="body" weight="medium" numberOfLines={1}>{item.customer_name}</ThemedText>
-            </View>
-          )}
-
-          <View style={{ 
-            flexDirection: "row", 
-            alignItems: "center", 
-            justifyContent: "space-between", 
-            backgroundColor: colors.warningBg, 
-            borderRadius: radius.md, 
-            padding: spacing.md,
-            marginBottom: spacing.sm
-          }}>
-            <ThemedText variant="body" color="warning">Your Quote</ThemedText>
-            <ThemedText variant="h3" color="warning">{priceText}</ThemedText>
-          </View>
-
-          <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "flex-end" }}>
-            <ThemedText variant="body" color="warning" weight="semibold">View Quote</ThemedText>
-            <Ionicons name="chevron-forward" size={16} color={colors.warning} style={{ marginLeft: spacing.xxs }} />
-          </View>
-        </ThemedCard>
-      </Animated.View>
-    );
-  };
-
-  const EmptyState = ({ tab }: { tab: TabKey }) => {
-    const config = {
-      active: {
-        icon: "flash-outline" as const,
-        title: "No active jobs",
-        subtitle: "When customers accept your quotes, active jobs will appear here",
-        action: "View Leads",
-        onAction: () => router.push("/(mechanic)/(tabs)/leads" as any),
-      },
-      waiting: {
-        icon: "time-outline" as const,
-        title: "No pending quotes",
-        subtitle: "Quotes you send will appear here while waiting for customer response",
-        action: "Browse Leads",
-        onAction: () => router.push("/(mechanic)/(tabs)/leads" as any),
-      },
-      completed: {
-        icon: "checkmark-circle-outline" as const,
-        title: "No completed jobs yet",
-        subtitle: "Your completed jobs and earnings will show up here",
-        action: null,
-        onAction: null,
-      },
-    };
-
-    const { icon, title, subtitle, action, onAction } = config[tab];
-
-    return (
-      <View style={{ alignItems: "center", paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg }}>
-        <View style={{ 
-          width: 80, 
-          height: 80, 
-          borderRadius: 40, 
-          backgroundColor: colors.surface2, 
-          alignItems: "center", 
-          justifyContent: "center",
-          marginBottom: spacing.lg
-        }}>
-          <Ionicons name={icon} size={36} color={colors.textMuted} />
-        </View>
-        <ThemedText variant="h4" style={{ marginBottom: spacing.xs, textAlign: "center" }}>{title}</ThemedText>
-        <ThemedText variant="body" color="muted" style={{ textAlign: "center", marginBottom: spacing.lg }}>{subtitle}</ThemedText>
-        {action && onAction && (
-          <AppButton label={action} variant="primary" onPress={onAction} />
-        )}
-      </View>
-    );
-  };
-
-  const renderTabContent = () => {
-    if (loading) {
-      return (
-        <View style={{ padding: spacing.md }}>
-          {[1, 2, 3].map((i) => <JobCardSkeleton key={i} />)}
-        </View>
-      );
-    }
-
-    const items = activeTab === "active" ? active : activeTab === "waiting" ? waitingJobs : completed;
-
-    if (items.length === 0) {
-      return <EmptyState tab={activeTab} />;
-    }
-
-    return (
-      <View style={{ padding: spacing.md }}>
-        {activeTab === "waiting"
-          ? (items as WaitingJob[]).map((item, index) => <WaitingJobCard key={item.quoteId || item.id} item={item} index={index} />)
-          : (items as Job[]).map((item, index) => <JobCard key={item.id} item={item} index={index} />)
-        }
-      </View>
-    );
-  };
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
-      <ScrollView
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-        showsVerticalScrollIndicator={false}
-        stickyHeaderIndices={[1]}
-      >
-        <LinearGradient
-          colors={[colors.primary, colors.primaryDark || colors.primary]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ paddingTop: insets.top + spacing.md, paddingBottom: spacing.xl, paddingHorizontal: spacing.md }}
+      <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.MECHANIC_EARNINGS_TAB} style={{ flex: 1 }}>
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={colors.primary}
+            />
+          }
         >
-          <ThemedText variant="h1" style={{ color: "#fff" }}>My Jobs</ThemedText>
-          <ThemedText variant="body" style={{ color: "rgba(255,255,255,0.8)", marginTop: spacing.xxs }}>
-            Manage your assigned work
-          </ThemedText>
-
-          <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: spacing.lg }}>
-            {tabs.map((tab) => (
-              <View 
-                key={tab.key}
-                style={{ 
-                  flex: 1, 
-                  backgroundColor: "rgba(255,255,255,0.15)", 
-                  borderRadius: radius.lg, 
-                  padding: spacing.md,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.2)"
-                }}
-              >
-                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.xs }}>
-                  <Ionicons name={tab.icon} size={14} color="#fff" />
-                  <ThemedText variant="caption" style={{ color: "rgba(255,255,255,0.9)" }}>{tab.label}</ThemedText>
-                </View>
-                <ThemedText variant="h2" style={{ color: "#fff", marginTop: spacing.xxs }}>
-                  {tab.key === "active" ? active.length : tab.key === "waiting" ? waitingJobs.length : completed.length}
-                </ThemedText>
-              </View>
-            ))}
+          <View style={{
+            paddingTop: insets.top + spacing.md,
+            paddingHorizontal: spacing.lg,
+            paddingBottom: spacing.lg,
+          }}>
+            <Animated.View entering={FadeIn.duration(300)}>
+              <Text style={{
+                fontSize: 28,
+                fontWeight: "800",
+                color: colors.textPrimary,
+                letterSpacing: -0.5,
+                marginBottom: 4,
+              }}>My Jobs</Text>
+              <Text style={{
+                fontSize: 15,
+                color: colors.textMuted,
+              }}>Manage your assigned work</Text>
+            </Animated.View>
           </View>
-        </LinearGradient>
 
-        <View style={{ backgroundColor: colors.bg, paddingTop: spacing.sm }}>
-          <View style={{ 
-            flexDirection: "row", 
-            marginHorizontal: spacing.md, 
-            backgroundColor: colors.surface2, 
-            borderRadius: radius.lg, 
-            padding: spacing.xxs 
+          {/* Segmented Tab Toggle */}
+          <View style={{
+            flexDirection: "row",
+            marginHorizontal: spacing.lg,
+            backgroundColor: colors.surface2,
+            borderRadius: radius.xl,
+            padding: 4,
+            marginBottom: spacing.md,
           }}>
             {tabs.map((tab) => {
               const isActive = activeTab === tab.key;
@@ -648,99 +940,202 @@ export default function MechanicJobs() {
                     flexDirection: "row",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: spacing.xs,
+                    gap: 6,
                     paddingVertical: spacing.sm,
-                    borderRadius: radius.md,
-                    backgroundColor: isActive ? colors.cardBg : "transparent",
-                    ...( isActive ? shadows.sm : {}),
+                    borderRadius: radius.lg,
+                    backgroundColor: isActive ? colors.surface : "transparent",
+                    ...(isActive ? shadows.sm : {}),
                   }}
                 >
-                  <Ionicons name={tab.icon} size={16} color={isActive ? colors.primary : colors.textMuted} />
-                  <ThemedText 
-                    variant="body" 
-                    weight={isActive ? "semibold" : "regular"}
-                    color={isActive ? "primary" : "muted"}
-                  >
-                    {tab.label}
-                  </ThemedText>
+                  <Ionicons
+                    name={tab.icon}
+                    size={16}
+                    color={isActive ? tab.color : colors.textMuted}
+                  />
+                  <Text style={{
+                    fontSize: 13,
+                    fontWeight: isActive ? "700" : "500",
+                    color: isActive ? tab.color : colors.textMuted,
+                  }}>{tab.label}</Text>
                   {tab.count > 0 && (
                     <View style={{
-                      backgroundColor: isActive ? colors.primaryBg : colors.surface,
-                      paddingHorizontal: spacing.xs,
+                      backgroundColor: isActive ? withAlpha(tab.color, 0.15) : colors.surface,
+                      paddingHorizontal: 6,
                       paddingVertical: 2,
-                      borderRadius: radius.full,
+                      borderRadius: 10,
                       minWidth: 20,
-                      alignItems: "center"
+                      alignItems: "center",
                     }}>
-                      <ThemedText variant="caption" color={isActive ? "primary" : "muted"}>{tab.count}</ThemedText>
+                      <Text style={{
+                        fontSize: 11,
+                        fontWeight: "700",
+                        color: isActive ? tab.color : colors.textMuted,
+                      }}>{tab.count}</Text>
                     </View>
                   )}
                 </Pressable>
               );
             })}
           </View>
-        </View>
 
-        {mechanicId && completed.length > 0 && (
-          <WalkthroughTarget id={WALKTHROUGH_TARGET_IDS.MECHANIC_EARNINGS_TAB}>
-            <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md }}>
-              <ThemedCard
-                pressable
+          {mechanicId && completedJobs.length > 0 && (
+            <Animated.View 
+              entering={FadeInDown.delay(250).duration(300)}
+              style={{ paddingHorizontal: spacing.lg, marginBottom: spacing.md }}
+            >
+              <Pressable
                 onPress={() => setShowFinancials(!showFinancials)}
+                style={({ pressed }) => ({
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backgroundColor: colors.surface,
+                  borderRadius: radius.xl,
+                  padding: spacing.md,
+                  ...shadows.sm,
+                  opacity: pressed ? 0.9 : 1,
+                })}
               >
-                <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
-                    <View style={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: 20,
-                      backgroundColor: colors.successBg,
-                      alignItems: "center",
-                      justifyContent: "center"
-                    }}>
-                      <Ionicons name="stats-chart" size={20} color={colors.success} />
-                    </View>
-                    <ThemedText variant="body" weight="semibold">Earnings Summary</ThemedText>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+                  <View style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 18,
+                    backgroundColor: withAlpha(colors.success, 0.15),
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}>
+                    <Ionicons name="wallet" size={18} color={colors.success} />
                   </View>
-                  <Ionicons
-                    name={showFinancials ? "chevron-up" : "chevron-down"}
-                    size={20}
-                    color={colors.textMuted}
-                  />
+                  <Text style={{
+                    fontSize: 15,
+                    fontWeight: "600",
+                    color: colors.textPrimary,
+                  }}>Earnings Summary</Text>
                 </View>
-              </ThemedCard>
+                <Ionicons
+                  name={showFinancials ? "chevron-up" : "chevron-down"}
+                  size={20}
+                  color={colors.textMuted}
+                />
+              </Pressable>
               {showFinancials && (
                 <View style={{ marginTop: spacing.sm }}>
                   <FinancialSummary userId={mechanicId} role="mechanic" />
                 </View>
               )}
+            </Animated.View>
+          )}
+
+          {jobs.length === 0 && waitingJobs.length === 0 ? (
+            <EmptyState type="active" onAction={() => router.push("/(mechanic)/(tabs)/leads" as any)} />
+          ) : activeTab === "waiting" ? (
+            waitingJobs.length === 0 ? (
+              <View style={{ alignItems: "center", paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl }}>
+                <View style={{
+                  width: 64,
+                  height: 64,
+                  borderRadius: 32,
+                  backgroundColor: withAlpha(colors.warning, 0.1),
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: spacing.md,
+                }}>
+                  <Ionicons name="time" size={28} color={colors.warning} />
+                </View>
+                <Text style={{
+                  fontSize: 17,
+                  fontWeight: "600",
+                  color: colors.textPrimary,
+                  marginBottom: spacing.xs,
+                }}>No pending quotes</Text>
+                <Text style={{
+                  fontSize: 14,
+                  color: colors.textMuted,
+                  textAlign: "center",
+                }}>Quotes you send will appear here while waiting for customer response</Text>
+              </View>
+            ) : (
+              <View style={{ paddingHorizontal: spacing.lg }}>
+                {waitingJobs.map((item, index) => (
+                  <WaitingJobCard
+                    key={item.quoteId || item.id}
+                    item={item}
+                    onPress={() => router.push(`/(mechanic)/quote-sent/${item.id}` as any)}
+                    delay={350 + index * 50}
+                  />
+                ))}
+              </View>
+            )
+          ) : currentJobs.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: spacing.xxxl, paddingHorizontal: spacing.xl }}>
+              <View style={{
+                width: 64,
+                height: 64,
+                borderRadius: 32,
+                backgroundColor: withAlpha(tabs.find(t => t.key === activeTab)?.color || colors.primary, 0.1),
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: spacing.md,
+              }}>
+                <Ionicons
+                  name={tabs.find(t => t.key === activeTab)?.icon || "flash"}
+                  size={28}
+                  color={tabs.find(t => t.key === activeTab)?.color || colors.primary}
+                />
+              </View>
+              <Text style={{
+                fontSize: 17,
+                fontWeight: "600",
+                color: colors.textPrimary,
+                marginBottom: spacing.xs,
+              }}>No {activeTab} jobs</Text>
+              <Text style={{
+                fontSize: 14,
+                color: colors.textMuted,
+                textAlign: "center",
+              }}>
+                {activeTab === "active" && "Jobs you've been assigned will appear here"}
+                {activeTab === "completed" && "Your completed jobs will appear here"}
+              </Text>
             </View>
-          </WalkthroughTarget>
-        )}
+          ) : (
+            <View style={{ paddingHorizontal: spacing.lg }}>
+              {activeTab === "active" && reviewPrompts.length > 0 && (
+                <>
+                  <SectionDivider title="Pending Reviews" count={reviewPrompts.length} />
+                  <View style={{ gap: spacing.sm, marginBottom: spacing.md }}>
+                    {reviewPrompts.map((prompt, index) => (
+                      <Animated.View
+                        key={prompt.id}
+                        entering={FadeInDown.delay(300 + index * 50).duration(300)}
+                      >
+                        <ReviewPromptBanner
+                          jobId={prompt.job_id}
+                          targetName={prompt.target_name}
+                          expiresAt={prompt.expires_at}
+                          userRole="mechanic"
+                        />
+                      </Animated.View>
+                    ))}
+                  </View>
+                </>
+              )}
 
-        {reviewPrompts.length > 0 && (
-          <View style={{ paddingHorizontal: spacing.md, marginTop: spacing.md }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm, marginBottom: spacing.sm }}>
-              <Ionicons name="star" size={18} color={colors.warning} />
-              <ThemedText variant="h4">Pending Reviews</ThemedText>
-              <ThemedBadge label={String(reviewPrompts.length)} variant="warning" size="sm" />
+              {currentJobs.map((item, index) => (
+                <JobCard
+                  key={item.id}
+                  item={item}
+                  onPress={() => router.push(`/(mechanic)/job-details/${item.id}` as any)}
+                  delay={350 + index * 50}
+                />
+              ))}
             </View>
-            {reviewPrompts.map((prompt) => (
-              <ReviewPromptBanner
-                key={prompt.id}
-                jobId={prompt.job_id}
-                targetName={prompt.target_name}
-                expiresAt={prompt.expires_at}
-                userRole="mechanic"
-              />
-            ))}
-          </View>
-        )}
+          )}
 
-        {renderTabContent()}
-
-        <View style={{ height: spacing.xxl }} />
-      </ScrollView>
+          <View style={{ height: spacing.xxxl }} />
+        </ScrollView>
+      </WalkthroughTarget>
     </View>
   );
 }

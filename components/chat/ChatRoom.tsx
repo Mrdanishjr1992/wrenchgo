@@ -476,7 +476,7 @@ function ComposerBar({
         borderTopWidth: 1,
         borderTopColor: colors.border,
         paddingTop: spacing.sm,
-        paddingBottom: insets.bottom + spacing.sm,
+        paddingBottom: Math.max(insets.bottom, spacing.md) + spacing.sm,
         paddingHorizontal: spacing.md,
       }}
     >
@@ -1095,7 +1095,8 @@ export function ChatRoom({ jobId, role, headerTitle = "Chat", headerSubtitle, ba
   return (
     <KeyboardAvoidingView
       style={{ flex: 1, backgroundColor: colors.bg }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? insets.top : 0}
     >
       <ChatHeader
         name={otherPartyName}

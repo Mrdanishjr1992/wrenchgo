@@ -2,25 +2,15 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, ActivityIndicator } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { adminGetMechanics, AdminMechanic } from '../../src/lib/admin';
-
-const STATUS_COLORS: Record<string, string> = {
-  pending_verification: '#F59E0B',
-  active: '#10B981',
-  paused: '#6B7280',
-  removed: '#EF4444',
-};
-
-const TIER_COLORS: Record<string, string> = {
-  probation: '#F59E0B',
-  standard: '#3B82F6',
-  trusted: '#10B981',
-};
+import { getStatusColor } from '../../src/lib/admin-colors';
 
 export default function AdminMechanicsScreen() {
-  const { colors } = useTheme();
+  const { colors, withAlpha } = useTheme();
+  const insets = useSafeAreaInsets();
   const [mechanics, setMechanics] = useState<AdminMechanic[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -61,14 +51,14 @@ export default function AdminMechanicsScreen() {
 
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}>
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: colors.background }}>
+    <View style={{ flex: 1, backgroundColor: colors.background, paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right, paddingBottom: insets.bottom }}>
       <View style={{
         flexDirection: 'row',
         alignItems: 'center',
@@ -126,9 +116,9 @@ export default function AdminMechanicsScreen() {
                     paddingHorizontal: spacing.sm,
                     paddingVertical: 2,
                     borderRadius: 4,
-                    backgroundColor: (STATUS_COLORS[m.verification_status] || colors.textSecondary) + '20',
+                    backgroundColor: withAlpha(getStatusColor(m.verification_status, colors), 0.12),
                   }}>
-                    <Text style={{ color: STATUS_COLORS[m.verification_status] || colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                    <Text style={{ color: getStatusColor(m.verification_status, colors), fontSize: 11, fontWeight: '600' }}>
                       {(m.verification_status || 'unknown').toUpperCase().replace('_', ' ')}
                     </Text>
                   </View>
@@ -137,9 +127,9 @@ export default function AdminMechanicsScreen() {
                       paddingHorizontal: spacing.sm,
                       paddingVertical: 2,
                       borderRadius: 4,
-                      backgroundColor: (TIER_COLORS[m.tier] || colors.textSecondary) + '20',
+                      backgroundColor: withAlpha(getStatusColor(m.tier, colors), 0.12),
                     }}>
-                      <Text style={{ color: TIER_COLORS[m.tier] || colors.textSecondary, fontSize: 11, fontWeight: '600' }}>
+                      <Text style={{ color: getStatusColor(m.tier, colors), fontSize: 11, fontWeight: '600' }}>
                         {(m.tier || '').toUpperCase()}
                       </Text>
                     </View>
@@ -160,7 +150,7 @@ export default function AdminMechanicsScreen() {
                 </Text>
                 {m.rating_avg != null && m.rating_avg > 0 && (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <Ionicons name="star" size={12} color="#F59E0B" />
+                    <Ionicons name="star" size={12} color={colors.warning} />
                     <Text style={{ fontSize: 12, color: colors.textSecondary, marginLeft: 4 }}>
                       {Number(m.rating_avg).toFixed(1)} ({m.rating_count || 0})
                     </Text>

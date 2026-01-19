@@ -10,22 +10,17 @@ import {
   KeyboardAvoidingView,
   Platform,
   TextInput,
-  Linking,
   RefreshControl,
   Modal,
+  ActivityIndicator,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
-import Animated, {
-  FadeIn,
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated, { FadeInDown } from "react-native-reanimated";
 import { supabase } from "../../../src/lib/supabase";
 import { useTheme } from "../../../src/ui/theme-context";
 import { DeleteAccountButton } from "../../../src/components/DeleteAccountButton";
@@ -34,7 +29,8 @@ import { VerificationSection } from "@/components/verification/VerificationSecti
 import { checkIsAdmin } from "@/src/lib/verification";
 import * as ImagePicker from "expo-image-picker";
 import * as Location from "expo-location";
-
+import { ThemedCard } from "@/src/ui/components/ThemedCard";
+import { ThemedText } from "@/src/ui/components/ThemedText";
 import { GoogleSignin } from "@react-native-google-signin/google-signin";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -851,14 +847,14 @@ export default function MechanicProfile() {
                   borderRadius: 24,
                   overflow: "hidden",
                   borderWidth: 2,
-                  borderColor: colors.accent + "40",
+                  borderColor: withAlpha(colors.accent, 0.25),
                   backgroundColor: colors.surface,
                 }}
               >
                 {profile?.avatar_url ? (
                   <Image key={profile.avatar_url} source={avatarSource} style={{ width: "100%", height: "100%" }} resizeMode="cover" />
                 ) : (
-                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.accent + "20" }}>
+                  <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: withAlpha(colors.accent, 0.2) }}>
                     <Text style={{ fontSize: 24, fontWeight: "700", color: colors.accent }}>{initials}</Text>
                   </View>
                 )}
@@ -868,12 +864,12 @@ export default function MechanicProfile() {
                     bottom: 0,
                     left: 0,
                     right: 0,
-                    backgroundColor: "rgba(0,0,0,0.6)",
+                    backgroundColor: withAlpha(colors.black, 0.6),
                     alignItems: "center",
                     paddingVertical: 3,
                   }}
                 >
-                  <Ionicons name="camera" size={12} color="#fff" />
+                  <Ionicons name="camera" size={12} color={colors.white} />
                 </View>
               </Pressable>
 
@@ -889,12 +885,12 @@ export default function MechanicProfile() {
                       paddingHorizontal: 10,
                       paddingVertical: 5,
                       borderRadius: 999,
-                      backgroundColor: "#10b981" + "20",
+                      backgroundColor: withAlpha(colors.success, 0.2),
                       gap: 4,
                     }}
                   >
-                    <Ionicons name="construct" size={12} color="#10b981" />
-                    <Text style={{ fontWeight: "800", color: "#10b981", fontSize: 11 }}>MECHANIC</Text>
+                    <Ionicons name="construct" size={12} color={colors.success} />
+                    <Text style={{ fontWeight: "800", color: colors.success, fontSize: 11 }}>MECHANIC</Text>
                   </View>
                   {memberSince && (
                     <Text style={{ ...text.muted, fontSize: 12 }}>Since {memberSince}</Text>
@@ -908,21 +904,21 @@ export default function MechanicProfile() {
               gap: spacing.md,
               paddingTop: spacing.sm,
               borderTopWidth: 1,
-              borderTopColor: colors.border + "40",
+              borderTopColor: withAlpha(colors.border, 0.4),
             }}>
               <View style={{ alignItems: "center", flex: 1 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                  <Ionicons name="star" size={16} color="#FFB800" />
+                  <Ionicons name="star" size={16} color={colors.warning} />
                   <Text style={{ fontSize: 20, fontWeight: "800", color: colors.textPrimary }}>{rating > 0 ? rating.toFixed(1) : "—"}</Text>
                 </View>
                 <Text style={{ ...text.muted, fontSize: 11 }}>Rating</Text>
               </View>
-              <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+              <View style={{ width: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
               <View style={{ alignItems: "center", flex: 1 }}>
-                <Text style={{ fontSize: 20, fontWeight: "800", color: "#10b981" }}>{jobsCompleted}</Text>
+                <Text style={{ fontSize: 20, fontWeight: "800", color: colors.success }}>{jobsCompleted}</Text>
                 <Text style={{ ...text.muted, fontSize: 11 }}>Jobs Done</Text>
               </View>
-              <View style={{ width: 1, backgroundColor: colors.border + "40" }} />
+              <View style={{ width: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
               <View style={{ alignItems: "center", flex: 1 }}>
                 <View style={{
                   flexDirection: "row",
@@ -931,10 +927,10 @@ export default function MechanicProfile() {
                   paddingHorizontal: 8,
                   paddingVertical: 2,
                   borderRadius: 999,
-                  backgroundColor: availableNow ? "#10b981" + "20" : "#ef4444" + "20",
+                  backgroundColor: availableNow ? withAlpha(colors.success, 0.2) : withAlpha(colors.error, 0.2),
                 }}>
-                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: availableNow ? "#10b981" : "#ef4444" }} />
-                  <Text style={{ fontSize: 11, fontWeight: "700", color: availableNow ? "#10b981" : "#ef4444" }}>
+                  <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: availableNow ? colors.success : colors.error }} />
+                  <Text style={{ fontSize: 11, fontWeight: "700", color: availableNow ? colors.success : colors.error }}>
                     {availableNow ? "ACTIVE" : "AWAY"}
                   </Text>
                 </View>
@@ -978,7 +974,7 @@ export default function MechanicProfile() {
           <>
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: colors.accent + "20", alignItems: "center", justifyContent: "center" }}>
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.accent, 0.2), alignItems: "center", justifyContent: "center" }}>
                   <Ionicons name="person-outline" size={16} color={colors.accent} />
                 </View>
                 <Text style={text.section}>Professional Info</Text>
@@ -991,7 +987,7 @@ export default function MechanicProfile() {
                   </View>
                   <Text style={{ ...text.body, fontWeight: "600" }}>{profile?.email || "Not set"}</Text>
                 </View>
-                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name="call-outline" size={16} color={colors.textMuted} />
@@ -1001,7 +997,7 @@ export default function MechanicProfile() {
                     {phone || "Not set"}
                   </Text>
                 </View>
-                <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                 <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                     <Ionicons name="location-outline" size={16} color={colors.textMuted} />
@@ -1013,7 +1009,7 @@ export default function MechanicProfile() {
                 </View>
                 {yearsExperience && (
                   <>
-                    <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                    <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         <Ionicons name="briefcase-outline" size={16} color={colors.textMuted} />
@@ -1025,7 +1021,7 @@ export default function MechanicProfile() {
                 )}
                 {serviceRadius && (
                   <>
-                    <View style={{ height: 1, backgroundColor: colors.border + "40" }} />
+                    <View style={{ height: 1, backgroundColor: withAlpha(colors.border, 0.4) }} />
                     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 6 }}>
                       <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
                         <Ionicons name="navigate-outline" size={16} color={colors.textMuted} />
@@ -1041,8 +1037,8 @@ export default function MechanicProfile() {
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#635bff" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="card-outline" size={16} color="#635bff" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.secondary, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="card-outline" size={16} color={colors.secondary} />
                   </View>
                   <Text style={text.section}>Stripe Payouts</Text>
                 </View>
@@ -1072,7 +1068,7 @@ export default function MechanicProfile() {
                       paddingVertical: 12,
                       paddingHorizontal: 20,
                       borderRadius: radius.md,
-                      backgroundColor: "#635bff",
+                      backgroundColor: colors.secondary,
                       opacity: pressed || loadingPayout ? 0.8 : 1,
                       flexDirection: "row",
                       alignItems: "center",
@@ -1080,11 +1076,11 @@ export default function MechanicProfile() {
                     })}
                   >
                     {loadingPayout ? (
-                      <ActivityIndicator color="#fff" size="small" />
+                      <ActivityIndicator color={colors.white} size="small" />
                     ) : (
                       <>
-                        <Ionicons name="add" size={18} color="#fff" />
-                        <Text style={{ fontWeight: "700", color: "#fff" }}>Connect Stripe</Text>
+                        <Ionicons name="add" size={18} color={colors.white} />
+                        <Text style={{ fontWeight: "700", color: colors.white }}>Connect Stripe</Text>
                       </>
                     )}
                   </Pressable>
@@ -1099,13 +1095,13 @@ export default function MechanicProfile() {
                         borderRadius: radius.md,
                         alignItems: "center",
                         justifyContent: "center",
-                        backgroundColor: payoutAccount.charges_enabled && payoutAccount.payouts_enabled ? "#10b981" + "20" : "#f59e0b" + "20",
+                        backgroundColor: payoutAccount.charges_enabled && payoutAccount.payouts_enabled ? withAlpha(colors.success, 0.2) : withAlpha(colors.warning, 0.2),
                       }}
                     >
                       <Ionicons
                         name={payoutAccount.charges_enabled && payoutAccount.payouts_enabled ? "checkmark-circle" : "time"}
                         size={24}
-                        color={payoutAccount.charges_enabled && payoutAccount.payouts_enabled ? "#10b981" : "#f59e0b"}
+                        color={payoutAccount.charges_enabled && payoutAccount.payouts_enabled ? colors.success : colors.warning}
                       />
                     </View>
                     <View style={{ flex: 1 }}>
@@ -1126,8 +1122,8 @@ export default function MechanicProfile() {
                         paddingHorizontal: 14,
                         borderRadius: radius.md,
                         borderWidth: 1,
-                        borderColor: "#635bff",
-                        backgroundColor: "#635bff" + "10",
+                        borderColor: colors.secondary,
+                        backgroundColor: withAlpha(colors.secondary, 0.1),
                         opacity: pressed || loadingPayout ? 0.7 : 1,
                         flexDirection: "row",
                         alignItems: "center",
@@ -1136,11 +1132,11 @@ export default function MechanicProfile() {
                       })}
                     >
                       {loadingPayout ? (
-                        <ActivityIndicator color="#635bff" size="small" />
+                        <ActivityIndicator color={colors.secondary} size="small" />
                       ) : (
                         <>
-                          <Ionicons name="arrow-forward" size={16} color="#635bff" />
-                          <Text style={{ fontWeight: "700", color: "#635bff", fontSize: 14 }}>
+                          <Ionicons name="arrow-forward" size={16} color={colors.secondary} />
+                          <Text style={{ fontWeight: "700", color: colors.secondary, fontSize: 14 }}>
                             Complete Setup
                           </Text>
                         </>
@@ -1154,8 +1150,8 @@ export default function MechanicProfile() {
             {(shopName || bio) && (
               <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#3b82f6" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="business-outline" size={16} color="#3b82f6" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.primary, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="business-outline" size={16} color={colors.primary} />
                   </View>
                   <Text style={text.section}>Business</Text>
                 </View>
@@ -1178,8 +1174,8 @@ export default function MechanicProfile() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="hammer-outline" size={16} color="#f59e0b" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.warning, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="hammer-outline" size={16} color={colors.warning} />
                 </View>
                 <Text style={text.section}>Skills</Text>
               </View>
@@ -1202,12 +1198,12 @@ export default function MechanicProfile() {
                         paddingHorizontal: 12,
                         paddingVertical: 6,
                         borderRadius: 999,
-                        backgroundColor: "#f59e0b" + "15",
+                        backgroundColor: withAlpha(colors.warning, 0.15),
                         borderWidth: 1,
-                        borderColor: "#f59e0b" + "30",
+                        borderColor: withAlpha(colors.warning, 0.3),
                       }}
                     >
-                      <Text style={{ fontSize: 13, fontWeight: "600", color: "#f59e0b" }}>
+                      <Text style={{ fontSize: 13, fontWeight: "600", color: colors.warning }}>
                         {skill.label || skill.key}
                       </Text>
                     </View>
@@ -1225,8 +1221,8 @@ export default function MechanicProfile() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#8b5cf6" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="build-outline" size={16} color="#8b5cf6" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.secondary, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="build-outline" size={16} color={colors.secondary} />
                 </View>
                 <Text style={text.section}>Tools & Equipment</Text>
               </View>
@@ -1272,8 +1268,8 @@ export default function MechanicProfile() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#10b981" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name="shield-checkmark-outline" size={16} color="#10b981" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.success, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name="shield-checkmark-outline" size={16} color={colors.success} />
                 </View>
                 <Text style={text.section}>Safety Measures</Text>
               </View>
@@ -1294,8 +1290,8 @@ export default function MechanicProfile() {
                       key={safety.key || safety.key}
                       style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
                     >
-                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: "#10b981" + "20", alignItems: "center", justifyContent: "center" }}>
-                        <Ionicons name="checkmark" size={12} color="#10b981" />
+                      <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: withAlpha(colors.success, 0.2), alignItems: "center", justifyContent: "center" }}>
+                        <Ionicons name="checkmark" size={12} color={colors.success} />
                       </View>
                       <Text style={{ fontSize: 14, color: colors.textPrimary }}>
                         {safety.label || safety.key}
@@ -1308,8 +1304,8 @@ export default function MechanicProfile() {
 
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#ec4899" + "20", alignItems: "center", justifyContent: "center" }}>
-                  <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color="#ec4899" />
+                <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.accent, 0.2), alignItems: "center", justifyContent: "center" }}>
+                  <Ionicons name={isDark ? "moon-outline" : "sunny-outline"} size={16} color={colors.accent} />
                 </View>
                 <Text style={text.section}>Appearance</Text>
               </View>
@@ -1406,10 +1402,10 @@ export default function MechanicProfile() {
                       justifyContent: "center",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: "#10b981" + "15",
+                      backgroundColor: withAlpha(colors.success, 0.15),
                     }}
                   >
-                    <Ionicons name="wallet-outline" size={18} color="#10b981" />
+                    <Ionicons name="wallet-outline" size={18} color={colors.success} />
                   </View>
 
                   <View style={{ flex: 1 }}>
@@ -1449,10 +1445,10 @@ export default function MechanicProfile() {
                       justifyContent: "center",
                       borderWidth: 1,
                       borderColor: colors.border,
-                      backgroundColor: "#f59e0b" + "15",
+                      backgroundColor: withAlpha(colors.warning, 0.15),
                     }}
                   >
-                    <Ionicons name="gift-outline" size={18} color="#f59e0b" />
+                    <Ionicons name="gift-outline" size={18} color={colors.warning} />
                   </View>
 
                   <View style={{ flex: 1 }}>
@@ -1472,8 +1468,8 @@ export default function MechanicProfile() {
             <View style={[card, { padding: spacing.lg, borderRadius: radius.lg, gap: spacing.sm }]}>
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#FFB800" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="star-outline" size={16} color="#FFB800" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.warning, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="star-outline" size={16} color={colors.warning} />
                   </View>
                   <Text style={text.section}>My Reviews ({reviewCount})</Text>
                 </View>
@@ -1525,7 +1521,7 @@ export default function MechanicProfile() {
                           </Text>
                         </View>
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
-                          <Ionicons name="star" size={14} color="#FFB800" />
+                          <Ionicons name="star" size={14} color={colors.warning} />
                           <Text style={{ fontWeight: "700", color: colors.textPrimary, fontSize: 14 }}>
                             {review.overall_rating}
                           </Text>
@@ -1588,8 +1584,8 @@ export default function MechanicProfile() {
 
               <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: "#f59e0b" + "20", alignItems: "center", justifyContent: "center" }}>
-                    <Ionicons name="location-outline" size={16} color="#f59e0b" />
+                  <View style={{ width: 32, height: 32, borderRadius: 8, backgroundColor: withAlpha(colors.warning, 0.2), alignItems: "center", justifyContent: "center" }}>
+                    <Ionicons name="location-outline" size={16} color={colors.warning} />
                   </View>
                   <Text style={{ ...text.muted, fontWeight: "600" }}>Home Location</Text>
                 </View>
@@ -1598,7 +1594,7 @@ export default function MechanicProfile() {
                 </Text>
                 {homeLatitude && homeLongitude && (
                   <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.xs }}>
-                    <Ionicons name="checkmark-circle" size={16} color="#10b981" />
+                    <Ionicons name="checkmark-circle" size={16} color={colors.success} />
                     <Text style={{ ...text.body, fontWeight: "700", color: colors.textPrimary }}>
                       {locationDisplay}
                     </Text>
@@ -2035,20 +2031,15 @@ export default function MechanicProfile() {
         </Pressable>
 
         {isAdmin && (
-          <Pressable
+          <ThemedCard
+            pressable
             onPress={() => router.push("/(admin)")}
-            style={({ pressed }) => [
-              card,
-              {
-                paddingVertical: 14,
-                paddingHorizontal: 16,
-                borderRadius: radius.lg,
-                opacity: pressed ? 0.9 : 1,
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-              },
-            ]}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 12,
+              marginBottom: spacing.sm,
+            }}
           >
             <View
               style={{
@@ -2063,13 +2054,13 @@ export default function MechanicProfile() {
               <Ionicons name="shield-checkmark-outline" size={22} color={colors.info} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 16, fontWeight: "800", color: colors.textPrimary }}>Admin Panel</Text>
-              <Text style={{ fontSize: 13, fontWeight: "600", color: colors.textMuted }}>
+              <ThemedText variant="body" style={{ fontWeight: '700' }}>Admin Panel</ThemedText>
+              <ThemedText variant="caption" color="muted">
                 Manage mechanic verifications
-              </Text>
+              </ThemedText>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-          </Pressable>
+          </ThemedCard>
         )}
 
         <Pressable
@@ -2111,7 +2102,7 @@ export default function MechanicProfile() {
         <Pressable
           style={{
             flex: 1,
-            backgroundColor: "rgba(0,0,0,0.5)",
+            backgroundColor: withAlpha(colors.black, 0.5),
             justifyContent: "flex-end",
           }}
           onPress={() => setPhotoModalVisible(false)}
