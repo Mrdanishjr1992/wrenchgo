@@ -292,11 +292,11 @@ export default function CustomerJobDetails() {
           const dispute = await getDisputeForJob(id);
           setExistingDispute(dispute);
         } catch (err) {
-          console.log('Error checking comeback eligibility:', err);
+          // Error checking comeback eligibility, continue without it
         }
       }
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to load job.");
+      Alert.alert("Error", "Failed to load job details. Please try again.");
     } finally {
       setLoading(false);
     }

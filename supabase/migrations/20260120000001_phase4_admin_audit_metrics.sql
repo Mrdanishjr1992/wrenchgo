@@ -1033,6 +1033,9 @@ GRANT EXECUTE ON FUNCTION public.admin_get_job_detail(uuid) TO authenticated;
 -- J) ADMIN GET MECHANICS LIST
 -- =====================================================
 
+-- Drop existing function to allow return type change
+DROP FUNCTION IF EXISTS public.admin_get_mechanics(text, uuid, int, int);
+
 CREATE OR REPLACE FUNCTION public.admin_get_mechanics(
   p_status text DEFAULT NULL,
   p_hub_id uuid DEFAULT NULL,

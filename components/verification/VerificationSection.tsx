@@ -112,10 +112,10 @@ export function VerificationSection({ mechanicId, onStatusChange }: Verification
         Alert.alert('Success', 'Document uploaded. It will be reviewed shortly.');
         await load();
       } else {
-        Alert.alert('Error', res.error || 'Failed to upload document.');
+        Alert.alert('Upload Failed', 'Unable to upload document. Please try again.');
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to upload document.');
+      Alert.alert('Upload Failed', 'Unable to upload document. Please try again.');
     } finally {
       setUploading(null);
     }
@@ -141,7 +141,7 @@ export function VerificationSection({ mechanicId, onStatusChange }: Verification
     const response = vettingResponses[promptKey];
     const prompt = VETTING_PROMPTS.find((p) => p.key === promptKey);
     if (!response || (prompt && response.length < prompt.minLength)) {
-      Alert.alert('Error', `Please provide a more detailed response (at least ${prompt?.minLength || 30} characters).`);
+      Alert.alert('More Detail Needed', `Please provide a more detailed response (at least ${prompt?.minLength || 30} characters).`);
       return;
     }
     setSavingVetting(promptKey);
@@ -151,10 +151,10 @@ export function VerificationSection({ mechanicId, onStatusChange }: Verification
         Alert.alert('Saved', 'Your response has been saved.');
         await load();
       } else {
-        Alert.alert('Error', res.error || 'Failed to save response.');
+        Alert.alert('Unable to Save', 'Please check your connection and try again.');
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to save response.');
+      Alert.alert('Unable to Save', 'Please check your connection and try again.');
     } finally {
       setSavingVetting(null);
     }

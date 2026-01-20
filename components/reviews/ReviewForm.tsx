@@ -157,8 +157,7 @@ export default function ReviewForm({
         );
       }, 500);
     } catch (err: any) {
-      console.error('Review submission error:', err);
-      Alert.alert('Error', err.message || 'Failed to submit review');
+      Alert.alert('Unable to Submit', 'Please check your connection and try again.');
     } finally {
       setSubmitting(false);
     }

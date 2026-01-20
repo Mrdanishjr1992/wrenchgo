@@ -162,11 +162,11 @@ export default function QuoteComposer() {
             setShowDiagnosticNudge(true);
           }
         } catch (e) {
-          console.log("AI diagnosis check failed:", e);
+          // AI diagnosis check failed, continue without recommendation
         }
       }
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to load job");
+      Alert.alert("Error", "Failed to load job details. Please try again.");
       router.back();
     } finally {
       setLoading(false);

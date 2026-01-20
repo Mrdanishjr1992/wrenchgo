@@ -460,7 +460,7 @@ export function MessagesListView({ role }: MessagesListViewProps) {
 
       setItems(conversations);
     } catch (e: any) {
-      Alert.alert("Messages error", e?.message ?? "Failed to load.");
+      Alert.alert("Unable to Load Messages", "Please check your connection and try again.");
       setItems([]);
     } finally {
       setLoading(false);
@@ -528,7 +528,7 @@ export function MessagesListView({ role }: MessagesListViewProps) {
 
       load();
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed.");
+      Alert.alert("Error", "Unable to mark messages as read. Please try again.");
     }
   }, [items, load]);
 

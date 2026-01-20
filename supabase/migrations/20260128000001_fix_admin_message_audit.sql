@@ -34,7 +34,6 @@ CREATE INDEX IF NOT EXISTS idx_message_audit_sender ON public.message_audit_logs
 CREATE INDEX IF NOT EXISTS idx_message_audit_conversation ON public.message_audit_logs(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_message_audit_flagged ON public.message_audit_logs(flagged_for_review) WHERE flagged_for_review = true;
 CREATE INDEX IF NOT EXISTS idx_message_audit_job ON public.message_audit_logs(job_id) WHERE job_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS idx_message_audit_actor ON public.message_audit_logs(actor_id) WHERE actor_id IS NOT NULL;
 
 -- Make conversation_id nullable (it's not needed for admin messages)
 ALTER TABLE public.message_audit_logs ALTER COLUMN conversation_id DROP NOT NULL;
@@ -55,6 +54,9 @@ ALTER TABLE public.message_audit_logs ALTER COLUMN action_taken DROP NOT NULL;
 ALTER TABLE public.message_audit_logs ADD COLUMN IF NOT EXISTS action text;
 ALTER TABLE public.message_audit_logs ADD COLUMN IF NOT EXISTS actor_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL;
 ALTER TABLE public.message_audit_logs ADD COLUMN IF NOT EXISTS metadata jsonb;
+
+-- Create index on actor_id AFTER the column is added
+CREATE INDEX IF NOT EXISTS idx_message_audit_actor ON public.message_audit_logs(actor_id) WHERE actor_id IS NOT NULL;
 
 -- Update admin_send_message to gracefully handle missing audit table
 CREATE OR REPLACE FUNCTION public.admin_send_message(

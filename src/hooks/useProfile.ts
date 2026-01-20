@@ -30,7 +30,7 @@ export function useProfile(router: any) {
 
       setProfile(data);
     } catch (e: any) {
-      Alert.alert("Profile error", e.message);
+      Alert.alert("Unable to Load Profile", "Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -59,9 +59,9 @@ export function useProfile(router: any) {
       if (error) throw error;
 
       setProfile(data);
-      Alert.alert("Saved", "Profile updated");
+      Alert.alert("Saved", "Profile updated successfully.");
     } catch (e: any) {
-      Alert.alert("Save error", e.message);
+      Alert.alert("Unable to Save", "Please check your connection and try again.");
     } finally {
       setSaving(false);
     }

@@ -1059,11 +1059,172 @@ export async function adminUpdateHub(
     .from('service_hubs')
     .update(updates)
     .eq('id', hubId)
-    .select()
-    .single();
+    .select();
 
   if (error) throw error;
-  return data;
+  if (!data || data.length === 0) {
+    throw new Error('Hub not found');
+  }
+  return data[0];
+}
+
+export interface CreateHubInput {
+  name: string;
+  city: string;
+  state: string;
+  country: string;
+  lat: number;
+  lng: number;
+  zip: string;
+  active_radius_miles: number;
+  max_radius_miles: number;
+  notes?: string;
+}
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+export async function adminCreateHub(input: CreateHubInput) {
+  if (input.max_radius_miles < input.active_radius_miles) {
+    throw new Error('Max radius must be greater than or equal to active radius');
+  }
+  if (input.active_radius_miles <= 0 || input.max_radius_miles <= 0) {
+    throw new Error('Radius values must be positive');
+  }
+  if (input.max_radius_miles > 100) {
+    throw new Error('Max radius cannot exceed 100 miles');
+  }
+  if (input.lat < -90 || input.lat > 90 || input.lng < -180 || input.lng > 180) {
+    throw new Error('Invalid coordinates');
+  }
+
+  const slug = generateSlug(input.name);
+
+  const { data, error } = await supabase
+    .from('service_hubs')
+    .insert({
+      name: input.name,
+      slug,
+      zip: input.zip,
+      lat: input.lat,
+      lng: input.lng,
+      active_radius_miles: input.active_radius_miles,
+      max_radius_miles: input.max_radius_miles,
+      is_active: false,
+      invite_only: true,
+      auto_expand_enabled: false,
+      settings: {
+        city: input.city,
+        state: input.state,
+        country: input.country,
+        notes: input.notes || null,
+      },
+    })
+    .select();
+
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('Failed to create hub');
+  }
+  return data[0];
+}
+
+export interface HubRecommendation {
+  city: string;
+  state: string;
+  country: string;
+  customer_count: number;
+  mechanic_count: number;
+  total_count: number;
+  avg_lat: number;
+  avg_lng: number;
+  avg_distance_to_hub: number | null;
+  demand_score: number;
+  supply_score: number;
+  readiness_score: number;
+  suggested_radius: number;
+}
+
+export async function adminGetHubRecommendations(): Promise<HubRecommendation[]> {
+  const { data, error } = await supabase.rpc('get_hub_recommendations');
+
+  if (error) {
+    console.error('RPC error, falling back to client-side aggregation:', error);
+    return adminGetHubRecommendationsFallback();
+  }
+
+  return data || [];
+}
+
+async function adminGetHubRecommendationsFallback(): Promise<HubRecommendation[]> {
+  const { data: waitlistData, error } = await supabase
+    .from('waitlist')
+    .select('zip, lat, lng, user_type, distance_miles, nearest_hub_id')
+    .is('converted_at', null)
+    .is('invited_at', null);
+
+  if (error) throw error;
+  if (!waitlistData || waitlistData.length === 0) return [];
+
+  const zipGroups = new Map<string, {
+    entries: typeof waitlistData;
+    customers: number;
+    mechanics: number;
+  }>();
+
+  for (const entry of waitlistData) {
+    const zip = entry.zip?.substring(0, 3) || 'unknown';
+    if (!zipGroups.has(zip)) {
+      zipGroups.set(zip, { entries: [], customers: 0, mechanics: 0 });
+    }
+    const group = zipGroups.get(zip)!;
+    group.entries.push(entry);
+    if (entry.user_type === 'customer') group.customers++;
+    if (entry.user_type === 'mechanic') group.mechanics++;
+  }
+
+  const recommendations: HubRecommendation[] = [];
+
+  for (const [zip, group] of zipGroups) {
+    if (group.entries.length < 5) continue;
+
+    const validCoords = group.entries.filter(e => e.lat && e.lng);
+    if (validCoords.length === 0) continue;
+
+    const avgLat = validCoords.reduce((sum, e) => sum + (e.lat || 0), 0) / validCoords.length;
+    const avgLng = validCoords.reduce((sum, e) => sum + (e.lng || 0), 0) / validCoords.length;
+    const avgDistance = group.entries
+      .filter(e => e.distance_miles != null)
+      .reduce((sum, e, _, arr) => sum + (e.distance_miles || 0) / arr.length, 0) || null;
+
+    const demandScore = Math.min(100, group.customers * 10);
+    const supplyScore = Math.min(100, group.mechanics * 20);
+    const readinessScore = Math.round((demandScore * 0.6 + supplyScore * 0.4));
+
+    recommendations.push({
+      city: `ZIP ${zip}xxx`,
+      state: '',
+      country: 'US',
+      customer_count: group.customers,
+      mechanic_count: group.mechanics,
+      total_count: group.entries.length,
+      avg_lat: avgLat,
+      avg_lng: avgLng,
+      avg_distance_to_hub: avgDistance,
+      demand_score: demandScore,
+      supply_score: supplyScore,
+      readiness_score: readinessScore,
+      suggested_radius: 15,
+    });
+  }
+
+  return recommendations
+    .sort((a, b) => b.readiness_score - a.readiness_score)
+    .slice(0, 10);
 }
 
 // =====================================================
@@ -1540,16 +1701,11 @@ export async function adminSendMessage(
 // =====================================================
 
 export function formatCents(cents: number | null | undefined): string {
-  if (cents === null || cents === undefined || isNaN(cents)) {
-    console.warn('[formatCents] Invalid value:', cents);
+  const value = Number(cents);
+  if (cents === null || cents === undefined || !Number.isFinite(value)) {
     return '$0.00';
   }
-  const num = Number(cents);
-  if (isNaN(num)) {
-    console.warn('[formatCents] NaN after conversion:', cents);
-    return '$0.00';
-  }
-  return `$${(num / 100).toFixed(2)}`;
+  return `$${(value / 100).toFixed(2)}`;
 }
 
 export function formatDateTime(dateStr: string | null): string {

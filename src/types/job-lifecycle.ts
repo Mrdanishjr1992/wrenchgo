@@ -479,8 +479,12 @@ export function calculateCustomerTotal(priceCents: number): number {
 // FORMATTING HELPERS
 // =====================================================
 
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+export function formatCents(cents: number | null | undefined): string {
+  const value = Number(cents);
+  if (cents === null || cents === undefined || !Number.isFinite(value)) {
+    return "$0.00";
+  }
+  return `$${(value / 100).toFixed(2)}`;
 }
 
 export function formatDuration(minutes: number): string {

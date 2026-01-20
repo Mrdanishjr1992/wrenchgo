@@ -18,17 +18,25 @@ import type {
 // =====================================================
 
 export async function submitReview(payload: SubmitReviewPayload): Promise<SubmitReviewResponse> {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    return { success: false, error: 'Not authenticated' };
+  }
+
   const { data, error } = await supabase.rpc('submit_review', {
     p_job_id: payload.job_id,
+    p_reviewer_id: userData.user.id,
     p_reviewee_id: payload.reviewee_id,
-    p_overall_rating: payload.overall_rating,
+    p_rating: payload.overall_rating,
+    p_comment: payload.comment ?? null,
+    p_professionalism_rating: payload.professionalism_rating ?? null,
+    p_communication_rating: payload.communication_rating ?? null,
+    p_would_recommend: payload.would_recommend ?? null,
     p_performance_rating: payload.performance_rating ?? null,
     p_timing_rating: payload.timing_rating ?? null,
     p_cost_rating: payload.cost_rating ?? null,
-    p_professionalism_rating: payload.professionalism_rating ?? null,
-    p_communication_rating: payload.communication_rating ?? null,
-    p_comment: payload.comment ?? null,
-    p_would_recommend: payload.would_recommend ?? null,
+    p_punctuality_rating: payload.punctuality_rating ?? null,
+    p_payment_rating: payload.payment_rating ?? null,
   });
 
   if (error) {
@@ -36,7 +44,11 @@ export async function submitReview(payload: SubmitReviewPayload): Promise<Submit
     return { success: false, error: error.message };
   }
 
-  return data as SubmitReviewResponse;
+  return {
+    success: true,
+    review_id: data?.review_id,
+    is_visible: data?.published
+  };
 }
 
 export async function getReviewStatus(jobId: string): Promise<ReviewStatusResponse | null> {
@@ -65,6 +77,52 @@ export async function getPendingReviewPrompts(): Promise<ReviewPrompt[]> {
   }
 
   return (data ?? []) as ReviewPrompt[];
+}
+
+// =====================================================
+// MANDATORY REVIEW CHECK
+// =====================================================
+
+import type { PendingReviewJob } from '../types/trust-system';
+
+export async function getPendingReviewJobForUser(): Promise<PendingReviewJob | null> {
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) return null;
+
+  const { data, error } = await supabase.rpc('get_pending_review_job', {
+    p_user_id: userData.user.id,
+  });
+
+  if (error) {
+    console.error('Error getting pending review job:', error);
+    return null;
+  }
+
+  if (!data || data.length === 0) return null;
+
+  const row = data[0];
+  return {
+    job_id: row.job_id,
+    job_title: row.job_title,
+    other_party_id: row.other_party_id,
+    other_party_name: row.other_party_name,
+    reviewer_role: row.reviewer_role as 'customer' | 'mechanic',
+    completed_at: row.completed_at,
+  };
+}
+
+export async function hasSubmittedReview(jobId: string, reviewerId: string): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_submitted_review', {
+    p_job_id: jobId,
+    p_reviewer_id: reviewerId,
+  });
+
+  if (error) {
+    console.error('Error checking review status:', error);
+    return false;
+  }
+
+  return data === true;
 }
 
 export async function reportReview(

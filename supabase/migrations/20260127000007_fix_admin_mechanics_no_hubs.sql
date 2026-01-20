@@ -5,6 +5,10 @@
 -- FIX admin_get_mechanics
 -- =====================================================
 
+-- Drop all overloads to avoid signature conflicts
+DROP FUNCTION IF EXISTS admin_get_mechanics(text, uuid, int, int);
+DROP FUNCTION IF EXISTS admin_get_mechanics(text, uuid, text, text, timestamptz, timestamptz, int, int);
+
 CREATE OR REPLACE FUNCTION admin_get_mechanics(
   p_status text DEFAULT NULL,
   p_hub_id uuid DEFAULT NULL,

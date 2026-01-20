@@ -64,7 +64,7 @@ export function PreJobPhotoPicker({
         setPhotos(updated);
         onPhotosChanged?.(updated);
       } catch (e: any) {
-        Alert.alert("Error", "Failed to process photo");
+        Alert.alert("Error", "Unable to process photo. Please try again.");
       } finally {
         setProcessing(false);
       }
@@ -100,7 +100,7 @@ export function PreJobPhotoPicker({
         await addPhoto(result.assets[0].uri);
       }
     } catch (e: any) {
-      Alert.alert("Camera Error", e?.message || "Failed to capture photo");
+      Alert.alert("Camera Error", "Unable to capture photo. Please try again.");
     }
   }, [addPhoto]);
 
@@ -149,7 +149,7 @@ export function PreJobPhotoPicker({
         }
       }
     } catch (e: any) {
-      Alert.alert("Library Error", e?.message || "Failed to select photos");
+      Alert.alert("Selection Failed", "Unable to select photos. Please try again.");
     }
   }, [maxPhotos, photos.length, onPhotosChanged]);
 

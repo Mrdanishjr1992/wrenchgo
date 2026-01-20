@@ -53,13 +53,13 @@ export default function StripeOnboardingScreen() {
       try {
         await refreshStripeAccountStatus(user.id);
       } catch (e) {
-        console.log('Refresh error (non-fatal):', e);
+        // Non-fatal refresh error, continue loading
       }
 
       const accountData = await getMechanicStripeAccount(user.id);
       setAccount(accountData);
     } catch (error) {
-      console.error('Error loading account:', error);
+      // Error loading account
     } finally {
       setLoading(false);
       setRefreshing(false);

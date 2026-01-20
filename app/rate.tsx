@@ -1,8 +1,8 @@
-import React, { useEffect } from 'react';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useRatingPromptContext } from '@/src/components/RatingPromptProvider';
-import { useTheme } from '@/src/ui/theme-context';
+import React, { useEffect } from "react";
+import { View, ActivityIndicator } from "react-native";
+import { useRouter } from "expo-router";
+import { useRatingPromptContext } from "@/src/components/RatingPromptProvider";
+import { useTheme } from "@/src/ui/theme-context";
 
 export default function RatePage() {
   const router = useRouter();
@@ -18,21 +18,12 @@ export default function RatePage() {
       }
       router.back();
     }, 100);
-
     return () => clearTimeout(timer);
   }, [triggerPrompt, handleRateApp, promptState, router]);
 
   return (
-    <View style={[styles.container, { backgroundColor: colors.bg }]}>
-      <ActivityIndicator size="large" color={colors.accent} />
+    <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" }}>
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});

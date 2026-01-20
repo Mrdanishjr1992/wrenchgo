@@ -72,16 +72,24 @@ export function calculateMechanicCommission(quoteAmountCents: number): number {
   return Math.min(Math.round(quoteAmountCents * MECHANIC_COMMISSION_RATE), MECHANIC_COMMISSION_CAP_CENTS);
 }
 
-export function formatCurrency(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+export function formatCurrency(cents: number | null | undefined): string {
+  const value = Number(cents);
+  if (cents === null || cents === undefined || !Number.isFinite(value)) {
+    return "$0.00";
+  }
+  return `$${(value / 100).toFixed(2)}`;
 }
 
-export function centsToDollars(cents: number): number {
-  return cents / 100;
+export function centsToDollars(cents: number | null | undefined): number {
+  const value = Number(cents);
+  if (!Number.isFinite(value)) return 0;
+  return value / 100;
 }
 
-export function dollarsToCents(dollars: number): number {
-  return Math.round(dollars * 100);
+export function dollarsToCents(dollars: number | null | undefined): number {
+  const value = Number(dollars);
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100);
 }
 
 export async function createPaymentIntent(

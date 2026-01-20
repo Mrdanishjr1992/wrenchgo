@@ -64,13 +64,21 @@ export type FinancialSummary = {
   completed_payouts_cents?: number;
 };
 
-export function formatCents(cents: number): string {
-  return `$${(cents / 100).toFixed(2)}`;
+export function formatCents(cents: number | null | undefined): string {
+  const value = Number(cents);
+  if (cents === null || cents === undefined || !Number.isFinite(value)) {
+    return "$0.00";
+  }
+  return `$${(value / 100).toFixed(2)}`;
 }
 
-export function formatCentsCompact(cents: number): string {
-  const dollars = cents / 100;
-  if (dollars >= 1000) {
+export function formatCentsCompact(cents: number | null | undefined): string {
+  const value = Number(cents);
+  if (cents === null || cents === undefined || !Number.isFinite(value)) {
+    return "$0";
+  }
+  const dollars = value / 100;
+  if (Math.abs(dollars) >= 1000) {
     return `$${(dollars / 1000).toFixed(1)}k`;
   }
   return `$${dollars.toFixed(0)}`;

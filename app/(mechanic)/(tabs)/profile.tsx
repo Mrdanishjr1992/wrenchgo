@@ -612,13 +612,12 @@ export default function MechanicProfile() {
           setHomeState(geocode.region || "");
         }
       } catch (geoErr) {
-        console.warn("Geocoding failed:", geoErr);
+        // Geocoding failed, continue without city/state
       }
 
       Alert.alert('Success', 'Location captured. Save your profile to persist.');
     } catch (error: any) {
-      console.error('Location error:', error);
-      Alert.alert('Error', error.message || 'Failed to get location');
+      Alert.alert('Location Error', 'Unable to get your location. Please try again.');
     } finally {
       setLoadingLocation(false);
     }

@@ -487,7 +487,6 @@ export default function CustomerHome() {
       }
       setCustomerId(uid);
     } catch (e: any) {
-      console.warn("bootstrapUser error:", e?.message ?? e);
       router.replace("/(auth)/sign-in");
     }
   }, [router]);

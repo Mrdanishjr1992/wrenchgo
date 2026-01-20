@@ -67,13 +67,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         await AsyncStorage.setItem(storageKey(uid), newMode);
       } catch (err) {
-        console.warn("Failed to save theme to AsyncStorage:", err);
+        // Failed to save theme to AsyncStorage
       }
 
       try {
         await supabase.from("profiles").update({ theme_preference: newMode }).eq("id", uid);
       } catch (err) {
-        console.warn("Failed to save theme to Supabase:", err);
+        // Failed to save theme to Supabase
       }
     },
     [currentUserId]
@@ -104,7 +104,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     } catch (err) {
-      console.warn("Failed to load theme from Supabase:", err);
+      // Failed to load theme from Supabase
     }
 
     try {
@@ -114,7 +114,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         return;
       }
     } catch (err) {
-      console.warn("Failed to load theme from AsyncStorage:", err);
+      // Failed to load theme from AsyncStorage
     }
 
     setModeState(getSystemMode());
@@ -146,7 +146,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
           setModeState(getSystemMode());
         }
       } catch (err) {
-        console.warn("Failed to initialize theme:", err);
+        // Failed to initialize theme
         setCurrentUserId(null);
         setModeState(getSystemMode());
       } finally {

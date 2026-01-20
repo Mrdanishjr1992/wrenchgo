@@ -220,6 +220,8 @@ export interface SubmitReviewPayload {
   cost_rating?: number;
   professionalism_rating?: number;
   communication_rating?: number;
+  punctuality_rating?: number;
+  payment_rating?: number;
   comment?: string;
   would_recommend?: boolean;
 }
@@ -367,4 +369,17 @@ export function getStarArray(rating: number): ('full' | 'half' | 'empty')[] {
     }
   }
   return stars;
+}
+
+// =====================================================
+// MANDATORY REVIEW TYPES
+// =====================================================
+
+export interface PendingReviewJob {
+  job_id: string;
+  job_title: string;
+  other_party_id: string;
+  other_party_name: string;
+  reviewer_role: 'customer' | 'mechanic';
+  completed_at: string;
 }

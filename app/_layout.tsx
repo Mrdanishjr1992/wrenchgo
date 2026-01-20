@@ -3,6 +3,7 @@ import { Slot } from "expo-router";
 import { ThemeProvider } from "../src/ui/theme-context";
 import { OnboardingProvider } from "../src/onboarding";
 import { RatingPromptProvider } from "../src/components/RatingPromptProvider";
+import { MandatoryReviewProvider } from "../src/components/MandatoryReviewProvider";
 import React from "react";
 
 export default function RootLayout() {
@@ -17,7 +18,9 @@ export default function RootLayout() {
       <ThemeProvider>
         <OnboardingProvider>
           <RatingPromptProvider>
-            <Slot />
+            <MandatoryReviewProvider>
+              <Slot />
+            </MandatoryReviewProvider>
           </RatingPromptProvider>
         </OnboardingProvider>
       </ThemeProvider>

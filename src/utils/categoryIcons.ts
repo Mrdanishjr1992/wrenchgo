@@ -215,12 +215,11 @@ export function getCategoryIcon(category: string): CategoryIcon {
   const matchedKey = Object.keys(categoryIconMap).find(
     key => key.toLowerCase() === lowerCategory
   );
-  
+
   if (matchedKey) {
     return categoryIconMap[matchedKey];
   }
-  
-  console.warn(`No icon mapping found for category: "${category}". Using default icon.`);
+
   return DEFAULT_ICON;
 }
 

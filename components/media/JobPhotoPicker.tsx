@@ -102,7 +102,7 @@ export function JobPhotoPicker({
         const { data: userData } = await supabase.auth.getUser();
         const userId = userData.user?.id;
         if (!userId) {
-          Alert.alert("Error", "Not authenticated");
+          Alert.alert("Sign In Required", "Please sign in to upload photos.");
           return null;
         }
 
@@ -150,8 +150,7 @@ export function JobPhotoPicker({
 
         return mediaRow;
       } catch (e: any) {
-        console.error("Upload error:", e);
-        Alert.alert("Upload Error", e?.message || "Failed to upload photo");
+        Alert.alert("Upload Failed", "Unable to upload photo. Please try again.");
         return null;
       } finally {
         setUploading(false);
@@ -184,8 +183,7 @@ export function JobPhotoPicker({
         }
       }
     } catch (e: any) {
-      console.error("Camera error:", e);
-      Alert.alert("Camera Error", e?.message || "Failed to capture photo");
+      Alert.alert("Camera Error", "Unable to capture photo. Please try again.");
     }
   }, [uploadPhoto, uploadedMedia, onUploaded]);
 
@@ -219,8 +217,7 @@ export function JobPhotoPicker({
         }
       }
     } catch (e: any) {
-      console.error("Library error:", e);
-      Alert.alert("Library Error", e?.message || "Failed to select photos");
+      Alert.alert("Selection Failed", "Unable to select photos. Please try again.");
     }
   }, [uploadPhoto, uploadedMedia, onUploaded, maxPhotos]);
 

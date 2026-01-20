@@ -521,7 +521,7 @@ export default function CustomerAccount() {
           setHomeState(region);
         }
       } catch (geoErr) {
-        console.warn("Geocoding failed:", geoErr);
+        // Geocoding failed, continue without city/state
       }
 
       if (profile?.id) {

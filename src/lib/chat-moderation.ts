@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import logger from './logger';
 import type {
   ScanMessageRequest,
   ScanMessageResponse,
@@ -17,8 +18,6 @@ export async function scanMessageBeforeSend(
   recipientId: string,
   jobId?: string
 ): Promise<ScanMessageResponse> {
-  console.log('[MODERATION] Scanning message:', { messageText, recipientId, jobId });
-
   const { data, error } = await supabase.rpc('scan_message_before_send', {
     p_message_text: messageText,
     p_recipient_id: recipientId,
@@ -26,7 +25,7 @@ export async function scanMessageBeforeSend(
   });
 
   if (error) {
-    console.error('[MODERATION] Error scanning message:', error);
+    logger.error('Message scan failed', { recipientId, jobId });
     return {
       allowed: true,
       action: 'allowed',
@@ -35,7 +34,6 @@ export async function scanMessageBeforeSend(
     };
   }
 
-  console.log('[MODERATION] Scan result:', data);
   return data as ScanMessageResponse;
 }
 

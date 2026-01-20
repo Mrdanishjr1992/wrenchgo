@@ -58,7 +58,7 @@ export default function CustomerLayout() {
 
         if (mounted) setChecking(false);
       } catch (error) {
-        console.warn("Customer layout role check error:", error);
+        // Role check error, continue with default behavior
         if (mounted) setChecking(false);
       }
     };

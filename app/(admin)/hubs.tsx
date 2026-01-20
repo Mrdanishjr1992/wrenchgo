@@ -5,31 +5,34 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
-import { adminListHubs, AdminHub } from '../../src/lib/admin';
+import { adminListHubs, AdminHub, CreateHubInput } from '../../src/lib/admin';
 import { useAdminScope, useAdminFilters } from '../../src/lib/admin-filters';
-import { 
-  AdminHeader, 
+import {
+  AdminHeader,
   AdminSearchBar,
-  AdminLoadingState, 
-  AdminEmptyState, 
+  AdminLoadingState,
+  AdminEmptyState,
   AdminErrorState,
   AdminPagination,
 } from '../../components/admin/AdminFilterComponents';
 import { ThemedText } from '../../src/ui/components/ThemedText';
 import { ThemedCard } from '../../src/ui/components/ThemedCard';
+import { CreateHubModal } from '../../components/admin/CreateHubModal';
 
 export default function AdminHubsScreen() {
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const scope = useAdminScope();
   const { filters, updateFilter, currentPage, nextPage, prevPage } = useAdminFilters();
-  
+
   const [hubs, setHubs] = useState<AdminHub[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchInput, setSearchInput] = useState('');
   const [hasMore, setHasMore] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createPrefill, setCreatePrefill] = useState<Partial<CreateHubInput> & { city?: string; state?: string } | undefined>();
 
   const fetchHubs = useCallback(async () => {
     try {
@@ -84,12 +87,31 @@ export default function AdminHubsScreen() {
       <AdminHeader title="Hubs" onBack={() => router.back()} onRefresh={onRefresh} />
 
       <View style={{ padding: spacing.md }}>
-        <AdminSearchBar
-          value={searchInput}
-          onChangeText={setSearchInput}
-          onSubmit={handleSearch}
-          placeholder="Search by name, slug, or zip..."
-        />
+        <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.sm }}>
+          <View style={{ flex: 1 }}>
+            <AdminSearchBar
+              value={searchInput}
+              onChangeText={setSearchInput}
+              onSubmit={handleSearch}
+              placeholder="Search by name, slug, or zip..."
+            />
+          </View>
+          <TouchableOpacity
+            onPress={() => { setCreatePrefill(undefined); setShowCreateModal(true); }}
+            style={{
+              backgroundColor: colors.primary,
+              paddingHorizontal: spacing.md,
+              borderRadius: 8,
+              justifyContent: 'center',
+              alignItems: 'center',
+              flexDirection: 'row',
+              gap: 4,
+            }}
+          >
+            <Ionicons name="add" size={20} color="#fff" />
+            <ThemedText style={{ color: '#fff', fontWeight: '600' }}>New Hub</ThemedText>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView 
@@ -162,6 +184,13 @@ export default function AdminHubsScreen() {
           />
         )}
       </ScrollView>
+
+      <CreateHubModal
+        visible={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        onSuccess={fetchHubs}
+        prefill={createPrefill}
+      />
     </View>
   );
 }

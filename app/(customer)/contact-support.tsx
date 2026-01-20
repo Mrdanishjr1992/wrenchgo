@@ -305,7 +305,7 @@ export default function ContactSupportScreen() {
           <View style={[styles.infoBox, { backgroundColor: colors.surface }]}>
             <Ionicons name="information-circle" size={20} color={colors.accent} />
             <Text style={[styles.infoText, { color: colors.textSecondary }]}>
-              This request is linked to job #{jobId.slice(0, 8)}
+              This request is linked to your current job
             </Text>
           </View>
         )}

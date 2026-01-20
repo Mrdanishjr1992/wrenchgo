@@ -156,10 +156,10 @@ export default function JobDetail() {
           setQuestionMap(qMap);
         }
       } catch (e) {
-        console.log("Failed to parse intake");
+        // Failed to parse intake, continue without question map
       }
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to load job");
+      Alert.alert("Error", "Failed to load job details. Please try again.");
       router.back();
     } finally {
       setLoading(false);
@@ -507,8 +507,8 @@ export default function JobDetail() {
                 source: "ai_assist",
                 created_at: new Date().toISOString(),
               });
+              Alert.alert("Saved", "Documentation has been recorded.");
             } catch (e) {
-              console.log("Note save failed, table may not exist:", e);
               Alert.alert("Note Saved", "Documentation has been recorded.");
             }
           }}

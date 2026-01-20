@@ -71,10 +71,10 @@ export function ReviewForm({
           [{ text: 'OK', onPress: onSuccess }]
         );
       } else {
-        Alert.alert('Error', result.error || 'Failed to submit review');
+        Alert.alert('Unable to Submit', 'Please check your connection and try again.');
       }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'Failed to submit review');
+      Alert.alert('Unable to Submit', 'Please check your connection and try again.');
     } finally {
       setSubmitting(false);
     }

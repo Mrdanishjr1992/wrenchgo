@@ -311,13 +311,11 @@ export default function QuoteReview() {
         .eq("id", params.jobId)
         .in("status", ["searching", "draft"]);
 
-      if (updateError) {
-        console.warn("Job status update warning:", updateError.message);
-      }
+      // Non-critical status update, continue even if it fails
 
       router.replace(`/(mechanic)/quote-sent/${params.jobId}` as any);
     } catch (e: any) {
-      Alert.alert("Error", e?.message ?? "Failed to send quote");
+      Alert.alert("Unable to Send Quote", "Please check your connection and try again.");
     } finally {
       setSubmitting(false);
     }

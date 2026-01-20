@@ -359,12 +359,11 @@ export default function RequestService() {
           setLocation(addressStr);
         }
       } catch (e) {
-        console.warn("Reverse geocoding failed:", e);
+        // Reverse geocoding failed, use coordinates
         setLocation(`${latitude.toFixed(6)}, ${longitude.toFixed(6)}`);
       }
     } catch (error: any) {
-      console.error("Error getting location:", error);
-      setLocationError("Failed to get location");
+      setLocationError("Unable to get your location. Please enter it manually.");
     } finally {
       setLoadingLocation(false);
     }
@@ -523,9 +522,8 @@ export default function RequestService() {
             locationLat = geocoded[0].latitude;
             locationLng = geocoded[0].longitude;
           }
-          console.log('Geocoded', searchLocation, 'to', locationLat, locationLng);
         } catch (geoError) {
-          console.warn("Geocoding failed:", geoError);
+          // Geocoding failed, continue without coordinates
         }
       }
 
@@ -583,18 +581,17 @@ export default function RequestService() {
             });
           }
         } catch (photoError) {
-          console.warn("Photo upload failed:", photoError);
+          // Photo upload failed, continue without photos
         }
       }
 
       Alert.alert(
-        "Sent!",
+        "Request Sent!",
         "Your request has been sent to mechanics in your area. You'll receive quotes soon.",
         [{ text: "OK", onPress: () => router.back() }]
       );
     } catch (error: any) {
-      console.error("Error submitting request:", error);
-      Alert.alert("Error", error.message || "Failed to submit request");
+      Alert.alert("Unable to Submit", "Please check your connection and try again.");
     } finally {
       setLoadingSubmit(false);
     }
