@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Modal, ScrollView, TextInput, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +6,16 @@ import { useTheme } from '../../src/ui/theme-context';
 import { spacing } from '../../src/ui/theme';
 import { ThemedText } from '../../src/ui/components/ThemedText';
 import { adminCreateHub, CreateHubInput, HubRecommendation } from '../../src/lib/admin';
+import { supabase } from '../../src/lib/supabase';
+
+interface GeocodeResult {
+  lat: number;
+  lng: number;
+  city?: string;
+  state?: string;
+}
+
+const zipGeocodeCache = new Map<string, GeocodeResult>();
 
 interface CreateHubModalProps {
   visible: boolean;
@@ -32,6 +42,102 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const [zipLoading, setZipLoading] = useState(false);
+  const [zipError, setZipError] = useState<string | null>(null);
+  const [coordsManuallyEdited, setCoordsManuallyEdited] = useState(false);
+  const [lastGeocodedZip, setLastGeocodedZip] = useState<string | null>(null);
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const geocodeZip = useCallback(async (zip: string, country: string) => {
+    const zip5 = zip.substring(0, 5);
+    const cacheKey = `${zip5}-${country}`;
+
+    if (zipGeocodeCache.has(cacheKey)) {
+      return zipGeocodeCache.get(cacheKey)!;
+    }
+
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = new AbortController();
+
+    const { data, error } = await supabase.functions.invoke('geocode-zip', {
+      body: { zip: zip5, country },
+    });
+
+    if (error) throw new Error(error.message || 'Geocode failed');
+    if (data?.error) throw new Error(data.error);
+
+    const result: GeocodeResult = {
+      lat: data.lat,
+      lng: data.lng,
+      city: data.city,
+      state: data.state,
+    };
+
+    zipGeocodeCache.set(cacheKey, result);
+    return result;
+  }, []);
+
+  const handleZipChange = useCallback((zip: string) => {
+    setForm(f => ({ ...f, zip }));
+    setZipError(null);
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    const zip5 = zip.replace(/\D/g, '').substring(0, 5);
+    if (zip5.length !== 5) return;
+
+    debounceTimerRef.current = setTimeout(async () => {
+      if (coordsManuallyEdited && lastGeocodedZip === zip5) return;
+
+      setZipLoading(true);
+      setZipError(null);
+
+      try {
+        const result = await geocodeZip(zip5, form.country);
+        setForm(f => ({
+          ...f,
+          lat: result.lat,
+          lng: result.lng,
+          city: f.city || result.city || '',
+          state: f.state || result.state || '',
+        }));
+        setLastGeocodedZip(zip5);
+        setCoordsManuallyEdited(false);
+      } catch (err: any) {
+        setZipError("Couldn't find coordinates for this ZIP.");
+      } finally {
+        setZipLoading(false);
+      }
+    }, 500);
+  }, [form.country, coordsManuallyEdited, lastGeocodedZip, geocodeZip]);
+
+  const handleZipBlur = useCallback(() => {
+    const zip5 = form.zip.replace(/\D/g, '').substring(0, 5);
+    if (zip5.length === 5 && !zipLoading && lastGeocodedZip !== zip5) {
+      handleZipChange(form.zip);
+    }
+  }, [form.zip, zipLoading, lastGeocodedZip, handleZipChange]);
+
+  const handleLatChange = useCallback((v: string) => {
+    setForm(f => ({ ...f, lat: parseFloat(v) || 0 }));
+    setCoordsManuallyEdited(true);
+  }, []);
+
+  const handleLngChange = useCallback((v: string) => {
+    setForm(f => ({ ...f, lng: parseFloat(v) || 0 }));
+    setCoordsManuallyEdited(true);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      abortControllerRef.current?.abort();
+    };
+  }, []);
+
   useEffect(() => {
     if (prefill && visible) {
       setForm(prev => ({
@@ -47,6 +153,9 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
         max_radius_miles: prefill.max_radius_miles || 25,
         notes: prefill.notes || '',
       }));
+      setCoordsManuallyEdited(false);
+      setLastGeocodedZip(null);
+      setZipError(null);
     }
   }, [prefill, visible]);
 
@@ -87,6 +196,9 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
         max_radius_miles: 25,
         notes: '',
       });
+      setCoordsManuallyEdited(false);
+      setLastGeocodedZip(null);
+      setZipError(null);
     } catch (err: any) {
       Alert.alert('Error', err?.message || 'Failed to create hub');
     } finally {
@@ -168,16 +280,24 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
 
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
             <View style={{ flex: 1 }}>
-              <ThemedText variant="caption" style={{ marginBottom: 4 }}>ZIP Code *</ThemedText>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                <ThemedText variant="caption">ZIP Code *</ThemedText>
+                {zipLoading && (
+                  <ActivityIndicator size="small" color={colors.primary} style={{ marginLeft: 8 }} />
+                )}
+              </View>
               <TextInput
                 style={inputStyle}
                 value={form.zip}
-                onChangeText={(v) => setForm(f => ({ ...f, zip: v }))}
+                onChangeText={handleZipChange}
+                onBlur={handleZipBlur}
                 placeholder="78701"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="numeric"
+                maxLength={10}
               />
               {errors.zip && <ThemedText variant="caption" style={{ color: '#EF4444', marginTop: 2 }}>{errors.zip}</ThemedText>}
+              {zipError && <ThemedText variant="caption" style={{ color: '#F59E0B', marginTop: 2 }}>{zipError}</ThemedText>}
             </View>
             <View style={{ flex: 1 }}>
               <ThemedText variant="caption" style={{ marginBottom: 4 }}>Country</ThemedText>
@@ -197,7 +317,7 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
               <TextInput
                 style={inputStyle}
                 value={form.lat ? String(form.lat) : ''}
-                onChangeText={(v) => setForm(f => ({ ...f, lat: parseFloat(v) || 0 }))}
+                onChangeText={handleLatChange}
                 placeholder="30.2672"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
@@ -208,14 +328,13 @@ export function CreateHubModal({ visible, onClose, onSuccess, prefill }: CreateH
               <TextInput
                 style={inputStyle}
                 value={form.lng ? String(form.lng) : ''}
-                onChangeText={(v) => setForm(f => ({ ...f, lng: parseFloat(v) || 0 }))}
+                onChangeText={handleLngChange}
                 placeholder="-97.7431"
                 placeholderTextColor={colors.textSecondary}
                 keyboardType="decimal-pad"
               />
             </View>
           </View>
-          {errors.coords && <ThemedText variant="caption" style={{ color: '#EF4444', marginBottom: spacing.md }}>{errors.coords}</ThemedText>}
 
           <View style={{ flexDirection: 'row', gap: spacing.sm, marginBottom: spacing.md }}>
             <View style={{ flex: 1 }}>
