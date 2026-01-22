@@ -1,0 +1,37 @@
+-- =====================================================
+-- STORAGE BUCKET SETUP
+-- =====================================================
+-- Purpose: Create storage buckets for media assets
+-- Note: This must be run manually in Supabase Dashboard or via API
+-- Supabase CLI doesn't support storage bucket creation in migrations
+-- =====================================================
+
+-- MANUAL STEPS (Run in Supabase Dashboard > Storage):
+-- 
+-- 1. Create bucket 'media' with these settings:
+--    - Name: media
+--    - Public: true
+--    - File size limit: 50MB
+--    - Allowed MIME types: image/*, video/*
+--
+-- 2. Create bucket policy for 'media':
+--    - Allow authenticated users to upload to their own folders
+--    - Allow public read access
+--
+-- SQL equivalent (if running via SQL):
+-- 
+-- INSERT INTO storage.buckets (id, name, public)
+-- VALUES ('media', 'media', true)
+-- ON CONFLICT (id) DO NOTHING;
+--
+-- CREATE POLICY "media_upload_own" ON storage.objects
+--   FOR INSERT TO authenticated
+--   WITH CHECK (bucket_id = 'media' AND (storage.foldername(name))[1] = auth.uid()::text);
+--
+-- CREATE POLICY "media_read_public" ON storage.objects
+--   FOR SELECT TO public
+--   USING (bucket_id = 'media');
+--
+-- CREATE POLICY "media_delete_own" ON storage.objects
+--   FOR DELETE TO authenticated
+--   USING (bucket_id = 'media' AND (storage.foldername(name))[1] = auth.uid()::text);

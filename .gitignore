@@ -1,0 +1,93 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+
+# Visual Studio / VS Code
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+# generated native folders
+# Gradle caches (do not upload/commit)
+android/.gradle/
+**/.gradle/
+
+android/local.properties
+
+# ============================================
+# WRENCHGO CLEANUP - SECURITY & ORGANIZATION
+# ============================================
+
+# SECRETS - NEVER COMMIT
+.env
+.env.local
+.env.production
+.env.development
+credentials.json
+google-services.json
+GoogleService-Info.plist
+supabase/.env
+*.key
+*.pem
+*.p12
+*.p8
+
+# BACKUPS - KEEP LOCAL ONLY
+backups/
+backup_*.sql
+*.sql.backup
+*.dump
+*.bak
+
+# TEMPORARY FILES
+*.tmp
+*.temp
+.cache/
+cleanup_script.ps1
+t Testing*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# MEDIA ASSETS - NOW HOSTED ON SUPABASE STORAGE
+# MP4 files are stored remotely and should not be bundled in the app
+assets/*.mp4

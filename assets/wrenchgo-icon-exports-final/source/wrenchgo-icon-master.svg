@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="256" y1="160" x2="768" y2="864" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0B2C3D"/>
+      <stop offset="1" stop-color="#0E4A5F"/>
+    </linearGradient>
+
+    <linearGradient id="wGrad" x1="312" y1="260" x2="712" y2="764" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#15D0C8"/>
+      <stop offset="1" stop-color="#7DF7FF"/>
+    </linearGradient>
+
+    <linearGradient id="wStroke" x1="320" y1="240" x2="704" y2="784" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#BFFFFF" stop-opacity="0.90"/>
+      <stop offset="1" stop-color="#BFFFFF" stop-opacity="0.18"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Rounded-square background -->
+  <rect x="96" y="96" width="832" height="832" rx="180" fill="url(#bg)"/>
+
+  <!-- Bold geometric W -->
+  <path
+    d="M277 300
+       L374 724
+       H464
+       L512 536
+       L560 724
+       H650
+       L747 300
+       H660
+       L610 556
+       L560 300
+       H464
+       L414 556
+       L364 300
+       Z"
+    fill="url(#wGrad)"
+    stroke="url(#wStroke)"
+    stroke-width="18"
+    stroke-linejoin="round"
+  />
+
+  <!-- Subtle depth (no filters) -->
+  <path
+    d="M295 312
+       L388 712
+       H452
+       L512 480
+       L572 712
+       H636
+       L729 312
+       H674
+       L610 632
+       L548 312
+       H476
+       L414 632
+       L350 312
+       Z"
+    fill="#053041"
+    opacity="0.14"
+  />
+</svg>

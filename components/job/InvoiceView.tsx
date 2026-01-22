@@ -1,0 +1,614 @@
+import React, { useState, useEffect } from 'react';
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../src/ui/theme-context';
+import type { Invoice, InvoiceLineItem } from '../../src/types/job-lifecycle';
+import { formatCents } from '../../src/types/job-lifecycle';
+import { formatLineItemType, getLineItemIcon, approveLineItem, rejectLineItem } from '../../src/lib/invoice';
+import { retroactiveApplyPromo, previewPromoDiscount } from '../../src/lib/promos';
+
+interface InvoiceViewProps {
+  invoice: Invoice;
+  role: 'customer' | 'mechanic';
+  onRefresh?: () => void;
+  showPendingActions?: boolean;
+  jobId?: string;
+}
+
+export function InvoiceView({ invoice, role, onRefresh, showPendingActions = true, jobId }: InvoiceViewProps) {
+  const { colors } = useTheme();
+  const [processingId, setProcessingId] = useState<string | null>(null);
+  const [hasAvailablePromo, setHasAvailablePromo] = useState(false);
+  const [applyingPromo, setApplyingPromo] = useState(false);
+
+  const { contract } = invoice;
+  const hasPromoApplied = contract.promo_discount_cents && contract.promo_discount_cents > 0;
+
+  useEffect(() => {
+    if (role === 'customer' && !hasPromoApplied && jobId) {
+      previewPromoDiscount(1500).then((preview) => {
+        setHasAvailablePromo(preview?.has_discount ?? false);
+      });
+    }
+  }, [role, hasPromoApplied, jobId]);
+
+  const handleApplyPromo = async () => {
+    if (!jobId) return;
+    Alert.alert(
+      'Apply Promo Credit?',
+      'This will apply your available promo credit to waive the platform fee for this job.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: async () => {
+            setApplyingPromo(true);
+            const result = await retroactiveApplyPromo(jobId);
+            setApplyingPromo(false);
+            if (result.success && result.has_credit) {
+              Alert.alert('Success', `Applied ${result.credit_type === 'FEELESS' ? 'full fee waiver' : '$3 discount'}!`);
+              onRefresh?.();
+            } else if (result.success && !result.has_credit) {
+              Alert.alert('No Credits', 'You don\'t have any promo credits available.');
+            } else {
+              Alert.alert('Error', result.error || 'Failed to apply promo');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleApprove = async (item: InvoiceLineItem) => {
+    Alert.alert(
+      'Approve Addition?',
+      `Approve "${item.description}" for ${formatCents(item.total_cents)}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Approve',
+          onPress: async () => {
+            setProcessingId(item.id);
+            const result = await approveLineItem(item.id);
+            setProcessingId(null);
+            if (!result.success) {
+              Alert.alert('Error', result.error || 'Failed to approve');
+            } else {
+              onRefresh?.();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleReject = async (item: InvoiceLineItem) => {
+    Alert.alert(
+      'Reject Addition?',
+      `Are you sure you want to reject "${item.description}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            setProcessingId(item.id);
+            const result = await rejectLineItem(item.id);
+            setProcessingId(null);
+            if (!result.success) {
+              Alert.alert('Error', result.error || 'Failed to reject');
+            } else {
+              onRefresh?.();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderLineItem = (item: InvoiceLineItem, showActions: boolean) => {
+    const isPending = item.approval_status === 'pending';
+    const isRejected = item.approval_status === 'rejected' || item.approval_status === 'auto_rejected';
+    const isProcessing = processingId === item.id;
+
+    return (
+      <View
+        key={item.id}
+        style={[
+          styles.lineItem,
+          {
+            backgroundColor: isPending ? `${colors.accent}10` : colors.surface,
+            borderColor: isPending ? colors.accent : colors.border,
+            opacity: isRejected ? 0.5 : 1,
+          },
+        ]}
+      >
+        <View style={styles.lineItemHeader}>
+          <View style={styles.lineItemIcon}>
+            <Ionicons
+              name={getLineItemIcon(item.item_type) as any}
+              size={18}
+              color={isPending ? colors.accent : colors.textMuted}
+            />
+          </View>
+          <View style={styles.lineItemDetails}>
+            <Text style={[styles.lineItemDescription, { color: colors.textPrimary }]}>
+              {item.description}
+            </Text>
+            <Text style={[styles.lineItemType, { color: colors.textMuted }]}>
+              {formatLineItemType(item.item_type)}
+              {item.quantity > 1 && ` × ${item.quantity}`}
+            </Text>
+          </View>
+          <View style={styles.lineItemAmount}>
+            <Text
+              style={[
+                styles.lineItemPrice,
+                {
+                  color: isRejected ? colors.textMuted : colors.textPrimary,
+                  textDecorationLine: isRejected ? 'line-through' : 'none',
+                },
+              ]}
+            >
+              {formatCents(item.total_cents)}
+            </Text>
+            {isPending && (
+              <View style={[styles.pendingBadge, { backgroundColor: colors.accent }]}>
+                <Text style={styles.pendingBadgeText}>PENDING</Text>
+              </View>
+            )}
+            {isRejected && (
+              <Text style={[styles.rejectedText, { color: colors.error }]}>Rejected</Text>
+            )}
+          </View>
+        </View>
+
+        {item.notes && (
+          <Text style={[styles.lineItemNotes, { color: colors.textMuted }]}>
+            {item.notes}
+          </Text>
+        )}
+
+        {isPending && showActions && role === 'customer' && (
+          <View style={styles.actionButtons}>
+            {isProcessing ? (
+              <ActivityIndicator size="small" color={colors.accent} />
+            ) : (
+              <>
+                <Pressable
+                  style={[styles.rejectButton, { borderColor: colors.border }]}
+                  onPress={() => handleReject(item)}
+                >
+                  <Ionicons name="close" size={16} color={colors.error} />
+                  <Text style={[styles.rejectButtonText, { color: colors.error }]}>Reject</Text>
+                </Pressable>
+                <Pressable
+                  style={[styles.approveButton, { backgroundColor: colors.accent }]}
+                  onPress={() => handleApprove(item)}
+                >
+                  <Ionicons name="checkmark" size={16} color={colors.white} />
+                  <Text style={styles.approveButtonText}>Approve</Text>
+                </Pressable>
+              </>
+            )}
+          </View>
+        )}
+
+        {isPending && role === 'mechanic' && (
+          <Text style={[styles.awaitingText, { color: colors.textMuted }]}>
+            Awaiting customer approval
+          </Text>
+        )}
+      </View>
+    );
+  };
+
+  const { approved_items, pending_items, rejected_items } = invoice;
+
+  // Filter out platform_fee items - shown separately in summary
+  const filteredApprovedItems = approved_items.filter(item => item.item_type !== 'platform_fee');
+
+  // Compute dynamic totals based on current line item states
+  const dynamicApprovedSubtotal = approved_items
+    .filter(item => item.item_type !== 'platform_fee')
+    .reduce((sum, item) => sum + item.total_cents, 0);
+
+  const dynamicPendingSubtotal = pending_items.reduce((sum, item) => sum + item.total_cents, 0);
+
+  // Platform fee from approved items or fallback to contract
+  const platformFeeItem = approved_items.find(item => item.item_type === 'platform_fee');
+  const dynamicPlatformFee = platformFeeItem?.total_cents ?? contract.platform_fee_cents;
+
+  // Promo discount
+  const promoDiscount = contract.promo_discount_cents || 0;
+
+  // Dynamic total due (approved subtotal + platform fee - promo discount)
+  const dynamicTotalDue = dynamicApprovedSubtotal + dynamicPlatformFee - promoDiscount;
+
+  // Dynamic total including pending (for display purposes)
+  const dynamicTotalWithPending = dynamicTotalDue + dynamicPendingSubtotal;
+
+  return (
+    <View style={styles.container}>
+      {/* Pending Items Alert */}
+      {pending_items.length > 0 && role === 'customer' && showPendingActions && (
+        <View style={[styles.pendingAlert, { backgroundColor: `${colors.accent}15`, borderColor: colors.accent }]}>
+          <Ionicons name="alert-circle" size={20} color={colors.accent} />
+          <Text style={[styles.pendingAlertText, { color: colors.accent }]}>
+            {pending_items.length} item{pending_items.length > 1 ? 's' : ''} awaiting your approval
+          </Text>
+        </View>
+      )}
+
+      {/* Pending Items */}
+      {pending_items.length > 0 && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            Pending Approval
+          </Text>
+          {pending_items.map(item => renderLineItem(item, showPendingActions))}
+        </View>
+      )}
+
+      {/* Approved Items */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+          Invoice Items
+        </Text>
+        {filteredApprovedItems.map(item => renderLineItem(item, false))}
+      </View>
+
+      {/* Rejected Items (collapsed) */}
+      {rejected_items.length > 0 && (
+        <View style={styles.section}>
+          <Text style={[styles.sectionTitle, { color: colors.textMuted }]}>
+            Rejected Items ({rejected_items.length})
+          </Text>
+          {rejected_items.map(item => renderLineItem(item, false))}
+        </View>
+      )}
+
+      {/* Totals */}
+      <View style={[styles.totalsSection, { borderTopColor: colors.border }]}>
+        <View style={styles.totalRow}>
+          <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+            {role === 'mechanic' ? 'Quoted Amount' : 'Labor & Parts'}
+          </Text>
+          <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
+            {formatCents(dynamicApprovedSubtotal)}
+          </Text>
+        </View>
+
+        {pending_items.length > 0 && (
+          <View style={styles.totalRow}>
+            <Text style={[styles.totalLabel, { color: colors.accent }]}>
+              + Pending Approval
+            </Text>
+            <Text style={[styles.totalValue, { color: colors.accent }]}>
+              {formatCents(dynamicPendingSubtotal)}
+            </Text>
+          </View>
+        )}
+
+        {/* Platform fee - only show to customer */}
+        {role === 'customer' && (
+          <>
+            <View style={styles.totalRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.totalLabel, { color: colors.textMuted }]}>Platform Fee</Text>
+                <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                  Booking, support & payment processing
+                </Text>
+              </View>
+              <Text style={[styles.totalValue, { color: colors.textPrimary }]}>
+                {formatCents(contract.original_platform_fee_cents || dynamicPlatformFee)}
+              </Text>
+            </View>
+
+            {/* Promo discount */}
+            {hasPromoApplied && (
+              <View style={styles.totalRow}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="gift" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                  <Text style={[styles.totalLabel, { color: '#10B981' }]}>
+                    {contract.promo_credit_type === 'FEELESS'
+                      ? 'Referral Credit (Fee Waived)'
+                      : 'Referral Credit ($3 Off)'}
+                  </Text>
+                </View>
+                <Text style={[styles.totalValue, { color: '#10B981' }]}>
+                  -{formatCents(promoDiscount)}
+                </Text>
+              </View>
+            )}
+
+            {/* Apply promo button - show if no promo applied and user has available credits */}
+            {!hasPromoApplied && hasAvailablePromo && jobId && (
+              <Pressable
+                onPress={handleApplyPromo}
+                disabled={applyingPromo}
+                style={[
+                  styles.totalRow,
+                  {
+                    backgroundColor: '#10B98115',
+                    borderRadius: 8,
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    marginTop: 8,
+                  },
+                ]}
+              >
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="gift" size={16} color="#10B981" style={{ marginRight: 6 }} />
+                  <Text style={[styles.totalLabel, { color: '#10B981', fontWeight: '600' }]}>
+                    Apply Referral Credit
+                  </Text>
+                </View>
+                {applyingPromo ? (
+                  <ActivityIndicator size="small" color="#10B981" />
+                ) : (
+                  <Ionicons name="chevron-forward" size={18} color="#10B981" />
+                )}
+              </Pressable>
+            )}
+
+            <View style={[styles.totalRow, styles.grandTotalRow]}>
+              <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
+                Total Due
+              </Text>
+              <Text style={[styles.grandTotalValue, { color: colors.accent }]}>
+                {formatCents(dynamicTotalDue)}
+              </Text>
+            </View>
+          </>
+        )}
+
+        {/* Mechanic earnings breakdown */}
+        {role === 'mechanic' && (() => {
+          // Compute dynamic service fee: 12% of labor (excluding parts), max $50
+          const laborItems = approved_items.filter(i =>
+            i.item_type !== 'platform_fee' && i.item_type !== 'parts'
+          );
+          const laborTotal = laborItems.reduce((sum, i) => sum + i.total_cents, 0);
+          const partsTotal = approved_items
+            .filter(i => i.item_type === 'parts')
+            .reduce((sum, i) => sum + i.total_cents, 0);
+
+          // 12% of labor, max $50 (5000 cents)
+          const dynamicServiceFee = Math.min(Math.round(laborTotal * 0.12), 5000);
+          const dynamicEarnings = dynamicApprovedSubtotal - dynamicServiceFee;
+
+          // Pending labor for projection
+          const pendingLaborTotal = pending_items
+            .filter(i => i.item_type !== 'parts')
+            .reduce((sum, i) => sum + i.total_cents, 0);
+
+          return (
+            <>
+              {contract.mechanic_promo_discount_cents && contract.mechanic_promo_discount_cents > 0 ? (
+                <>
+                  <View style={[styles.totalRow, { marginTop: 4 }]}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                        Service Fee (12%, max $50)
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                        On labor only, parts excluded
+                      </Text>
+                    </View>
+                    <Text style={[styles.totalValue, { color: colors.textMuted, textDecorationLine: 'line-through' }]}>
+                      -{formatCents(dynamicServiceFee)}
+                    </Text>
+                  </View>
+                  <View style={[styles.totalRow, { backgroundColor: `${colors.success}15`, borderRadius: 6, padding: 8, marginTop: 4 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      <Ionicons name="gift" size={16} color={colors.success} />
+                      <Text style={{ fontSize: 13, color: colors.success, fontWeight: '600' }}>
+                        Token Applied
+                      </Text>
+                    </View>
+                    <Text style={[styles.totalValue, { color: colors.success }]}>
+                      +{formatCents(contract.mechanic_promo_discount_cents)}
+                    </Text>
+                  </View>
+                  <View style={[styles.totalRow, { marginTop: 4 }]}>
+                    <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                      Net Service Fee
+                    </Text>
+                    <Text style={[styles.totalValue, { color: colors.error }]}>
+                      -{formatCents(Math.max(0, dynamicServiceFee - (contract.mechanic_promo_discount_cents || 0)))}
+                    </Text>
+                  </View>
+                </>
+              ) : (
+                <View style={[styles.totalRow, { marginTop: 4 }]}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.totalLabel, { color: colors.textMuted }]}>
+                      Service Fee (12%, max $50)
+                    </Text>
+                    <Text style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                      On labor only, parts excluded
+                    </Text>
+                  </View>
+                  <Text style={[styles.totalValue, { color: colors.error }]}>
+                    -{formatCents(dynamicServiceFee)}
+                  </Text>
+                </View>
+              )}
+              <View style={[styles.totalRow, styles.grandTotalRow]}>
+                <Text style={[styles.grandTotalLabel, { color: colors.textPrimary }]}>
+                  Your Earnings
+                </Text>
+                <Text style={[styles.grandTotalValue, { color: colors.success }]}>
+                  {formatCents(dynamicEarnings + (contract.mechanic_promo_discount_cents || 0))}
+                </Text>
+              </View>
+            </>
+          );
+        })()}
+      </View>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  pendingAlert: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 16,
+    gap: 8,
+  },
+  pendingAlertText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  lineItem: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  lineItemHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  lineItemIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  lineItemDetails: {
+    flex: 1,
+  },
+  lineItemDescription: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  lineItemType: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  lineItemAmount: {
+    alignItems: 'flex-end',
+  },
+  lineItemPrice: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  pendingBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginTop: 4,
+  },
+  pendingBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  rejectedText: {
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  lineItemNotes: {
+    fontSize: 12,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  rejectButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 4,
+  },
+  rejectButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  approveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    gap: 4,
+  },
+  approveButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  awaitingText: {
+    fontSize: 12,
+    marginTop: 8,
+    textAlign: 'center',
+    fontStyle: 'italic',
+  },
+  totalsSection: {
+    borderTopWidth: 1,
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  totalRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  totalLabel: {
+    fontSize: 14,
+  },
+  totalValue: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  grandTotalRow: {
+    marginTop: 8,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.1)',
+  },
+  grandTotalLabel: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  grandTotalValue: {
+    fontSize: 18,
+    fontWeight: '800',
+  },
+});
+
+export default InvoiceView;

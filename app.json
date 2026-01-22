@@ -1,0 +1,87 @@
+{
+  "expo": {
+    "name": "WrenchGo",
+    "slug": "wrenchgo",
+    "version": "1.0.0",
+    "orientation": "portrait",
+
+    "updates": {
+      "url": "https://u.expo.dev/51e3aae3-f17e-46a3-8146-0f0d7ebbd71c"
+    },
+    "runtimeVersion": "1.0.0",
+
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+
+    "scheme": "wrenchgo",
+
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.wrenchgo",
+      "icon": "./assets/icon.png",
+      "infoPlist": {
+        "NSCameraUsageDescription": "We need camera access for ID verification",
+        "NSPhotoLibraryUsageDescription": "We need photo library access to upload job photos"
+      }
+    },
+
+    "android": {
+      "package": "com.wrenchgo",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "permissions": [
+        "CAMERA",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+
+    "plugins": [
+      [
+        "@stripe/stripe-react-native",
+        {
+          "merchantIdentifier": "merchant.com.wrenchgo",
+          "enableGooglePay": true
+        }
+      ],
+      "expo-router",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#FF9F1C",
+          "sounds": []
+        }
+      ],
+      "@react-native-community/datetimepicker"
+    ],
+
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#FF9F1C"
+    },
+
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "51e3aae3-f17e-46a3-8146-0f0d7ebbd71c"
+      }
+    },
+
+    "owner": "mrdanishjr1992"
+  }
+}
