@@ -12,7 +12,7 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 
 import { supabase } from '@/src/lib/supabase';
-import { useTheme } from '@/src/contexts/ThemeContext';
+import { useTheme } from '@/src/ui/theme-context';
 
 type JobRow = {
   id: string;

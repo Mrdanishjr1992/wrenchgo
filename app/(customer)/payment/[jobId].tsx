@@ -14,7 +14,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useStripe } from "@stripe/stripe-react-native";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { supabase } from "@/src/lib/supabase";
-import TermsModal from "@/src/components/TermsModal";
+import TermsModal from "@/components/legal/TermsModal";
 
 export default function PaymentScreen() {
   const params = useLocalSearchParams();

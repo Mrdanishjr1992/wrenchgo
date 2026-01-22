@@ -67,7 +67,7 @@ export default function WaitlistScreen() {
   const [nearest, setNearest] = useState<NearestHubResult | null>(null);
   const [waitlistRow, setWaitlistRow] = useState<WaitlistRow | null>(null);
 
-  const canTryAgain = useMemo(() => Boolean(profile?.service_lat && profile?.service_lng && profile?.service_zip), [profile]);
+  const canTryAgain = useMemo(() => Boolean(profile?.home_lat && profile?.home_lng), [profile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,23 +84,23 @@ export default function WaitlistScreen() {
         const userEmail = userData.user.email;
         if (!cancelled) setEmail(userEmail);
 
-        // Get profile service coords
+        // Get profile coords
         const { data: p, error: pErr } = await supabase
           .from("profiles")
-          .select("id, role, full_name, service_zip, service_lat, service_lng, hub_id")
+          .select("id, role, full_name, home_lat, home_lng")
           .eq("id", userData.user.id)
           .single();
         if (pErr) throw pErr;
         if (!cancelled) setProfile(p);
 
-        if (!p?.service_lat || !p?.service_lng) {
+        if (!p?.home_lat || !p?.home_lng) {
           router.replace("/(auth)/service-area");
           return;
         }
 
         const { data: hubRow, error: hubErr } = await supabase.rpc("get_nearest_hub", {
-          check_lat: p.service_lat,
-          check_lng: p.service_lng,
+          check_lat: p.home_lat,
+          check_lng: p.home_lng,
         });
         if (hubErr) throw hubErr;
         if (!cancelled) setNearest(hubRow as NearestHubResult);
@@ -176,7 +176,7 @@ export default function WaitlistScreen() {
         style={{
           padding: spacing.md,
           borderRadius: 12,
-          backgroundColor: colors.card,
+          backgroundColor: colors.accent,
           borderWidth: 1,
           borderColor: colors.border,
           marginBottom: spacing.lg,
